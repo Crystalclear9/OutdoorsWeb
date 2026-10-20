@@ -57,7 +57,24 @@ test("注册、真实跨账号审核、刷新、退出与登录", async ({ page,
   await submit(page, "3");
   const context = await browser.newContext();
   const manager = await context.newPage();
+  const summaryResponse = manager.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === "/api/summary" && response.ok(),
+  );
   await adminLogin(manager);
+  const summary = await (await summaryResponse).json();
+  expect(summary.counts["待审核"]).toBeGreaterThan(0);
+  // Wait for the badge to render: the navigation name must stay stable after
+  // asynchronous counts arrive, rather than relying on a fast click before it.
+  await expect(
+    manager
+      .locator("nav button")
+      .filter({ hasText: "企业申报审核" })
+      .locator("b"),
+  ).toHaveText(String(summary.counts["待审核"]));
+  await expect(
+    manager.getByRole("button", { name: "企业申报审核", exact: true }),
+  ).toBeVisible();
   await manager
     .getByRole("button", { name: "企业申报审核", exact: true })
     .click();

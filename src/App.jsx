@@ -227,13 +227,15 @@ export default function App() {
           {nav.map(([id, label, Icon]) => (
             <button
               key={id}
+              aria-label={label}
+              aria-current={page === id ? "page" : undefined}
               className={page === id ? "selected" : ""}
               onClick={() => go(id)}
             >
               <Icon size={21} weight={page === id ? "fill" : "regular"} />
               <span>{label}</span>
               {id === "records" && !!counts["待审核"] && (
-                <b>{counts["待审核"]}</b>
+                <b aria-hidden="true">{counts["待审核"]}</b>
               )}
             </button>
           ))}

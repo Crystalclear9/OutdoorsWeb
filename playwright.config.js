@@ -6,6 +6,8 @@ export default defineConfig({
     baseURL: "http://127.0.0.1:3101",
     channel: process.env.PLAYWRIGHT_CHANNEL || "msedge",
     headless: true,
+    trace: "retain-on-failure",
+    screenshot: "only-on-failure",
   },
   webServer: {
     command: "node tests/start-server.mjs",

@@ -1,21 +1,46 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { api } from "./api.js";
 import { Button, Empty, ErrorBox } from "./components.jsx";
-export default function Notifications({ version, onNavigate }) {
+import { BookingDetail } from "./Booking.jsx";
+export default function Notifications({
+  user,
+  version,
+  onNavigate,
+  onRefresh,
+  notify,
+}) {
+  const request = useRef(0),
+    pageRef = useRef(1);
   const [data, setData] = useState({ items: [], unread: 0, pages: 1 }),
     [page, setPage] = useState(1),
     [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [detail, setDetail] = useState(null),
+    [loading, setLoading] = useState(true);
+  pageRef.current = page;
   async function load() {
+    const id = ++request.current;
+    setLoading(true);
     try {
-      setData(await api("/notifications?page=" + page));
+      const r = await api("/notifications?page=" + pageRef.current);
+      if (id !== request.current) return;
+      if (r.page > r.pages) {
+        setPage(r.pages);
+        return;
+      }
+      setData(r);
       setError("");
     } catch (e) {
-      setError(e.message);
+      if (id === request.current) setError(e.message);
+    } finally {
+      if (id === request.current) setLoading(false);
     }
   }
   useEffect(() => {
     load();
+    return () => {
+      request.current++;
+    };
   }, [page, version]);
   async function read(item) {
     setBusy(true);
@@ -25,7 +50,11 @@ export default function Notifications({ version, onNavigate }) {
         body: item ? { id: item.id } : {},
       });
       await load();
-      if (item) onNavigate("records");
+      if (item?.target)
+        setDetail(
+          (await api("/bookings/" + encodeURIComponent(item.target))).booking,
+        );
+      else if (item) onNavigate("records");
     } catch (e) {
       setError(e.message);
     } finally {
@@ -56,7 +85,7 @@ export default function Notifications({ version, onNavigate }) {
             <button
               key={n.id}
               className={!n.read_at ? "unread" : ""}
-              disabled={busy}
+              disabled={busy || loading}
               onClick={() => read(n)}
             >
               <span>
@@ -64,7 +93,7 @@ export default function Notifications({ version, onNavigate }) {
                 <small>{new Date(n.created).toLocaleString("zh-CN")}</small>
               </span>
               <p>{n.content}</p>
-              <small>查看相关申请</small>
+              <small>{n.target ? "打开申请详情" : "进入审批待办"}</small>
             </button>
           ))}
         </div>
@@ -79,20 +108,34 @@ export default function Notifications({ version, onNavigate }) {
           <div>
             <Button
               className="secondary small"
-              disabled={page <= 1}
+              disabled={page <= 1 || busy || loading}
               onClick={() => setPage((p) => p - 1)}
             >
               上一页
             </Button>
             <Button
               className="secondary small"
-              disabled={page >= data.pages}
+              disabled={page >= data.pages || busy || loading}
               onClick={() => setPage((p) => p + 1)}
             >
               下一页
             </Button>
           </div>
         </div>
+      )}
+      {detail && (
+        <BookingDetail
+          key={detail.id}
+          item={detail}
+          user={user}
+          onClose={() => setDetail(null)}
+          onSaved={(message) => {
+            setDetail(null);
+            load();
+            onRefresh();
+            notify(message);
+          }}
+        />
       )}
     </section>
   );

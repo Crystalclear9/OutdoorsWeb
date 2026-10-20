@@ -1,6 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, readdir, copyFile, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  rm,
+  readdir,
+  copyFile,
+  writeFile,
+  unlink,
+} from "node:fs/promises";
+import { DatabaseSync } from "node:sqlite";
+import { openStore } from "../store.mjs";
 import os from "node:os";
 import path from "node:path";
 import { createApp } from "../app.mjs";
@@ -141,6 +150,11 @@ test("取消预约需要归属、权限和版本，释放位置并保留审计�
     limited = client();
   await manager(root);
   await register(c);
+  assert.ok(
+    (await root.request("/operations")).data.warnings.includes(
+      "尚无自动备份成功记录",
+    ),
+  );
   await register(other, "other@test.local");
   await staff(root, limited, ["notices.manage"]);
   const id = (await c.request("/bookings", "POST", booking())).data.id;
@@ -276,8 +290,25 @@ test("后台备份可恢复账号与申请；清理临时数据不删除业务�
   const backup = path.join(dir, "backups", result.backup.file),
     restore = path.join(dir, "restored.sqlite");
   await copyFile(backup, restore);
+  assert.ok(path.resolve(backup).startsWith(path.resolve(dir) + path.sep));
+  await unlink(backup);
+  assert.ok(
+    (await root.request("/operations")).data.warnings.some((w) =>
+      w.includes("文件缺失"),
+    ),
+  );
+  const repaired = await app.maintenance.run(false);
+  assert.equal(repaired.ok, true);
+  assert.notEqual(repaired.backup.file, result.backup.file);
+  assert.equal(
+    (await root.request("/operations")).data.warnings.some((w) =>
+      w.includes("文件缺失"),
+    ),
+    false,
+  );
   const restored = await createApp({
     dbPath: restore,
+    admin: ADMIN,
     captchaTestAnswer: "246789",
     maintenance: { scheduled: false },
   });
@@ -313,6 +344,49 @@ test("后台备份可恢复账号与申请；清理临时数据不删除业务�
   assert.equal((await c.request("/health")).status, 200);
   app.db.exec("DROP TABLE health_probe");
   assert.equal((await c.request("/health")).status, 503);
+});
+
+test("高版本数据库拒绝启动前不修改结构或版本", async (t) => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "outdoor-future-schema-")),
+    file = path.join(dir, "future.sqlite");
+  t.after(async () => {
+    assert.ok(
+      path
+        .resolve(dir)
+        .startsWith(
+          path.resolve(os.tmpdir()) + path.sep + "outdoor-future-schema-",
+        ),
+    );
+    await rm(dir, { recursive: true, force: true });
+  });
+  const db = new DatabaseSync(file);
+  db.exec("CREATE TABLE future_data(id TEXT); PRAGMA user_version=99;");
+  db.close();
+  assert.throws(() => openStore(file), /数据库版本高于当前程序/);
+  const check = new DatabaseSync(file);
+  try {
+    assert.equal(check.prepare("PRAGMA user_version").get().user_version, 99);
+    assert.deepEqual(
+      check
+        .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+        .all()
+        .map((r) => r.name),
+      ["future_data"],
+    );
+  } finally {
+    check.close();
+  }
+});
+
+test("通知页码超大或非法不会导致数据库错误", async (t) => {
+  const { client } = await fixture(t),
+    c = client();
+  await register(c);
+  for (const value of ["9".repeat(400), "NaN", "-9999", "0"]) {
+    const response = await c.request("/notifications?page=" + value);
+    assert.equal(response.status, 200);
+    assert.ok(response.data.page >= 1 && response.data.page <= 100000);
+  }
 });
 
 test("历史日志可分页检索，普通账号不可读取，账号搜索由服务端执行", async (t) => {

@@ -22,21 +22,22 @@ export async function createApp(options = {}) {
   const dbPath =
     options.dbPath || process.env.DB_PATH || path.join(ROOT, "data/app.sqlite");
   const db = openStore(dbPath);
-  const maintenance = createMaintenance(db, dbPath, options.maintenance);
-  const trusted = (
-    options.trustedProxies ??
-    process.env.TRUSTED_PROXY_IPS ??
-    ""
-  )
-    .split(",")
-    .map((v) => v.trim())
-    .filter(Boolean);
-  const secure = options.secureCookies ?? process.env.COOKIE_SECURE === "true";
-  const origins = (options.allowedOrigins || process.env.PUBLIC_ORIGIN || "")
-    .split(",")
-    .map((v) => v.trim())
-    .filter(Boolean);
   try {
+    const maintenance = createMaintenance(db, dbPath, options.maintenance);
+    const trusted = (
+      options.trustedProxies ??
+      process.env.TRUSTED_PROXY_IPS ??
+      ""
+    )
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean);
+    const secure =
+      options.secureCookies ?? process.env.COOKIE_SECURE === "true";
+    const origins = (options.allowedOrigins || process.env.PUBLIC_ORIGIN || "")
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean);
     const admin =
       options.admin ||
       (process.env.ADMIN_EMAIL && process.env.ADMIN_PASSWORD

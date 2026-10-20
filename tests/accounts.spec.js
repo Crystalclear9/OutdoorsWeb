@@ -805,12 +805,83 @@ test("已通过预约可从界面确认取消并释放位置，工作台收到�
   await expect(page.locator(".notification-items")).toContainText(
     "布展预约已取消",
   );
+  await page
+    .locator(".notification-items button")
+    .filter({ hasText: "布展预约已取消" })
+    .click();
+  await expect(page.getByRole("dialog")).toContainText(id);
+  await expect(page.getByRole("dialog")).toContainText("活动计划调整");
+  await page.getByRole("dialog").getByLabel("关闭", { exact: true }).click();
   await page.screenshot({
     path: "tmp/notifications-desktop.png",
     fullPage: true,
     animations: "disabled",
   });
   await context.close();
+});
+
+test("账号检索的慢响应不会覆盖后发查询结果", async ({ page }) => {
+  await adminLogin(page);
+  let release, started;
+  const gate = new Promise((r) => (release = r)),
+    held = new Promise((r) => (started = r));
+  const respond = (name) =>
+    JSON.stringify({
+      page: 1,
+      pages: 1,
+      total: 1,
+      items: [
+        {
+          id: name,
+          email: name + "@test.local",
+          company: name,
+          contact: "测试人员",
+          phone: "13800138000",
+          role: "enterprise",
+          version: 1,
+          disabled: false,
+          mustChangePassword: false,
+          created: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+  await page.route("**/api/users?**", async (route) => {
+    const q = new URL(route.request().url()).searchParams.get("q");
+    if (q === "slow") {
+      started();
+      await gate;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: respond(q === "slow" ? "过期查询企业" : "最新查询企业"),
+    });
+  });
+  try {
+    await page
+      .getByRole("navigation")
+      .getByRole("button", { name: "账号管理", exact: true })
+      .click();
+    await page.getByLabel("搜索账号").fill("slow");
+    await held;
+    const previous = page.waitForResponse(
+      (r) => new URL(r.url()).searchParams.get("q") === "slow",
+    );
+    await page.getByLabel("搜索账号").fill("fast");
+    await expect(page.locator("tbody")).toContainText("最新查询企业");
+    release();
+    await (await previous).finished();
+    await page.evaluate(
+      () =>
+        new Promise((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(resolve)),
+        ),
+    );
+    await expect(page.locator("tbody")).toContainText("最新查询企业");
+    await expect(page.locator("tbody")).not.toContainText("过期查询企业");
+  } finally {
+    release();
+  }
 });
 
 test("超级管理员从运行维护界面执行备份，日志支持检索和导出", async ({

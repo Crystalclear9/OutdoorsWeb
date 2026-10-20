@@ -2,6 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import { mkdir, readdir, unlink, statfs, rename, stat } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { today as businessDay } from "./core.mjs";
 
 const config = JSON.parse(process.argv[2]),
   db = new DatabaseSync(config.dbPath);
@@ -36,7 +37,7 @@ try {
         "DELETE FROM notifications WHERE read_at IS NOT NULL AND created<?",
       )
       .run(new Date(at - 180 * day).toISOString()).changes;
-    const today = new Date().toISOString().slice(0, 10),
+    const today = businessDay(),
       reminder = JSON.parse(
         db
           .prepare("SELECT value FROM maintenance_state WHERE key='reminder'")
@@ -73,17 +74,38 @@ try {
     db.exec("ROLLBACK");
     throw e;
   }
-  const last = JSON.parse(
-    db.prepare("SELECT value FROM maintenance_state WHERE key='backup'").get()
-      ?.value || "null",
-  );
+  let last = null;
+  try {
+    last = JSON.parse(
+      db.prepare("SELECT value FROM maintenance_state WHERE key='backup'").get()
+        ?.value || "null",
+    );
+  } catch {}
+  let lastAvailable = false;
+  if (last?.file) {
+    const file = path.resolve(config.backupDir, last.file);
+    if (path.dirname(file) === path.resolve(config.backupDir))
+      lastAvailable = await stat(file)
+        .then((s) => s.isFile() && s.size >= 100)
+        .catch(() => false);
+  }
   let backup = last;
   if (
     config.force ||
     (config.backupHours > 0 &&
-      (!last || at - Date.parse(last.at) >= config.backupHours * 3600000))
+      (!last ||
+        !lastAvailable ||
+        !Number.isFinite(Date.parse(last.at)) ||
+        at - Date.parse(last.at) >= config.backupHours * 3600000))
   ) {
     await mkdir(config.backupDir, { recursive: true, mode: 0o700 });
+    const space = await statfs(config.backupDir),
+      available = Number(space.bavail) * Number(space.bsize),
+      estimated =
+        db.prepare("PRAGMA page_count").get().page_count *
+        db.prepare("PRAGMA page_size").get().page_size;
+    if (available < estimated * 1.1 + 1048576 + (config.reserveBytes || 0))
+      throw new Error("备份目录空间不足，已停止复制，请先扩容或转移备份");
     const file =
         "auto-" + new Date().toISOString().replace(/[:.]/g, "-") + ".sqlite",
       target = path.resolve(config.backupDir, file);

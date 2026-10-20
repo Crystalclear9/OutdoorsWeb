@@ -312,8 +312,11 @@ export default function Dashboard({
       {user && !user.mustChangePassword && (!staff || admin) && (
         <Notifications
           key={user.id}
+          user={user}
           version={version}
           onNavigate={onNavigate}
+          onRefresh={onRefresh}
+          notify={notify}
         />
       )}
       {detail && (

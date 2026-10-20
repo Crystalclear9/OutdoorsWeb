@@ -186,7 +186,10 @@ export async function createApi(db, options = {}) {
     }
     if (p === "/api/notifications" && m === "GET") {
       const u = current(req),
-        page = Math.max(1, parseInt(url.searchParams.get("page")) || 1),
+        page = Math.max(
+          1,
+          Math.min(100000, parseInt(url.searchParams.get("page")) || 1),
+        ),
         total = db
           .prepare("SELECT COUNT(*) AS n FROM notifications WHERE user_id=?")
           .get(u.id).n;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   MagnifyingGlass,
   Users,
@@ -14,6 +14,7 @@ import { Button, ErrorBox, Empty, Modal, Pagination } from "./components.jsx";
 import { dateString, slotName, formatDate } from "./utils.js";
 
 export function UsersPage({ notify }) {
+  const request = useRef(0);
   const [page, setPage] = useState(1),
     [pagination, setPagination] = useState({ pages: 1, total: 0 });
   const [users, setUsers] = useState([]),
@@ -22,20 +23,33 @@ export function UsersPage({ notify }) {
     [query, setQuery] = useState(""),
     [modal, setModal] = useState(null),
     [busy, setBusy] = useState(false);
+  const criteria = useRef({ page, query });
+  criteria.current = { page, query };
   async function load() {
+    const id = ++request.current;
+    setLoading(true);
     try {
-      const r = await api(`/users?page=${page}&q=${encodeURIComponent(query)}`);
+      const current = criteria.current;
+      const r = await api(
+        `/users?page=${current.page}&q=${encodeURIComponent(current.query)}`,
+      );
+      if (id !== request.current) return;
       setUsers(r.items);
       setPagination(r);
       setError("");
     } catch (e) {
-      setError(e.message);
+      if (id === request.current) setError(e.message);
     } finally {
-      setLoading(false);
+      if (id === request.current) setLoading(false);
     }
   }
   useEffect(() => {
-    load();
+    setLoading(true);
+    const timer = setTimeout(load, 180);
+    return () => {
+      clearTimeout(timer);
+      request.current++;
+    };
   }, [query, page]);
   async function act() {
     setBusy(true);

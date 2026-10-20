@@ -9,6 +9,10 @@ export function openStore(filename) {
       mode: 0o700,
     });
   const db = new DatabaseSync(filename);
+  if (db.prepare("PRAGMA user_version").get().user_version > 3) {
+    db.close();
+    throw new Error("数据库版本高于当前程序，请使用匹配版本，禁止直接降级");
+  }
   db.exec(`
     PRAGMA busy_timeout=5000;
     PRAGMA journal_mode=WAL;
@@ -54,8 +58,6 @@ export function openStore(filename) {
   // Additive, transactional migration of existing databases; never reseed data.
   db.exec("BEGIN IMMEDIATE");
   try {
-    if (db.prepare("PRAGMA user_version").get().user_version > 3)
-      throw new Error("数据库版本高于当前程序，请使用匹配版本，禁止直接降级");
     db.exec(`CREATE TABLE IF NOT EXISTS captchas(id TEXT PRIMARY KEY,binding TEXT NOT NULL,answer TEXT NOT NULL,expires INTEGER NOT NULL);
       CREATE INDEX IF NOT EXISTS captcha_expiry ON captchas(expires);
       CREATE TABLE IF NOT EXISTS maintenance_state(key TEXT PRIMARY KEY,value TEXT NOT NULL);

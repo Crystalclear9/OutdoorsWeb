@@ -1,5 +1,5 @@
 import { fork } from "node:child_process";
-import { statfsSync } from "node:fs";
+import { statfsSync, statSync } from "node:fs";
 import path from "node:path";
 import { tx } from "./core.mjs";
 
@@ -80,7 +80,7 @@ export function createMaintenance(db, dbPath, options = {}) {
     running = new Promise((resolve) => {
       const child = fork(
         new URL("./maintenance-worker.mjs", import.meta.url),
-        [JSON.stringify({ ...config, force })],
+        [JSON.stringify({ ...config, force, reserveBytes: minBytes })],
         { stdio: ["ignore", "ignore", "pipe", "ipc"] },
       );
       let result,
@@ -133,7 +133,22 @@ export function createMaintenance(db, dbPath, options = {}) {
         warnings = [];
       if (!h.ok) warnings.push("数据库或磁盘空间异常，请立即检查服务与数据卷");
       if (!backup) warnings.push("尚无自动备份成功记录");
-      else if (
+      if (backup) {
+        try {
+          const file = path.resolve(config.backupDir, backup.file);
+          const info = statSync(file);
+          if (
+            path.dirname(file) !== config.backupDir ||
+            !info.isFile() ||
+            info.size < 100
+          )
+            throw new Error();
+        } catch {
+          warnings.push("最近备份文件缺失或无效，请重新备份并检查备份目录");
+        }
+      }
+      if (
+        backup &&
         config.backupHours > 0 &&
         Date.now() - Date.parse(backup.at) > config.backupHours * 5400000
       )

@@ -20,6 +20,7 @@ async function register(page, company = "浏览器测试企业") {
   await page.locator("[name=phone]").fill("13800138000");
   await page.locator("[name=password]").fill(password);
   await page.locator("[name=confirm]").fill(password);
+  await page.getByLabel("图片验证码", { exact: true }).fill("246789");
   await page.getByRole("button", { name: "创建账号" }).click();
   await expect(
     page.getByRole("heading", { name: "场地有序，活动从容。" }),
@@ -31,6 +32,7 @@ async function adminLogin(page) {
   await page.getByRole("button", { name: "登录 / 注册" }).click();
   await page.locator("[name=email]").fill("admin@test.local");
   await page.locator("[name=password]").fill("BrowserAdmin123!");
+  await page.getByLabel("图片验证码", { exact: true }).fill("246789");
   await page.getByRole("button", { name: "登录账号", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "账号管理", exact: true }),
@@ -107,6 +109,7 @@ test("注册、真实跨账号审核、刷新、退出与登录", async ({ page,
   ).toBeVisible();
   await page.locator("[name=email]").fill(email);
   await page.locator("[name=password]").fill(password);
+  await page.getByLabel("图片验证码", { exact: true }).fill("246789");
   await page.getByRole("button", { name: "登录账号", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "场地有序，活动从容。" }),
@@ -131,6 +134,7 @@ test("企业资料修改与密码更新后会话失效", async ({ page }) => {
   ).toBeVisible();
   await page.locator("[name=email]").fill(email);
   await page.locator("[name=password]").fill("UpdatedAccountPassword456");
+  await page.getByLabel("图片验证码", { exact: true }).fill("246789");
   await page.getByRole("button", { name: "登录账号", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "场地有序，活动从容。" }),
@@ -178,6 +182,7 @@ test("管理员发布公告、场地安排、停用与密码恢复界面", async
   await page.getByRole("button", { name: "登录 / 注册" }).click();
   await page.locator("[name=email]").fill(email);
   await page.locator("[name=password]").fill(temporary);
+  await page.getByLabel("图片验证码", { exact: true }).fill("246789");
   await page.getByRole("button", { name: "登录账号", exact: true }).click();
   await expect(
     page.getByText("您正在使用临时密码，请先设置新密码，再继续使用业务功能。"),
@@ -417,6 +422,7 @@ test("超级管理员创建工作人员、按职责授权并即时撤销旧登�
   await staff.getByRole("button", { name: "登录 / 注册" }).click();
   await staff.locator("[name=email]").fill(email);
   await staff.locator("[name=password]").fill(temporary);
+  await staff.getByLabel("图片验证码", { exact: true }).fill("246789");
   await staff.getByRole("button", { name: "登录账号", exact: true }).click();
   await expect(
     staff.getByText("您正在使用临时密码，请先设置新密码，再继续使用业务功能。"),
@@ -430,6 +436,7 @@ test("超级管理员创建工作人员、按职责授权并即时撤销旧登�
   ).toBeVisible();
   await staff.locator("[name=email]").fill(email);
   await staff.locator("[name=password]").fill("ScopedStaffPassword123");
+  await staff.getByLabel("图片验证码", { exact: true }).fill("246789");
   await staff.getByRole("button", { name: "登录账号", exact: true }).click();
   await expect(
     staff
@@ -481,6 +488,7 @@ test("超级管理员创建工作人员、按职责授权并即时撤销旧登�
   await staff.getByRole("button", { name: "登录 / 注册" }).click();
   await staff.locator("[name=email]").fill(email);
   await staff.locator("[name=password]").fill("ScopedStaffPassword123");
+  await staff.getByLabel("图片验证码", { exact: true }).fill("246789");
   await staff.getByRole("button", { name: "登录账号", exact: true }).click();
   await expect(
     staff
@@ -505,6 +513,7 @@ test("账号可查看登录设备，并退出其他设备", async ({ page, brows
   await other.getByRole("button", { name: "登录 / 注册" }).click();
   await other.locator("[name=email]").fill(email);
   await other.locator("[name=password]").fill(password);
+  await other.getByLabel("图片验证码", { exact: true }).fill("246789");
   await other.getByRole("button", { name: "登录账号", exact: true }).click();
   await expect(
     other.getByRole("heading", { name: "场地有序，活动从容。" }),
@@ -711,4 +720,128 @@ test("地图适配屏幕、比例缩放、展开与退出保持原图纵横比",
     fullPage: true,
     animations: "disabled",
   });
+});
+
+test("验证码错误后自动刷新且保留账号输入，手机端可使用", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "登录 / 注册" }).click();
+  await page.locator("[name=email]").fill("admin@test.local");
+  await page.locator("[name=password]").fill("BrowserAdmin123!");
+  const image = page.getByRole("img", {
+    name: "图片验证码，请输入图中六位数字",
+  });
+  await expect(image).toBeVisible();
+  expect(await image.evaluate((el) => el.naturalWidth)).toBe(220);
+  const before = await image.getAttribute("src");
+  await page.getByLabel("图片验证码", { exact: true }).fill("111111");
+  await page.getByRole("button", { name: "登录账号", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("验证码错误或已过期");
+  await expect(page.getByLabel("图片验证码", { exact: true })).toHaveValue("");
+  await expect(image).not.toHaveAttribute("src", before);
+  await expect(page.locator("[name=email]")).toHaveValue("admin@test.local");
+  await expect(page.locator("[name=password]")).toHaveValue("BrowserAdmin123!");
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: "tmp/captcha-mobile.png",
+    fullPage: true,
+    animations: "disabled",
+  });
+  await page.getByLabel("图片验证码", { exact: true }).fill("246789");
+  await page.getByRole("button", { name: "登录账号", exact: true }).click();
+  await expect(page.getByRole("button", { name: "打开导航" })).toBeVisible();
+});
+
+test("已通过预约可从界面确认取消并释放位置，工作台收到消息", async ({
+  page,
+  browser,
+}) => {
+  const company = "取消流程-" + Date.now();
+  await register(page, company);
+  const id = await seedPending(page, company, 29, 60);
+  const context = await browser.newContext(),
+    manager = await context.newPage();
+  await adminLogin(manager);
+  const session = await (await manager.request.get("/api/auth/session")).json();
+  const approved = await manager.request.post(
+    "/api/bookings/" + id + "/review",
+    {
+      headers: {
+        Origin: "http://127.0.0.1:3101",
+        "X-CSRF-Token": session.csrf,
+      },
+      data: { status: "已通过" },
+    },
+  );
+  expect(approved.ok()).toBe(true);
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "我的申请", exact: true })
+    .click();
+  await page
+    .getByRole("row")
+    .filter({ hasText: company })
+    .getByRole("button", { name: "查看详情" })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "取消已通过预约" }).click();
+  await expect(
+    dialog.getByRole("button", { name: "确认取消预约" }),
+  ).toBeDisabled();
+  await dialog.getByLabel("取消预约原因").fill("活动计划调整");
+  await dialog.getByRole("checkbox").check();
+  await dialog.getByRole("button", { name: "确认取消预约" }).click();
+  await expect(
+    page.getByRole("row").filter({ hasText: company }),
+  ).toContainText("已取消");
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "服务工作台", exact: true })
+    .click();
+  await expect(page.locator(".notification-items")).toContainText(
+    "布展预约已取消",
+  );
+  await page.screenshot({
+    path: "tmp/notifications-desktop.png",
+    fullPage: true,
+    animations: "disabled",
+  });
+  await context.close();
+});
+
+test("超级管理员从运行维护界面执行备份，日志支持检索和导出", async ({
+  page,
+}) => {
+  await adminLogin(page);
+  const accountBox = await page.locator(".sidebar-account").boundingBox();
+  expect(accountBox.y + accountBox.height).toBeLessThanOrEqual(
+    page.viewportSize().height + 1,
+  );
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "运行维护", exact: true })
+    .click();
+  await page.getByRole("button", { name: "立即备份并清理" }).click();
+  await expect(page.locator(".operations-grid")).toContainText("auto-", {
+    timeout: 20000,
+  });
+  await expect(page.locator(".operations-grid")).toContainText("检查正常");
+  await page.screenshot({
+    path: "tmp/operations-desktop.png",
+    fullPage: true,
+    animations: "disabled",
+  });
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "操作日志", exact: true })
+    .click();
+  await page.getByLabel("搜索操作日志").fill("maintenance.requested");
+  await expect(page.locator("tbody")).toContainText("手动启动备份与清理");
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "导出本页" }).click();
+  expect((await download).suggestedFilename()).toContain("审计日志");
 });

@@ -66,7 +66,7 @@ function ApplicationHistory({ user, notify, onChange }) {
       <section className="card records-card">
         <div className="record-filters">
           <div className="tabs">
-            {["", "待审核", "已通过", "未通过", "已撤回"].map((f) => (
+            {["", "待审核", "已通过", "未通过", "已撤回", "已取消"].map((f) => (
               <button
                 key={f}
                 className={filter === f ? "selected" : ""}

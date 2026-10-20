@@ -7,6 +7,7 @@ import {
   randomToken,
 } from "./security.mjs";
 import { PERMISSION_KEYS, can } from "../shared/permissions.js";
+import { createCaptcha } from "./captcha.mjs";
 import {
   createSecurity,
   HttpError,
@@ -27,12 +28,30 @@ export async function createApi(db, options = {}) {
   const sec = createSecurity(db, options.secureCookies),
     { session, current, present, start, cookie, audit, write, limit } = sec;
   const dummy = await hashPassword(randomToken());
+  const captcha = createCaptcha(db, {
+    secure: options.secureCookies,
+    testAnswer: options.captchaTestAnswer,
+  });
+  const notify = (userId, title, content, target) =>
+    db
+      .prepare(
+        "INSERT INTO notifications(id,user_id,title,content,target,created) VALUES(?,?,?,?,?,?)",
+      )
+      .run(randomUUID(), userId, title, content, target, now());
+  const notifyReviewers = (title, content, target) => {
+    const users = db
+      .prepare(
+        "SELECT id FROM users WHERE role='admin' AND disabled=0 AND (is_super=1 OR EXISTS(SELECT 1 FROM user_permissions p WHERE p.user_id=users.id AND permission='bookings.review'))",
+      )
+      .all();
+    for (const u of users) notify(u.id, title, content, target);
+  };
   const email = (v) => (typeof v === "string" ? v.trim().toLowerCase() : "");
   const validEmail = (v) =>
     v.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
   const userById = (id) => db.prepare("SELECT * FROM users WHERE id=?").get(id);
   const bookingColumns =
-    "id,user_id,company,contact,phone,start,end,slot,status,reason,created,reviewed,version";
+    "id,user_id,company,contact,phone,start,end,slot,status,reason,created,reviewed,version,cancelled,cancel_reason,cancelled_at";
   const bookingById = (id) =>
     db.prepare(`SELECT ${bookingColumns} FROM bookings WHERE id=?`).get(id);
   const reviewCheck = (row) => {
@@ -41,7 +60,7 @@ export async function createApi(db, options = {}) {
     if (
       db
         .prepare(
-          "SELECT id FROM bookings WHERE id<>? AND slot=? AND status='已通过' AND start<=? AND end>=?",
+          "SELECT id FROM bookings WHERE id<>? AND slot=? AND status='已通过' AND cancelled=0 AND start<=? AND end>=?",
         )
         .get(row.id, row.slot, row.end, row.start)
     )
@@ -84,11 +103,21 @@ export async function createApi(db, options = {}) {
         result === "已通过" ? "booking.approved" : "booking.rejected",
         id,
       );
+      notify(
+        row.user_id,
+        result === "已通过" ? "布展申请已通过" : "布展申请需调整",
+        `${row.company}：${reason || "请按批准日期和位置布展。"}`,
+        id,
+      );
     });
   }
   const visibleBooking = (b) => {
     const { user_id, ...result } = b;
-    return { ...result, hasImage: true };
+    return {
+      ...result,
+      status: b.cancelled ? "已取消" : b.status,
+      hasImage: true,
+    };
   };
   const permittedBooking = (u, b) => {
     fail(!b, 404, "申请不存在");
@@ -136,15 +165,71 @@ export async function createApi(db, options = {}) {
   return async function api(req, res, url) {
     const p = url.pathname,
       m = req.method;
-    if (p === "/api/health" && m === "GET") return send(res, { ok: true });
+    if (p === "/api/health" && m === "GET") {
+      const h = options.maintenance.health();
+      return send(res, { ok: h.ok }, h.ok ? 200 : 503);
+    }
+    if (p === "/api/auth/captcha" && m === "GET") {
+      limit(`captcha:${req.clientIp}`, 60, 600000);
+      return send(res, captcha.issue(req, res));
+    }
+    if (p === "/api/operations" && m === "GET") {
+      current(req, "super");
+      return send(res, options.maintenance.status());
+    }
+    if (p === "/api/operations/run" && m === "POST") {
+      write(req, "super", (u) =>
+        audit(u.id, "maintenance.requested", "backup"),
+      );
+      options.maintenance.run(true);
+      return send(res, { ok: true }, 202);
+    }
+    if (p === "/api/notifications" && m === "GET") {
+      const u = current(req),
+        page = Math.max(1, parseInt(url.searchParams.get("page")) || 1),
+        total = db
+          .prepare("SELECT COUNT(*) AS n FROM notifications WHERE user_id=?")
+          .get(u.id).n;
+      return send(res, {
+        items: db
+          .prepare(
+            "SELECT * FROM notifications WHERE user_id=? ORDER BY created DESC,id DESC LIMIT 20 OFFSET ?",
+          )
+          .all(u.id, (page - 1) * 20),
+        unread: db
+          .prepare(
+            "SELECT COUNT(*) AS n FROM notifications WHERE user_id=? AND read_at IS NULL",
+          )
+          .get(u.id).n,
+        total,
+        page,
+        pages: Math.max(1, Math.ceil(total / 20)),
+      });
+    }
+    if (p === "/api/notifications/read" && m === "POST") {
+      const b = await body(req);
+      fail(b.id !== undefined && typeof b.id !== "string", 400, "消息编号无效");
+      write(req, null, (u) => {
+        if (b.id)
+          db.prepare(
+            "UPDATE notifications SET read_at=? WHERE id=? AND user_id=?",
+          ).run(now(), b.id, u.id);
+        else
+          db.prepare(
+            "UPDATE notifications SET read_at=? WHERE user_id=? AND read_at IS NULL",
+          ).run(now(), u.id);
+      });
+      return send(res, { ok: true });
+    }
     if (p === "/api/auth/session" && m === "GET") {
       const u = session(req);
       return send(res, { user: present(u), csrf: u?.csrf || null });
     }
     if (p === "/api/auth/register" && m === "POST") {
-      limit(`register:${req.socket.remoteAddress}`, 10, 3600000);
-      const b = await body(req),
-        e = email(b.email),
+      limit(`register:${req.clientIp}`, 10, 3600000);
+      const b = await body(req);
+      captcha.verify(req, b);
+      const e = email(b.email),
         f = fields(b);
       fail(!validEmail(e), 400, "请填写有效的邮箱地址");
       fail(
@@ -178,9 +263,10 @@ export async function createApi(db, options = {}) {
       return send(res, result, 201);
     }
     if (p === "/api/auth/login" && m === "POST") {
-      const b = await body(req),
-        e = email(b.email);
-      limit(`login-ip:${req.socket.remoteAddress}`, 60, 900000);
+      const b = await body(req);
+      captcha.verify(req, b);
+      const e = email(b.email);
+      limit(`login-ip:${req.clientIp}`, 60, 900000);
       fail(!validEmail(e), 401, "邮箱或密码错误");
       limit(`login-account:${e}`, 10, 900000);
       fail(
@@ -326,7 +412,7 @@ export async function createApi(db, options = {}) {
         total: 29,
         occupied: db
           .prepare(
-            "SELECT slot,start,end FROM bookings WHERE status='已通过' AND start<=? AND end>=?",
+            "SELECT slot,start,end FROM bookings WHERE status='已通过' AND cancelled=0 AND start<=? AND end>=?",
           )
           .all(date, date),
         closed: db
@@ -342,7 +428,7 @@ export async function createApi(db, options = {}) {
       fail(u.role !== "enterprise" && !all, 403, "当前账号没有申请查看权限");
       const rows = db
         .prepare(
-          `SELECT status,COUNT(*) AS count FROM bookings${all ? "" : " WHERE user_id=?"} GROUP BY status`,
+          `SELECT CASE WHEN cancelled=1 THEN '已取消' ELSE status END AS status,COUNT(*) AS count FROM bookings${all ? "" : " WHERE user_id=?"} GROUP BY CASE WHEN cancelled=1 THEN '已取消' ELSE status END`,
         )
         .all(...(all ? [] : [u.id]));
       return send(res, {
@@ -365,8 +451,11 @@ export async function createApi(db, options = {}) {
       const status = url.searchParams.get("status"),
         q = clean(url.searchParams.get("q"), 80);
       if (status) {
-        conditions.push("status=?");
-        args.push(status);
+        if (status === "已取消") conditions.push("cancelled=1");
+        else {
+          conditions.push("status=? AND cancelled=0");
+          args.push(status);
+        }
       }
       if (q) {
         conditions.push("(company LIKE ? OR contact LIKE ? OR id LIKE ?)");
@@ -442,7 +531,7 @@ export async function createApi(db, options = {}) {
         fail(
           db
             .prepare(
-              "SELECT id FROM bookings WHERE slot=? AND status='已通过' AND start<=? AND end>=?",
+              "SELECT id FROM bookings WHERE slot=? AND status='已通过' AND cancelled=0 AND start<=? AND end>=?",
             )
             .get(slot, b.end, b.start) ||
             db
@@ -454,6 +543,21 @@ export async function createApi(db, options = {}) {
           "该位置在所选时间内已占用或暂停开放",
         );
         const id = `HUST-${Date.now()}-${randomBytes(6).toString("hex")}`;
+        const used = db
+          .prepare(
+            "SELECT COALESCE(SUM(length(image)),0) AS bytes FROM bookings WHERE user_id=?",
+          )
+          .get(fresh.id).bytes;
+        fail(
+          used + image.image.length > 200 * 1024 * 1024,
+          413,
+          "该账号设计图存储已达到 200 MB，请联系管理员归档",
+        );
+        fail(
+          !options.maintenance.health(false).ok,
+          503,
+          "存储服务异常或空间不足，请联系管理员",
+        );
         db.prepare(
           "INSERT INTO bookings(id,user_id,company,contact,phone,start,end,slot,status,image,image_type,created) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
         ).run(
@@ -471,6 +575,11 @@ export async function createApi(db, options = {}) {
           now(),
         );
         audit(fresh.id, "booking.submitted", id);
+        notifyReviewers(
+          "新的布展待办",
+          `${f.company} 申请 ${slot} 号位置，${b.start} 至 ${b.end}`,
+          id,
+        );
         if (key)
           db.prepare(
             "INSERT INTO idempotency(user_id,key,request_hash,response,created) VALUES(?,?,?,?,?)",
@@ -528,13 +637,47 @@ export async function createApi(db, options = {}) {
       return;
     }
     const bookingMatch = p.match(
-      /^\/api\/bookings\/([^/]+)(?:\/(review|withdraw))?$/,
+      /^\/api\/bookings\/([^/]+)(?:\/(review|withdraw|cancel))?$/,
     );
     if (bookingMatch) {
       const u = current(req),
         id = bookingMatch[1],
         initial = bookingById(id);
       permittedBooking(u, initial);
+      if (m === "POST" && bookingMatch[2] === "cancel") {
+        const b = await body(req),
+          reason = clean(b.reason, 500);
+        fail(!reason, 400, "请填写取消原因");
+        write(req, null, (fresh) => {
+          const row = bookingById(id);
+          permittedBooking(fresh, row);
+          versionCheck(req, row, true);
+          fail(
+            row.status !== "已通过" || row.cancelled,
+            409,
+            "只有仍生效的已通过预约可以取消",
+          );
+          fail(row.end < today(), 409, "已结束的预约应保留历史记录");
+          fail(
+            fresh.id === row.user_id &&
+              fresh.role === "enterprise" &&
+              row.start < today(),
+            403,
+            "已开始的活动请联系管理员处理",
+          );
+          db.prepare(
+            "UPDATE bookings SET cancelled=1,cancel_reason=?,cancelled_at=?,version=version+1 WHERE id=?",
+          ).run(reason, now(), id);
+          audit(fresh.id, "booking.cancelled", id, { reason });
+          notify(row.user_id, "布展预约已取消", reason, id);
+          notifyReviewers(
+            "预约取消，位置已释放",
+            `${row.company}：${reason}`,
+            id,
+          );
+        });
+        return send(res, { ok: true });
+      }
       if (m === "GET" && !bookingMatch[2]) {
         res.setHeader("ETag", `"${initial.version}"`);
         return send(res, {
@@ -659,12 +802,24 @@ export async function createApi(db, options = {}) {
     }
     if (p === "/api/users" && m === "GET") {
       const u = current(req, "accounts.manage");
+      const page = Math.max(
+          1,
+          Math.min(100000, parseInt(url.searchParams.get("page")) || 1),
+        ),
+        q = "%" + clean(url.searchParams.get("q"), 80) + "%",
+        where = `WHERE ${u.is_super ? "1=1" : "role='enterprise'"} AND (email LIKE ? OR company LIKE ? OR contact LIKE ?)`;
+      const total = db
+        .prepare("SELECT COUNT(*) AS n FROM users " + where)
+        .get(q, q, q).n;
       return send(res, {
+        total,
+        page,
+        pages: Math.max(1, Math.ceil(total / 30)),
         items: db
           .prepare(
-            `SELECT * FROM users${u.is_super ? "" : " WHERE role='enterprise'"} ORDER BY created DESC LIMIT 1000`,
+            `SELECT * FROM users ${where} ORDER BY created DESC,id DESC LIMIT 30 OFFSET ?`,
           )
-          .all()
+          .all(q, q, q, (page - 1) * 30)
           .map(present),
       });
     }
@@ -788,12 +943,50 @@ export async function createApi(db, options = {}) {
     }
     if (p === "/api/audit" && m === "GET") {
       current(req, "audit.read");
+      const page = Math.max(
+          1,
+          Math.min(100000, parseInt(url.searchParams.get("page")) || 1),
+        ),
+        q = "%" + clean(url.searchParams.get("q"), 100) + "%",
+        from = url.searchParams.get("from") || "",
+        to = url.searchParams.get("to") || "";
+      fail(
+        (from && !dateValid(from)) ||
+          (to && !dateValid(to)) ||
+          (from && to && from > to),
+        400,
+        "日志日期范围无效",
+      );
+      const where =
+          "WHERE (a.action LIKE ? OR a.target LIKE ? OR COALESCE(u.email,'') LIKE ?) AND (?='' OR a.created>=?) AND (?='' OR a.created<?)",
+        args = [
+          q,
+          q,
+          q,
+          from,
+          from ? new Date(from + "T00:00:00+08:00").toISOString() : "",
+          to,
+          to
+            ? new Date(
+                Date.parse(to + "T00:00:00+08:00") + 86400000,
+              ).toISOString()
+            : "",
+        ];
+      const total = db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM audit a LEFT JOIN users u ON a.actor=u.id " +
+            where,
+        )
+        .get(...args).n;
       return send(res, {
+        total,
+        page,
+        pages: Math.max(1, Math.ceil(total / 50)),
         items: db
           .prepare(
-            "SELECT a.*,u.email FROM audit a LEFT JOIN users u ON a.actor=u.id ORDER BY a.id DESC LIMIT 100",
+            `SELECT a.*,u.email FROM audit a LEFT JOIN users u ON a.actor=u.id ${where} ORDER BY a.id DESC LIMIT 50 OFFSET ?`,
           )
-          .all(),
+          .all(...args, (page - 1) * 50),
       });
     }
     throw new HttpError(404, "接口不存在");

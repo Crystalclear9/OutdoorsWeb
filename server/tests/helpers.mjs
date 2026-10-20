@@ -21,14 +21,26 @@ export const booking = (extra = {}) => ({
   ...extra,
 });
 export function client(origin) {
-  let cookie = "",
-    csrf = "";
+  const cookies = new Map();
+  let csrf = "";
   return {
     origin,
     get headers() {
-      return { Origin: origin, Cookie: cookie, "X-CSRF-Token": csrf };
+      return {
+        Origin: origin,
+        Cookie: [...cookies].map(([k, v]) => k + "=" + v).join("; "),
+        "X-CSRF-Token": csrf,
+      };
     },
     async request(route, method = "GET", body, headers = {}) {
+      if (
+        ["/auth/login", "/auth/register"].includes(route) &&
+        body &&
+        !Object.hasOwn(body, "captchaId")
+      ) {
+        const challenge = await this.request("/auth/captcha");
+        body = { ...body, captchaId: challenge.data.id, captcha: "246789" };
+      }
       const res = await fetch(origin + "/api" + route, {
         method,
         headers: {
@@ -38,8 +50,11 @@ export function client(origin) {
         },
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
-      if (res.headers.get("set-cookie"))
-        cookie = res.headers.get("set-cookie").split(";")[0];
+      for (const cookie of res.headers.getSetCookie()) {
+        const part = cookie.split(";")[0],
+          i = part.indexOf("=");
+        cookies.set(part.slice(0, i), part.slice(i + 1));
+      }
       const data = await res.json();
       if (data.csrf) csrf = data.csrf;
       return { status: res.status, data };
@@ -47,7 +62,12 @@ export function client(origin) {
   };
 }
 export async function fixture(t, dbPath = ":memory:") {
-  const app = await createApp({ dbPath, admin: ADMIN });
+  const app = await createApp({
+    dbPath,
+    admin: ADMIN,
+    captchaTestAnswer: "246789",
+    maintenance: { scheduled: false },
+  });
   await new Promise((r) => app.server.listen(0, "127.0.0.1", r));
   const origin = `http://127.0.0.1:${app.server.address().port}`;
   t.after(() => app.close());

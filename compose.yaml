@@ -12,10 +12,19 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?请在 .env 中设置 ADMIN_PASSWORD}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-}
+      TRUSTED_PROXY_IPS: ${TRUSTED_PROXY_IPS:-}
+      BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-24}
+      BACKUP_KEEP: ${BACKUP_KEEP:-14}
+      MIN_FREE_DISK_MB: ${MIN_FREE_DISK_MB:-256}
     volumes:
       - app-data:/app/data
     restart: unless-stopped
     init: true
     stop_grace_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 volumes:
   app-data:

@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 import { openStore } from "./store.mjs";
 import { hashPassword, passwordValid } from "./security.mjs";
 import { createApi } from "./api.mjs";
+import { createMaintenance } from "./maintenance.mjs";
+import { clientAddress } from "./proxy.mjs";
 import {
   createSecurity,
   fail,
@@ -17,9 +19,18 @@ import {
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 export async function createApp(options = {}) {
-  const db = openStore(
-    options.dbPath || process.env.DB_PATH || path.join(ROOT, "data/app.sqlite"),
-  );
+  const dbPath =
+    options.dbPath || process.env.DB_PATH || path.join(ROOT, "data/app.sqlite");
+  const db = openStore(dbPath);
+  const maintenance = createMaintenance(db, dbPath, options.maintenance);
+  const trusted = (
+    options.trustedProxies ??
+    process.env.TRUSTED_PROXY_IPS ??
+    ""
+  )
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean);
   const secure = options.secureCookies ?? process.env.COOKIE_SECURE === "true";
   const origins = (options.allowedOrigins || process.env.PUBLIC_ORIGIN || "")
     .split(",")
@@ -62,9 +73,16 @@ export async function createApp(options = {}) {
         }
       });
     }
-    const api = await createApi(db, { secureCookies: secure }),
+    const api = await createApi(db, {
+        secureCookies: secure,
+        captchaTestAnswer: options.captchaTestAnswer,
+        maintenance,
+      }),
       security = createSecurity(db, secure);
     const server = createServer(async (req, res) => {
+      const requestId = randomUUID();
+      res.setHeader("X-Request-ID", requestId);
+      req.clientIp = clientAddress(req, trusted);
       res.setHeader("X-Content-Type-Options", "nosniff");
       res.setHeader("Referrer-Policy", "same-origin");
       res.setHeader("X-Frame-Options", "DENY");
@@ -107,9 +125,7 @@ export async function createApp(options = {}) {
                 "安全校验失败，请刷新后重试",
               );
             security.limit(
-              u
-                ? `writes-user:${u.id}`
-                : `writes-ip:${req.socket.remoteAddress}`,
+              u ? `writes-user:${u.id}` : `writes-ip:${req.clientIp}`,
               120,
               60000,
             );
@@ -180,7 +196,16 @@ export async function createApp(options = {}) {
             /* Preserve the original authorization failure. */
           }
         }
-        if (!error.status) console.error("Request failed:", error);
+        if (!error.status)
+          console.error(
+            JSON.stringify({
+              event: "request.failed",
+              requestId,
+              method: req.method,
+              path: new URL(req.url, "http://localhost").pathname,
+              error: String(error.message),
+            }),
+          );
         if (error.status === 503) res.setHeader("Retry-After", "1");
         if (!res.headersSent) {
           res.writeHead(error.status || 500, {
@@ -198,10 +223,13 @@ export async function createApp(options = {}) {
     });
     server.requestTimeout = 30000;
     server.headersTimeout = 15000;
+    maintenance.start();
     return {
       server,
       db,
+      maintenance,
       close: async () => {
+        await maintenance.close();
         await new Promise((resolve) => server.close(resolve));
         db.close();
       },

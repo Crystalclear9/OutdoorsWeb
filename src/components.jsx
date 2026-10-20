@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
   X,
@@ -32,6 +32,31 @@ export function ErrorBox({ children }) {
       <span>{children}</span>
     </div>
   ) : null;
+}
+export function Pagination({ page, pages, total, onPage }) {
+  return (
+    <div className="pagination">
+      <span>
+        共 {total} 条 · 第 {page} / {pages} 页
+      </span>
+      <div>
+        <Button
+          className="secondary small"
+          disabled={page <= 1}
+          onClick={() => onPage(page - 1)}
+        >
+          上一页
+        </Button>
+        <Button
+          className="secondary small"
+          disabled={page >= pages}
+          onClick={() => onPage(page + 1)}
+        >
+          下一页
+        </Button>
+      </div>
+    </div>
+  );
 }
 export function Empty({
   icon: Icon = Buildings,
@@ -133,6 +158,26 @@ export function AuthPage({ initialMode = "login", onSuccess, onBack }) {
   const [mode, setMode] = useState(initialMode),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const [challenge, setChallenge] = useState(null),
+    [code, setCode] = useState(""),
+    [captchaBusy, setCaptchaBusy] = useState(false),
+    [captchaError, setCaptchaError] = useState("");
+  async function refreshCaptcha() {
+    setCaptchaBusy(true);
+    setChallenge(null);
+    setCode("");
+    setCaptchaError("");
+    try {
+      setChallenge(await api("/auth/captcha"));
+    } catch (e) {
+      setCaptchaError(e.message);
+    } finally {
+      setCaptchaBusy(false);
+    }
+  }
+  useEffect(() => {
+    refreshCaptcha();
+  }, []);
   async function submit(e) {
     e.preventDefault();
     const b = Object.fromEntries(new FormData(e.currentTarget));
@@ -141,11 +186,15 @@ export function AuthPage({ initialMode = "login", onSuccess, onBack }) {
       return setError("两次输入的密码不一致");
     setBusy(true);
     try {
-      const result = await api(`/auth/${mode}`, { method: "POST", body: b });
+      const result = await api(`/auth/${mode}`, {
+        method: "POST",
+        body: { ...b, captchaId: challenge?.id, captcha: code },
+      });
       setCsrf(result.csrf);
       onSuccess(result.user);
     } catch (e) {
       setError(e.message);
+      await refreshCaptcha();
     } finally {
       setBusy(false);
     }
@@ -287,8 +336,52 @@ export function AuthPage({ initialMode = "login", onSuccess, onBack }) {
                 placeholder="再次输入密码"
               />
             )}
+            <div className="captcha-field">
+              <label htmlFor="auth-captcha">图片验证码</label>
+              <div className="captcha-row">
+                <input
+                  id="auth-captcha"
+                  name="captcha"
+                  value={code}
+                  required
+                  maxLength={6}
+                  minLength={6}
+                  autoComplete="off"
+                  autoCapitalize="characters"
+                  spellCheck={false}
+                  placeholder="请输入 6 位数字"
+                  inputMode="numeric"
+                  pattern="[0-9]{6}"
+                  onChange={(e) => setCode(e.target.value.toUpperCase())}
+                  disabled={busy || captchaBusy}
+                />
+                <button
+                  type="button"
+                  className="captcha-image"
+                  aria-label="刷新图片验证码"
+                  disabled={busy || captchaBusy}
+                  onClick={refreshCaptcha}
+                >
+                  {challenge ? (
+                    <img
+                      src={challenge.image}
+                      alt="图片验证码，请输入图中六位数字"
+                    />
+                  ) : (
+                    <span>{captchaBusy ? "正在生成…" : "点击重试"}</span>
+                  )}
+                </button>
+              </div>
+              <small>点击图片换一张 · 5 分钟有效</small>
+              <ErrorBox>{captchaError}</ErrorBox>
+            </div>
             <ErrorBox>{error}</ErrorBox>
-            <Button className="primary full" loading={busy} type="submit">
+            <Button
+              className="primary full"
+              loading={busy}
+              disabled={!challenge || captchaBusy}
+              type="submit"
+            >
               {mode === "login" ? "登录账号" : "创建账号"}
               <ArrowRight size={19} />
             </Button>

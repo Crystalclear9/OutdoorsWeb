@@ -72,6 +72,8 @@ test("GitHub Pages 静态入口显示真实后端未连接状态，仍可打开�
   ).toBeVisible();
   await page.locator("[name=email]").fill("nobody@company.local");
   await page.locator("[name=password]").fill("NotConnected123");
-  await page.getByRole("button", { name: "登录账号", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "登录账号", exact: true }),
+  ).toBeDisabled();
   await expect(page.getByRole("alert")).toBeVisible();
 });

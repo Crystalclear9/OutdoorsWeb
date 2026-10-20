@@ -15,6 +15,7 @@ import { Button, Empty, ErrorBox, Status } from "./components.jsx";
 import { BookingDetail } from "./Booking.jsx";
 import { slotName } from "./utils.js";
 import { can } from "./permissions.js";
+import Notifications from "./Notifications.jsx";
 
 export default function Dashboard({
   user,
@@ -308,6 +309,13 @@ export default function Dashboard({
           </button>
         )}
       </div>
+      {user && !user.mustChangePassword && (!staff || admin) && (
+        <Notifications
+          key={user.id}
+          version={version}
+          onNavigate={onNavigate}
+        />
+      )}
       {detail && (
         <BookingDetail
           item={detail}

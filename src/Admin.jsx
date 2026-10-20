@@ -10,10 +10,12 @@ import {
 } from "@phosphor-icons/react";
 import { api } from "./api.js";
 import { PERMISSIONS } from "./permissions.js";
-import { Button, ErrorBox, Empty, Modal } from "./components.jsx";
+import { Button, ErrorBox, Empty, Modal, Pagination } from "./components.jsx";
 import { dateString, slotName, formatDate } from "./utils.js";
 
 export function UsersPage({ notify }) {
+  const [page, setPage] = useState(1),
+    [pagination, setPagination] = useState({ pages: 1, total: 0 });
   const [users, setUsers] = useState([]),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
@@ -22,7 +24,9 @@ export function UsersPage({ notify }) {
     [busy, setBusy] = useState(false);
   async function load() {
     try {
-      setUsers((await api("/users")).items);
+      const r = await api(`/users?page=${page}&q=${encodeURIComponent(query)}`);
+      setUsers(r.items);
+      setPagination(r);
       setError("");
     } catch (e) {
       setError(e.message);
@@ -32,7 +36,7 @@ export function UsersPage({ notify }) {
   }
   useEffect(() => {
     load();
-  }, []);
+  }, [query, page]);
   async function act() {
     setBusy(true);
     setError("");
@@ -63,18 +67,14 @@ export function UsersPage({ notify }) {
       setBusy(false);
     }
   }
-  const filtered = users.filter((u) =>
-    `${u.email}${u.company}${u.contact}`
-      .toLowerCase()
-      .includes(query.toLowerCase()),
-  );
+  const filtered = users;
   return (
     <>
       <section className="card">
         <div className="card-header">
           <div>
             <h2>
-              账号管理 <span className="count-badge">{users.length}</span>
+              账号管理 <span className="count-badge">{pagination.total}</span>
             </h2>
             <p>管理企业账号的访问权限及密码恢复。</p>
           </div>
@@ -84,7 +84,10 @@ export function UsersPage({ notify }) {
               aria-label="搜索账号"
               placeholder="搜索企业名称或邮箱"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setPage(1);
+              }}
             />
           </label>
         </div>
@@ -167,6 +170,12 @@ export function UsersPage({ notify }) {
           </div>
         )}
       </section>
+      <Pagination
+        page={page}
+        pages={pagination.pages}
+        total={pagination.total}
+        onPage={setPage}
+      />
       {modal && (
         <Modal
           title={
@@ -424,27 +433,117 @@ const ACTIONS = {
   "booking.withdrawn": "撤回申请",
   "booking.approved": "审核通过",
   "booking.rejected": "审核未通过",
+  "booking.cancelled": "取消已通过预约",
+  "maintenance.requested": "手动启动备份与清理",
   "notice.deleted": "删除公告",
   "notice.saved": "保存公告",
   "venue.closed": "暂停场地开放",
   "venue.reopened": "恢复场地开放",
 };
 export function AuditPage() {
+  const [page, setPage] = useState(1),
+    [query, setQuery] = useState(""),
+    [from, setFrom] = useState(""),
+    [to, setTo] = useState(""),
+    [pagination, setPagination] = useState({ pages: 1, total: 0 });
   const [items, setItems] = useState([]),
     [error, setError] = useState("");
   useEffect(() => {
-    api("/audit")
-      .then((r) => setItems(r.items))
+    let active = true;
+    api(
+      `/audit?page=${page}&q=${encodeURIComponent(query)}&from=${from}&to=${to}`,
+    )
+      .then((r) => {
+        if (active) {
+          setItems(r.items);
+          setPagination(r);
+          setError("");
+        }
+      })
       .catch((e) => setError(e.message));
-  }, []);
+    return () => {
+      active = false;
+    };
+  }, [page, query, from, to]);
+  function download() {
+    const cell = (v) =>
+      '"' +
+      String(v ?? "")
+        .replace(/^[=+@\-\t\r]/, "'$&")
+        .replaceAll('"', '""') +
+      '"';
+    const csv =
+      "\ufeff" +
+      [
+        ["操作人", "操作内容", "关联记录", "时间", "详情"],
+        ...items.map((a) => [
+          a.email || "系统",
+          ACTIONS[a.action] || a.action,
+          a.target,
+          a.created,
+          a.details,
+        ]),
+      ]
+        .map((row) => row.map(cell).join(","))
+        .join("\r\n");
+    const url = URL.createObjectURL(
+      new Blob([csv], { type: "text/csv;charset=utf-8" }),
+    );
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `审计日志-第${page}页.csv`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
   return (
     <section className="card">
       <div className="card-header">
         <div>
           <h2>操作日志</h2>
-          <p>记录最近 100 次账号及业务操作，便于追溯。</p>
+          <p>按日期、操作代码、邮箱或关联编号查询历史记录。</p>
         </div>
-        <ShieldCheck size={24} />
+        <Button
+          className="secondary small"
+          disabled={!items.length}
+          onClick={download}
+        >
+          导出本页
+        </Button>
+      </div>
+      <div className="audit-filters">
+        <input
+          aria-label="搜索操作日志"
+          placeholder="操作代码、邮箱或申请编号"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setPage(1);
+          }}
+        />
+        <label>
+          起始日期
+          <input
+            aria-label="日志起始日期"
+            type="date"
+            value={from}
+            onChange={(e) => {
+              setFrom(e.target.value);
+              setPage(1);
+            }}
+          />
+        </label>
+        <label>
+          结束日期
+          <input
+            aria-label="日志结束日期"
+            type="date"
+            value={to}
+            onChange={(e) => {
+              setTo(e.target.value);
+              setPage(1);
+            }}
+          />
+        </label>
       </div>
       <ErrorBox>{error}</ErrorBox>
       <div className="table-scroll">
@@ -502,6 +601,12 @@ export function AuditPage() {
           <Empty icon={ClipboardText} title="暂无操作日志" />
         )}
       </div>
+      <Pagination
+        page={page}
+        pages={pagination.pages}
+        total={pagination.total}
+        onPage={setPage}
+      />
     </section>
   );
 }

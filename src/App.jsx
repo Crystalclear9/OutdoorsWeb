@@ -32,6 +32,7 @@ import Records from "./Records.jsx";
 import Notices from "./Notices.jsx";
 import Dashboard from "./Dashboard.jsx";
 import Access from "./Access.jsx";
+import Operations from "./Operations.jsx";
 import { can } from "./permissions.js";
 import { VENUE_SEGMENTS, inSegment } from "./venue-layout.js";
 
@@ -48,6 +49,7 @@ const titles = {
   closures: ["让场地安排井然有序。", "统一维护桁架开放与暂停安排。"],
   access: ["按职责授权，按权限操作。", "管理工作人员授权与账号访问范围。"],
   audit: ["有记录，也有依据。", "查看账号及业务操作记录。"],
+  operations: ["运行状态，及时掌握。", "查看备份、存储空间和日常维护结果。"],
 };
 export default function App() {
   const [user, setUser] = useState(null),
@@ -204,6 +206,9 @@ export default function App() {
     ...(can(user, "accounts.manage") ? [["users", "账号管理", Users]] : []),
     ...(can(user, "audit.read") ? [["audit", "操作日志", ShieldCheck]] : []),
     ...(user?.isSuperAdmin ? [["access", "授权管理", ShieldCheck]] : []),
+    ...(user?.isSuperAdmin
+      ? [["operations", "运行维护", ArrowsClockwise]]
+      : []),
   ];
   const busy = venue.occupied.find((b) => b.slot === selected),
     closed = venue.closed.find((b) => b.slot === selected),
@@ -727,6 +732,9 @@ export default function App() {
             <ClosuresPage notify={notify} onChange={refresh} />
           )}
           {page === "audit" && can(user, "audit.read") && <AuditPage />}
+          {page === "operations" && user?.isSuperAdmin && (
+            <Operations notify={notify} />
+          )}
           {page === "access" && user?.isSuperAdmin && (
             <Access notify={notify} />
           )}

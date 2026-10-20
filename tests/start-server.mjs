@@ -7,6 +7,8 @@ const dir = await mkdtemp(path.join(os.tmpdir(), "outdoor-browser-tests-"));
 const app = await createApp({
   dbPath: path.join(dir, "app.sqlite"),
   admin: { email: "admin@test.local", password: "BrowserAdmin123!" },
+  captchaTestAnswer: "246789",
+  maintenance: { scheduled: false },
 });
 app.server.listen(3101, "127.0.0.1", () =>
   console.log("Isolated browser test server ready on 3101"),

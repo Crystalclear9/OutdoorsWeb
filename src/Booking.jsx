@@ -212,6 +212,9 @@ export function BookingForm({ user, slot, date, onClose, onSaved }) {
 
 export function BookingDetail({ item: initial, user, onClose, onSaved }) {
   const [item, setItem] = useState(initial);
+  const [cancelling, setCancelling] = useState(false),
+    [cancelReason, setCancelReason] = useState(""),
+    [cancelConfirmed, setCancelConfirmed] = useState(false);
   const [image, setImage] = useState(null),
     [imageError, setImageError] = useState(""),
     [reason, setReason] = useState(""),
@@ -239,9 +242,19 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
       await api(`/bookings/${item.id}/${type}`, {
         method: "POST",
         headers: { "If-Match": `"${item.version}"` },
-        ...(type === "review" ? { body: { status, reason } } : {}),
+        ...(type === "review"
+          ? { body: { status, reason } }
+          : type === "cancel"
+            ? { body: { reason: cancelReason } }
+            : {}),
       });
-      onSaved(type === "withdraw" ? "申请已撤回" : `申请${status}`);
+      onSaved(
+        type === "withdraw"
+          ? "申请已撤回"
+          : type === "cancel"
+            ? "预约已取消，桁架位置已释放"
+            : `申请${status}`,
+      );
     } catch (e) {
       setError(e.message);
       if (e.status === 409) {
@@ -346,7 +359,64 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
         </label>
       )}
       <ErrorBox>{error}</ErrorBox>
+      {item.cancel_reason && (
+        <div className="info-box">
+          <p>取消原因：{item.cancel_reason}</p>
+        </div>
+      )}
+      {cancelling && (
+        <div className="cancellation-form">
+          <label>
+            取消原因
+            <textarea
+              aria-label="取消预约原因"
+              maxLength={500}
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              rows={2}
+            />
+          </label>
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={cancelConfirmed}
+              onChange={(e) => setCancelConfirmed(e.target.checked)}
+            />
+            确认取消并释放位置；需要改期时，请重新申报。
+          </label>
+        </div>
+      )}
       <div className="dialog-actions">
+        {item.status === "已通过" &&
+          item.end >= dateString() &&
+          (can(user, "bookings.review") ||
+            (user.role === "enterprise" && item.start >= dateString())) &&
+          (cancelling ? (
+            <>
+              <Button
+                className="secondary"
+                disabled={!!busy}
+                onClick={() => setCancelling(false)}
+              >
+                保留预约
+              </Button>
+              <Button
+                className="danger-outline"
+                loading={busy === "cancel"}
+                disabled={!cancelConfirmed || !cancelReason.trim() || !!busy}
+                onClick={() => action("cancel")}
+              >
+                确认取消预约
+              </Button>
+            </>
+          ) : (
+            <Button
+              className="danger-outline"
+              onClick={() => setCancelling(true)}
+            >
+              取消已通过预约
+            </Button>
+          ))}
         {can(user, "bookings.review") && item.status === "待审核" ? (
           <>
             <Button

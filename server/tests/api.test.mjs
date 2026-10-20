@@ -24,28 +24,40 @@ const enterprise = (email) => ({
   phone: "13800138000",
 });
 async function fixture(t, dbPath = ":memory:") {
-  const app = await createApp({ dbPath, admin });
+  const app = await createApp({
+    dbPath,
+    admin,
+    captchaTestAnswer: "246789",
+    maintenance: { scheduled: false },
+  });
   await new Promise((r) => app.server.listen(0, "127.0.0.1", r));
   const origin = `http://127.0.0.1:${app.server.address().port}`;
   t.after(() => app.close());
   function client() {
-    let cookie = "",
-      csrf = "";
+    const cookies = new Map();
+    let csrf = "";
     return {
       async request(route, method = "GET", body, headers = {}) {
+        if (["/auth/login", "/auth/register"].includes(route) && body) {
+          const challenge = await this.request("/auth/captcha");
+          body = { ...body, captchaId: challenge.data.id, captcha: "246789" };
+        }
         const res = await fetch(origin + "/api" + route, {
           method,
           headers: {
             Origin: origin,
-            ...(cookie ? { Cookie: cookie } : {}),
+            Cookie: [...cookies].map(([k, v]) => k + "=" + v).join("; "),
             ...(csrf ? { "X-CSRF-Token": csrf } : {}),
             ...(body ? { "Content-Type": "application/json" } : {}),
             ...headers,
           },
           ...(body ? { body: JSON.stringify(body) } : {}),
         });
-        if (res.headers.get("set-cookie"))
-          cookie = res.headers.get("set-cookie").split(";")[0];
+        for (const cookie of res.headers.getSetCookie()) {
+          const part = cookie.split(";")[0],
+            i = part.indexOf("=");
+          cookies.set(part.slice(0, i), part.slice(i + 1));
+        }
         const data = res.headers
           .get("content-type")
           ?.includes("application/json")
@@ -430,17 +442,34 @@ test("登录失败次数超限会被限制", async (t) => {
 test("账号和申请在进程重启后从数据库恢复", async (t) => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "outdoor-persistence-")),
     filename = path.join(dir, "app.sqlite");
-  let app = await createApp({ dbPath: filename });
+  let app = await createApp({
+    dbPath: filename,
+    captchaTestAnswer: "246789",
+    maintenance: { scheduled: false },
+  });
   await new Promise((r) => app.server.listen(0, "127.0.0.1", r));
   const origin = `http://127.0.0.1:${app.server.address().port}`;
+  const challenge = await fetch(origin + "/api/auth/captcha");
+  const value = await challenge.json();
   const registered = await fetch(origin + "/api/auth/register", {
     method: "POST",
-    headers: { Origin: origin, "Content-Type": "application/json" },
-    body: JSON.stringify(enterprise("persist@test.local")),
+    headers: {
+      Origin: origin,
+      "Content-Type": "application/json",
+      Cookie: challenge.headers.get("set-cookie").split(";")[0],
+    },
+    body: JSON.stringify({
+      ...enterprise("persist@test.local"),
+      captchaId: value.id,
+      captcha: "246789",
+    }),
   });
   assert.equal(registered.status, 201);
   await app.close();
-  app = await createApp({ dbPath: filename });
+  app = await createApp({
+    dbPath: filename,
+    maintenance: { scheduled: false },
+  });
   assert.equal(
     app.db.prepare("SELECT email FROM users").get().email,
     "persist@test.local",

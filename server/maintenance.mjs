@@ -5,6 +5,7 @@ import { tx } from "./core.mjs";
 import { offsiteConfigured } from "./offsite.mjs";
 import { transportConfigured } from "./integrations.mjs";
 import { randomUUID } from "node:crypto";
+import { integrationReadiness } from "./readiness.mjs";
 
 const integer = (v, f, min, max) => {
   const n = Number(v ?? f);
@@ -197,12 +198,23 @@ export function createMaintenance(db, dbPath, options = {}) {
         alertConfigured: !!process.env.ALERT_WEBHOOK_URL,
         externalAlert: state("externalAlert"),
         communicationConfigured: transportConfigured(),
+        integrations: integrationReadiness(),
         deliveries: db
           .prepare(
             "SELECT state,COUNT(*) count FROM delivery_jobs GROUP BY state",
           )
           .all(),
         archiveCount: db.prepare("SELECT COUNT(*) n FROM archives").get().n,
+        databaseStorage: {
+          allocated:
+            db.prepare("PRAGMA page_count").get().page_count *
+            db.prepare("PRAGMA page_size").get().page_size,
+          reusable:
+            db.prepare("PRAGMA freelist_count").get().freelist_count *
+            db.prepare("PRAGMA page_size").get().page_size,
+          incrementalVacuum:
+            db.prepare("PRAGMA auto_vacuum").get().auto_vacuum === 2,
+        },
         warnings,
         pendingOver24: db
           .prepare(

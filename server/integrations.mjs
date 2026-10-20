@@ -1,13 +1,11 @@
 import { randomUUID, randomInt } from "node:crypto";
 import { body, fail, tx, now } from "./core.mjs";
 import { hashToken, randomToken, verifyPassword } from "./security.mjs";
+import { externalRegistration } from "./external-registration.mjs";
+import { integrationReadiness } from "./readiness.mjs";
 
 export const transportConfigured = () =>
-  !!(
-    process.env.TWILIO_ACCOUNT_SID &&
-    process.env.TWILIO_AUTH_TOKEN &&
-    process.env.TWILIO_FROM
-  );
+  integrationReadiness().find((r) => r.key === "sms").configured;
 const xml = (s) =>
   String(s).replace(
     /[<>&"']/g,
@@ -76,14 +74,9 @@ export function integrationRoutes(db, sec, send, captcha, mfa, options = {}) {
     configured = () => !!options.sendPhone || transportConfigured();
   const providers = () =>
     Object.fromEntries(
-      ["qq", "wechat"].map((p) => [
-        p,
-        !!(
-          process.env[`${p.toUpperCase()}_CLIENT_ID`] &&
-          process.env[`${p.toUpperCase()}_CLIENT_SECRET`] &&
-          process.env.PUBLIC_URL
-        ),
-      ]),
+      integrationReadiness()
+        .filter((r) => ["qq", "wechat"].includes(r.key))
+        .map((r) => [r.key, r.configured]),
     );
   const binding = (req) =>
     (req.headers.cookie || "")
@@ -103,7 +96,14 @@ export function integrationRoutes(db, sec, send, captcha, mfa, options = {}) {
     res.writeHead(303, { Location: url });
     res.end();
   };
+  const renewBinding = (req, res) =>
+    res.setHeader(
+      "Set-Cookie",
+      `hust_external=${binding(req)}; Path=/api/auth; HttpOnly; SameSite=Lax; Max-Age=600${options.secure ? "; Secure" : ""}`,
+    );
+  const registration = externalRegistration(db, sec, send, binding);
   return async (req, res, url) => {
+    if (await registration.route(req, res, url)) return true;
     const p = url.pathname,
       m = req.method;
     if (p === "/api/auth/providers" && m === "GET") {
@@ -260,11 +260,17 @@ export function integrationRoutes(db, sec, send, captcha, mfa, options = {}) {
             "SELECT u.* FROM users u JOIN verified_phones v ON v.user_id=u.id WHERE v.phone=? AND u.disabled=0",
           )
           .get(row.phone);
-        fail(
-          !u,
-          401,
-          "该号码尚未绑定可登录账号，请先使用邮箱登录并在账号设置中绑定",
-        );
+        if (!u) {
+          fail(
+            db
+              .prepare("SELECT user_id FROM verified_phones WHERE phone=?")
+              .get(row.phone),
+            403,
+            "账号已停用，请联系管理员",
+          );
+          db.prepare("DELETE FROM sms_codes WHERE id=?").run(id);
+          return registration.issue(req, "sms", row.phone);
+        }
         fail(
           u.role === "admin" && !mfa.enabled(u.id),
           403,
@@ -276,6 +282,7 @@ export function integrationRoutes(db, sec, send, captcha, mfa, options = {}) {
           ? mfa.challenge(req, res, u)
           : sec.start(req, res, u);
       });
+      if (result.registrationRequired) renewBinding(req, res);
       send(res, result);
       return true;
     }
@@ -432,11 +439,7 @@ export function integrationRoutes(db, sec, send, captcha, mfa, options = {}) {
           sec.audit(user.id, "account.oauth_linked", provider);
           return { linked: true };
         }
-        fail(
-          !identity,
-          403,
-          "请先注册企业账号，并在账号设置中绑定 QQ 或微信后使用快捷登录",
-        );
+        if (!identity) return registration.issue(req, provider, token.openid);
         const user = db
           .prepare("SELECT * FROM users WHERE id=? AND disabled=0")
           .get(identity.user_id);
@@ -449,14 +452,17 @@ export function integrationRoutes(db, sec, send, captcha, mfa, options = {}) {
         sec.start(req, res, user);
         return { linked: false };
       });
+      if (result.registrationRequired) renewBinding(req, res);
       redirect(
         res,
         new URL(
-          result.challenge
-            ? `/#mfa=${result.challenge}`
-            : result.linked
-              ? "/#oauth=linked"
-              : "/#oauth=login",
+          result.registrationRequired
+            ? `/#signup=${result.proof}`
+            : result.challenge
+              ? `/#mfa=${result.challenge}`
+              : result.linked
+                ? "/#oauth=linked"
+                : "/#oauth=login",
           publicUrl,
         ).href,
       );

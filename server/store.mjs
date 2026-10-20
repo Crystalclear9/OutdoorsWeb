@@ -9,10 +9,14 @@ export function openStore(filename) {
       mode: 0o700,
     });
   const db = new DatabaseSync(filename);
-  if (db.prepare("PRAGMA user_version").get().user_version > 4) {
+  if (db.prepare("PRAGMA user_version").get().user_version > 5) {
     db.close();
     throw new Error("数据库版本高于当前程序，请使用匹配版本，禁止直接降级");
   }
+  if (
+    !db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' LIMIT 1").get()
+  )
+    db.exec("PRAGMA auto_vacuum=INCREMENTAL;");
   db.exec(`
     PRAGMA busy_timeout=5000;
     PRAGMA journal_mode=WAL;
@@ -126,6 +130,7 @@ export function openStore(filename) {
       CREATE TABLE IF NOT EXISTS oauth_states(id TEXT PRIMARY KEY,provider TEXT NOT NULL,user_id TEXT REFERENCES users(id),binding TEXT NOT NULL,expires INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS sms_codes(id TEXT PRIMARY KEY,phone TEXT NOT NULL,binding TEXT NOT NULL,answer TEXT NOT NULL,purpose TEXT NOT NULL,expires INTEGER NOT NULL,attempts INTEGER NOT NULL DEFAULT 0);
       CREATE TABLE IF NOT EXISTS verified_phones(phone TEXT PRIMARY KEY,user_id TEXT NOT NULL UNIQUE REFERENCES users(id));
+      CREATE TABLE IF NOT EXISTS signup_proofs(id TEXT PRIMARY KEY,provider TEXT NOT NULL,subject TEXT NOT NULL,binding TEXT NOT NULL,expires INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS contact_preferences(user_id TEXT PRIMARY KEY REFERENCES users(id),sms INTEGER NOT NULL DEFAULT 0,voice INTEGER NOT NULL DEFAULT 0);
       CREATE TABLE IF NOT EXISTS delivery_jobs(id TEXT PRIMARY KEY,kind TEXT NOT NULL,payload TEXT NOT NULL,state TEXT NOT NULL DEFAULT 'pending',attempts INTEGER NOT NULL DEFAULT 0,next_at INTEGER NOT NULL,last_error TEXT NOT NULL DEFAULT '',created TEXT NOT NULL,delivered TEXT);
       CREATE INDEX IF NOT EXISTS delivery_due ON delivery_jobs(state,next_at);
@@ -177,7 +182,7 @@ export function openStore(filename) {
       CREATE TRIGGER IF NOT EXISTS booking_cancel_insert BEFORE INSERT ON bookings
       WHEN NEW.cancelled NOT IN (0,1) OR (NEW.cancelled=1 AND NEW.status<>'已通过')
       BEGIN SELECT RAISE(ABORT,'INVALID_BOOKING_STATE'); END;
-      PRAGMA user_version=4;
+      PRAGMA user_version=5;
     `);
     if (!columns("delivery_jobs").includes("version"))
       db.exec(

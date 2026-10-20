@@ -341,8 +341,11 @@ export async function createApi(db, options = {}) {
           db.prepare("DELETE FROM sessions WHERE token_hash=?").run(
             old.token_hash,
           );
+        if (mfa.enabled(fresh.id)) {
+          audit(fresh.id, "account.mfa_requested", fresh.id);
+          return mfa.challenge(req, res, fresh);
+        }
         audit(fresh.id, "account.login", fresh.id);
-        if (mfa.enabled(fresh.id)) return mfa.challenge(req, res, fresh);
         return start(req, res, fresh);
       });
       return send(res, result);

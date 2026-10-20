@@ -133,6 +133,45 @@ export default function Operations({ notify }) {
             <ErrorBox key={w}>{w}</ErrorBox>
           ))}
           <div className="operations-detail">
+            <h3>外部服务接入检查</h3>
+            <p>
+              数据库已分配{" "}
+              {((data.databaseStorage?.allocated || 0) / 1048576).toFixed(1)}{" "}
+              MB，其中{" "}
+              {((data.databaseStorage?.reusable || 0) / 1048576).toFixed(1)} MB
+              可复用。
+              {data.databaseStorage?.incrementalVacuum
+                ? "已启用分批空间回收。"
+                : "旧库可在停服务后执行离线压缩，启用后续分批回收。"}
+            </p>
+            <p>
+              这里检查配置完整性，不代表平台已开通或消息已送达。凭据仅通过服务器环境变量配置。
+            </p>
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>服务</th>
+                    <th>状态</th>
+                    <th>需要处理</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(data.integrations || []).map((i) => (
+                    <tr key={i.key}>
+                      <td>{i.label}</td>
+                      <td>{i.state}</td>
+                      <td>
+                        {i.issues.join("；") ||
+                          (i.configured
+                            ? "使用真实服务账号完成联调"
+                            : "参照 README 配置服务账号")}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
             <h3>最近一次维护</h3>
             <p>
               {format(data.maintenance?.at)} ·{" "}

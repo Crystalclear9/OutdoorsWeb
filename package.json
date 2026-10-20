@@ -15,6 +15,7 @@
     "test:visual": "playwright test --config playwright.visual.config.js",
     "test:e2e": "playwright test",
     "backup": "node --env-file-if-exists=.env server/backup.mjs",
+    "compact": "node --env-file-if-exists=.env server/compact.mjs",
     "restore:encrypted": "node --env-file-if-exists=.env server/restore.mjs",
     "monitor": "node --env-file-if-exists=.env server/monitor.mjs",
     "admin:recover": "node --env-file-if-exists=.env server/admin.mjs"

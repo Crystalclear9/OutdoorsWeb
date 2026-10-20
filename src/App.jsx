@@ -61,6 +61,7 @@ export default function App() {
     [serviceError, setServiceError] = useState(""),
     [auth, setAuth] = useState(null),
     [oauthMfa, setOauthMfa] = useState(null),
+    [externalSignup, setExternalSignup] = useState(null),
     [page, setPage] = useState("overview"),
     [mobile, setMobile] = useState(false),
     [modal, setModal] = useState(null),
@@ -88,6 +89,10 @@ export default function App() {
   };
   useEffect(() => {
     const hash = window.location.hash;
+    if (/^#signup=[a-f0-9]{64}$/.test(hash)) {
+      setExternalSignup(hash.slice(8));
+      setAuth("login");
+    }
     if (/^#mfa=[a-f0-9]{64}$/.test(hash)) {
       setOauthMfa(hash.slice(5));
       setAuth("login");
@@ -210,6 +215,7 @@ export default function App() {
     setModal({ type: "booking" });
   }
   function onAuth(u) {
+    setExternalSignup(null);
     setOauthMfa(null);
     setUser(u);
     setAuth(null);
@@ -244,11 +250,19 @@ export default function App() {
       <>
         <AuthPage
           initialMfa={oauthMfa}
+          initialSignup={externalSignup}
           initialMode={auth}
           onSuccess={onAuth}
           onBack={() => {
             setAuth(null);
             setOauthMfa(null);
+            setExternalSignup(null);
+            if (window.location.hash.startsWith("#signup="))
+              window.history.replaceState(
+                null,
+                "",
+                window.location.pathname + window.location.search,
+              );
           }}
         />
         {toast && (

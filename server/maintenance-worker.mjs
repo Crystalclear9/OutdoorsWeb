@@ -91,9 +91,22 @@ try {
     db,
     Number(process.env.ARCHIVE_AFTER_DAYS || 365),
   );
+  const freePagesBefore = db
+    .prepare("PRAGMA freelist_count")
+    .get().freelist_count;
+  if (
+    db.prepare("PRAGMA auto_vacuum").get().auto_vacuum === 2 &&
+    freePagesBefore > 0
+  )
+    db.exec("PRAGMA incremental_vacuum(1024);");
+  const reclaimedPages = Math.max(
+    0,
+    freePagesBefore - db.prepare("PRAGMA freelist_count").get().freelist_count,
+  );
   db.prepare("DELETE FROM auth_challenges WHERE expires<?").run(at);
   db.prepare("DELETE FROM oauth_states WHERE expires<?").run(at);
   db.prepare("DELETE FROM sms_codes WHERE expires<?").run(at);
+  db.prepare("DELETE FROM signup_proofs WHERE expires<?").run(at);
   try {
     last = JSON.parse(
       db.prepare("SELECT value FROM maintenance_state WHERE key='backup'").get()
@@ -215,6 +228,7 @@ try {
     at: new Date().toISOString(),
     removed,
     archived,
+    reclaimedPages,
     backup,
     freeBytes,
   };

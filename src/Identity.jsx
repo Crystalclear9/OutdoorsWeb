@@ -172,7 +172,7 @@ export function LoginExtras({ onResult }) {
       </div>
       {sms && <SmsForm purpose="login" onSuccess={onResult} />}
       <p className="field-note">
-        首次使用请注册企业账号，再到账号设置中绑定快捷登录方式。
+        首次验证后补齐企业资料即可创建账号；已有邮箱账号请先登录并绑定。
       </p>
     </div>
   );

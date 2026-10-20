@@ -429,6 +429,22 @@ export function ClosuresPage({ notify, onChange }) {
 }
 
 const ACTIONS = {
+  "account.external_registered": "通过快捷登录创建企业账号",
+  "account.mfa_requested": "密码验证通过，等待两步验证",
+  "account.mfa_enabled": "开启两步验证",
+  "account.mfa_disabled": "关闭两步验证",
+  "account.mfa_login": "完成两步验证登录",
+  "account.mfa_recovered": "运维恢复两步验证",
+  "account.phone_linked": "验证并绑定手机号",
+  "account.sms_login": "手机号验证通过",
+  "account.oauth_login": "第三方身份验证通过",
+  "account.oauth_linked": "绑定第三方账号",
+  "account.oauth_unlinked": "解除第三方绑定",
+  "account.notification_preferences": "更新结果通知偏好",
+  "booking.reschedule_requested": "申请改期或换位",
+  "booking.rescheduled": "批准改期并替换原预约",
+  "venue.onsite_updated": "更新现场摆放登记",
+  "delivery.reconciled": "人工核实通知发送结果",
   "access.staff_created": "创建工作人员",
   "access.denied": "拒绝越权或安全校验失败的请求",
   "access.permissions_changed": "变更业务授权",

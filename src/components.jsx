@@ -15,6 +15,7 @@ import { api, setCsrf } from "./api.js";
 import Sessions from "./Sessions.jsx";
 import Mfa from "./Mfa.jsx";
 import Identity, { LoginExtras } from "./Identity.jsx";
+import ExternalSignup from "./ExternalSignup.jsx";
 
 export function Button({ children, loading, className = "", ...props }) {
   return (
@@ -159,10 +160,21 @@ export function Brand() {
 export function AuthPage({
   initialMode = "login",
   initialMfa = null,
+  initialSignup = null,
   onSuccess,
   onBack,
 }) {
   const [mfa, setMfa] = useState(initialMfa);
+  const [signup, setSignup] = useState(initialSignup);
+  function clearSignup() {
+    setSignup(null);
+    if (window.location.hash.startsWith("#signup="))
+      window.history.replaceState(
+        null,
+        "",
+        window.location.pathname + window.location.search,
+      );
+  }
   const [mode, setMode] = useState(initialMode),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -275,33 +287,51 @@ export function AuthPage({
           <span className="section-kicker">
             {mode === "login" ? "欢迎回来" : "开启校园布展之旅"}
           </span>
-          <h2>{mode === "login" ? "登录您的账号" : "注册企业账号"}</h2>
+          <h2>
+            {signup
+              ? "完成企业账号"
+              : mode === "login"
+                ? "登录您的账号"
+                : "注册企业账号"}
+          </h2>
           <p>
             {mode === "login"
               ? "管理您的布展申请，随时掌握审核进度。"
               : "填写企业信息，账号创建后即可提交申请。"}
           </p>
-          <div className="auth-switch">
-            <button
-              className={mode === "login" ? "selected" : ""}
-              onClick={() => {
-                setMode("login");
-                setError("");
+          {!signup && (
+            <div className="auth-switch">
+              <button
+                className={mode === "login" ? "selected" : ""}
+                onClick={() => {
+                  setMode("login");
+                  setError("");
+                }}
+              >
+                账号登录
+              </button>
+              <button
+                className={mode === "register" ? "selected" : ""}
+                onClick={() => {
+                  setMode("register");
+                  setError("");
+                }}
+              >
+                企业注册
+              </button>
+            </div>
+          )}
+          {signup ? (
+            <ExternalSignup
+              proof={signup}
+              onCancel={clearSignup}
+              onSuccess={(r) => {
+                clearSignup();
+                setCsrf(r.csrf);
+                onSuccess(r.user);
               }}
-            >
-              账号登录
-            </button>
-            <button
-              className={mode === "register" ? "selected" : ""}
-              onClick={() => {
-                setMode("register");
-                setError("");
-              }}
-            >
-              企业注册
-            </button>
-          </div>
-          {mfa ? (
+            />
+          ) : mfa ? (
             <form onSubmit={verifyMfa}>
               <h3>验证您的身份</h3>
               <p>输入验证器中的动态验证码，或使用已保存的恢复码。</p>
@@ -448,10 +478,13 @@ export function AuthPage({
               </Button>
             </form>
           )}
-          {mode === "login" && !mfa && (
+          {mode === "login" && !mfa && !signup && (
             <LoginExtras
               onResult={(r) => {
-                if (r.mfaRequired) setMfa(r.challenge);
+                if (r.registrationRequired) {
+                  setSignup(r.proof);
+                  window.history.replaceState(null, "", `#signup=${r.proof}`);
+                } else if (r.mfaRequired) setMfa(r.challenge);
                 else {
                   setCsrf(r.csrf);
                   onSuccess(r.user);

@@ -24,6 +24,14 @@
 
 `tmp/` 中既可能有可重建的截图，也可能有本机测试状态和参考材料；不要将它整体提交或用宽泛的清理命令处理。业务卷、数据库、备份、配置及 `.mfa-key` 不属于可随意清理的构建缓存。
 
+## 字体与校名素材
+
+校园风格界面合自 `codex/campus-venue-redesign`（`86910b3`）。校名字样位于 `src/assets/hust-signature.png`；标题使用本地 `src/assets/fonts/CampusHeading-Medium.woff2`，授权保留在同目录 `OFL.txt`，并通过 `src/public/assets/CampusHeading-OFL.txt` 随构建发布。
+
+常规构建直接使用已提交的字体，不需要额外下载或 Python 依赖。需要重新生成标题子集时，安装 `fonttools` 与 `brotli`，将 LXGW WenKai Medium v1.530 原字体路径传给 `python scripts/prepare-heading-font.py <字体路径>`；修改后的字体使用 Campus Heading 名称，并保留原授权。
+
+合并保留主分支的真实 API、业务逻辑和依赖，不接入重设计分支的身份预览功能。
+
 ## 后端模块
 
 | 文件                                                  | 职责                                               |

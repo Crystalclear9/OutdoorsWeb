@@ -296,83 +296,120 @@ export default function App() {
     );
   return (
     <div className="app">
-      <aside className={`sidebar ${mobile ? "is-open" : ""}`}>
-        <a
-          href="#"
-          onClick={(e) => {
-            e.preventDefault();
-            go("overview");
-          }}
-        >
-          <Brand />
-        </a>
-        <div className="workspace-label">户外广场布展预约</div>
-        <div className="nav-heading">工作空间</div>
-        <nav>
-          {nav.map(([id, label, Icon]) => (
+      <header className="topbar">
+        <div className="topbar-inner">
+          <div className="topbar-left">
             <button
-              key={id}
-              aria-label={label}
-              aria-current={page === id ? "page" : undefined}
-              className={page === id ? "selected" : ""}
-              onClick={() => go(id)}
+              className="mobile-toggle icon-button"
+              aria-label="打开导航"
+              aria-expanded={mobile}
+              aria-controls="workspace-navigation"
+              onClick={() => setMobile(!mobile)}
             >
-              <Icon size={21} weight={page === id ? "fill" : "regular"} />
-              <span>{label}</span>
-              {id === "records" && !!counts["待审核"] && (
-                <b aria-hidden="true">{counts["待审核"]}</b>
-              )}
+              <List size={22} />
             </button>
-          ))}
-        </nav>
-        <div className="sidebar-support">
-          <button
-            type="button"
-            className="sidebar-help-button"
-            aria-label="打开使用指南"
-            title="打开使用指南"
-            onClick={() => setModal({ type: "help" })}
-          >
-            <Question size={22} />
-            <span className="sidebar-help-copy">
-              <strong>使用帮助</strong>
-              <small>材料、规则与审核流程</small>
+            <a
+              href="#"
+              className="brand-link"
+              onClick={(e) => {
+                e.preventDefault();
+                go("overview");
+              }}
+            >
+              <Brand />
+            </a>
+            <span className="breadcrumb">
+              校园服务
+              <CaretRight size={13} />
+              <strong>
+                {page === "account"
+                  ? "账号设置"
+                  : nav.find((n) => n[0] === page)?.[1]}
+              </strong>
             </span>
-          </button>
-        </div>
-        <div className="sidebar-account">
-          {user ? (
-            <>
-              <button onClick={() => go("account")}>
-                <span className="avatar">{user.company.slice(0, 1)}</span>
-                <span>
-                  <strong>{user.contact || "管理员"}</strong>
-                  <small>{admin ? "平台管理员" : "企业账号"}</small>
-                </span>
-                <CaretRight size={17} />
-              </button>
+          </div>
+          <aside
+            id="workspace-navigation"
+            className={`sidebar ${mobile ? "is-open" : ""}`}
+          >
+            <div className="workspace-label">户外广场布展预约</div>
+            <div className="nav-heading">工作空间</div>
+            <nav>
+              {nav.map(([id, label, Icon]) => (
+                <button
+                  key={id}
+                  aria-label={label}
+                  aria-current={page === id ? "page" : undefined}
+                  className={page === id ? "selected" : ""}
+                  onClick={() => go(id)}
+                >
+                  <Icon size={18} weight={page === id ? "fill" : "regular"} />
+                  <span>{label}</span>
+                  {id === "records" && !!counts["待审核"] && (
+                    <b aria-hidden="true">{counts["待审核"]}</b>
+                  )}
+                </button>
+              ))}
+            </nav>
+            <div className="sidebar-support">
               <button
-                className="logout-button"
-                aria-label="退出登录"
-                onClick={logout}
+                type="button"
+                className="sidebar-help-button"
+                aria-label="打开使用指南"
+                title="打开使用指南"
+                onClick={() => setModal({ type: "help" })}
               >
-                <SignOut size={19} />
+                <Question size={22} />
+                <span className="sidebar-help-copy">
+                  <strong>使用帮助</strong>
+                  <small>材料、规则与审核流程</small>
+                </span>
               </button>
-            </>
-          ) : (
-            <button onClick={() => setAuth("login")}>
-              <span className="avatar">
-                <UserCircle size={23} />
-              </span>
-              <span>
-                <strong>登录账号</strong>
-                <small>管理您的企业申请</small>
-              </span>
-              <ArrowRight size={18} />
+            </div>
+          </aside>
+          <div className="topbar-actions">
+            <span className="today">
+              <CalendarBlank size={15} />
+              {dateString().replaceAll("-", " / ")}
+            </span>
+            <button
+              type="button"
+              className="icon-button guide-trigger"
+              aria-label="打开使用指南"
+              title="使用指南"
+              onClick={() => setModal({ type: "help" })}
+            >
+              <Question size={21} />
             </button>
-          )}
+            {user ? (
+              <div className="user-bar">
+                <button className="account-link" onClick={() => go("account")}>
+                  <span className="avatar small">
+                    {user.company.slice(0, 1)}
+                  </span>
+                  <span>{user.contact || "管理员"}</span>
+                </button>
+                <button
+                  className="logout-button"
+                  aria-label="退出登录"
+                  onClick={logout}
+                >
+                  <SignOut size={18} />
+                </button>
+              </div>
+            ) : (
+              <Button
+                className="primary small"
+                onClick={() => setAuth("login")}
+                disabled={sessionLoading}
+              >
+                登录 / 注册
+                <ArrowUpRight size={15} />
+              </Button>
+            )}
+          </div>
         </div>
-      </aside>
+      </header>
       {mobile && (
         <button
           className="nav-scrim"
@@ -381,52 +418,13 @@ export default function App() {
         />
       )}
       <div className="main-shell">
-        <header className="topbar">
-          <div>
-            <button
-              className="mobile-toggle icon-button"
-              aria-label="打开导航"
-              onClick={() => setMobile(!mobile)}
-            >
-              <List size={25} />
-            </button>
-            <span className="breadcrumb">
-              校园服务
-              <CaretRight size={14} />
-              <strong>
-                {page === "account"
-                  ? "账号设置"
-                  : nav.find((n) => n[0] === page)?.[1]}
-              </strong>
-            </span>
-          </div>
-          <div className="topbar-actions">
-            <span className="today">
-              <CalendarBlank size={17} />
-              {dateString().replaceAll("-", " / ")}
-            </span>
-            {user ? (
-              <button className="account-link" onClick={() => go("account")}>
-                <span className="avatar small">{user.company.slice(0, 1)}</span>
-                <span>{user.contact || "管理员"}</span>
-              </button>
-            ) : (
-              <Button
-                className="primary small"
-                onClick={() => setAuth("login")}
-                disabled={sessionLoading}
-              >
-                登录 / 注册
-                <ArrowUpRight size={16} />
-              </Button>
-            )}
-          </div>
-        </header>
         <main
           className={
             page === "records" && can(user, "bookings.review")
               ? "review-page"
-              : ""
+              : page === "venue"
+                ? "venue-page"
+                : "overview-page"
           }
         >
           <div className="page-heading">
@@ -490,72 +488,11 @@ export default function App() {
           )}
           {page === "venue" && (
             <>
-              <div className="metrics">
-                <div>
-                  <span className="metric-icon">
-                    <MapTrifold size={25} />
-                  </span>
-                  <div>
-                    <p>全部桁架位</p>
-                    <strong>
-                      29<small>个</small>
-                    </strong>
-                  </div>
-                  <span className="metric-foot">原图五段位置分布</span>
-                </div>
-                <div>
-                  <span className="metric-icon green">
-                    <CheckCircle size={25} />
-                  </span>
-                  <div>
-                    <p>所选日期可预约</p>
-                    <strong>
-                      {connected ? 29 - unavailable : "—"}
-                      <small>个</small>
-                    </strong>
-                  </div>
-                  <span className="metric-foot">
-                    {connected ? "场地数据已同步" : "等待连接服务"}
-                  </span>
-                </div>
-                <div>
-                  <span className="metric-icon amber">
-                    <Buildings size={25} />
-                  </span>
-                  <div>
-                    <p>所选日期已安排</p>
-                    <strong>
-                      {connected ? venue.occupied.length : "—"}
-                      <small>个</small>
-                    </strong>
-                  </div>
-                  <span className="metric-foot">
-                    {venue.closed.length
-                      ? `另有 ${venue.closed.length} 个暂停开放`
-                      : "以审批通过的申请为准"}
-                  </span>
-                </div>
-                <div>
-                  <span className="metric-icon">
-                    <Clock size={25} />
-                  </span>
-                  <div>
-                    <p>现场实际摆放</p>
-                    <strong>
-                      {connected ? (venue.actualPlaced ?? 0) : "—"}
-                      <small>个</small>
-                    </strong>
-                  </div>
-                  <span className="metric-foot">
-                    所选日期现场登记，与预约数分别统计
-                  </span>
-                </div>
-              </div>
               <div className="venue-layout">
                 <section className="card venue-card">
                   <div className="card-header">
                     <div>
-                      <h2>原图桁架位置</h2>
+                      <h2>桁架位置</h2>
                       <p>
                         <MapPin size={15} />
                         大学生活动中心户外广场
@@ -600,20 +537,6 @@ export default function App() {
                         </option>
                       ))}
                     </select>
-                    <div className="legend">
-                      <span>
-                        <i />
-                        可预约
-                      </span>
-                      <span>
-                        <i className="occupied" />
-                        已占用
-                      </span>
-                      <span>
-                        <i className="closed" />
-                        暂停
-                      </span>
-                    </div>
                   </div>
                   {view === "map" ? (
                     <div
@@ -627,9 +550,6 @@ export default function App() {
                         zone={zone}
                         connected={connected}
                       />
-                      <div className="map-caption">
-                        底图来源：需求 PDF 第 11 页。点击蓝色桁架查看位置。
-                      </div>
                     </div>
                   ) : (
                     <div className="slot-grid">
@@ -662,16 +582,13 @@ export default function App() {
                   <div className="venue-bottom">
                     <span>
                       <ShieldCheck size={16} />
-                      {connected
-                        ? "实时查询 · 每 30 秒同步"
-                        : "等待后端连接，不显示模拟占用数据"}
+                      {connected ? "预约状态自动更新" : "暂时无法获取预约状态"}
                     </span>
                     <span>{date}</span>
                   </div>
                   <p className="map-source-note">
                     绿地边缘 6 个 · B 座通道 4 个 · A 座通道 4 个 · 东侧直线 7
-                    个 · 南侧直线 8 个。A 座、B 座是建筑名称；01–29
-                    为系统位置编号，原 PDF 未提供桁架编号。
+                    个 · 南侧直线 8 个。
                   </p>
                 </section>
                 <div className="venue-side">
@@ -727,33 +644,6 @@ export default function App() {
                         <ArrowRight size={19} />
                       </Button>
                     )}
-                  </section>
-                  <section className="guide-card">
-                    <span className="section-kicker">BEFORE YOU APPLY</span>
-                    <h2>
-                      一次顺畅的预约，
-                      <br />
-                      从充分准备开始。
-                    </h2>
-                    <div className="guide-step">
-                      <span>01</span>
-                      <p>完善企业与联系人资料</p>
-                    </div>
-                    <div className="guide-step">
-                      <span>02</span>
-                      <p>准备清晰的桁架设计图</p>
-                    </div>
-                    <div className="guide-step">
-                      <span>03</span>
-                      <p>提交后等待管理员审核</p>
-                    </div>
-                    <button
-                      className="text-button"
-                      onClick={() => setModal({ type: "help" })}
-                    >
-                      阅读完整预约须知
-                      <ArrowUpRight size={17} />
-                    </button>
                   </section>
                 </div>
               </div>
@@ -816,7 +706,7 @@ export default function App() {
           )}
           <footer className="page-footer">
             <Brand />
-            <span>校园公共空间，让每一场活动更有序。</span>
+            <span>大学生活动中心 · 户外广场布展服务</span>
           </footer>
         </main>
       </div>

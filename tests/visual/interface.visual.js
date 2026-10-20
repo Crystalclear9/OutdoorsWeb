@@ -30,6 +30,15 @@ test("登录、现场登记与审批台固定视觉基线", async ({ page }, inf
   await expect(
     page.getByRole("img", { name: "校园创新科技有限公司的桁架设计图" }),
   ).toBeVisible();
+  if (info.project.name === "desktop") {
+    await expect(page.locator(".review-material")).toHaveCSS("display", "grid");
+    const actions = await page
+      .locator(".review-decision-actions")
+      .boundingBox();
+    expect(actions.y + actions.height).toBeLessThanOrEqual(
+      page.viewportSize().height,
+    );
+  }
   await expect(page).toHaveScreenshot("review.png");
   expect(
     await page.evaluate(

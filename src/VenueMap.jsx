@@ -71,46 +71,6 @@ export default function VenueMap({
       aria-modal={expanded || undefined}
       aria-label={expanded ? "展开的场地图" : undefined}
     >
-      <div className="map-scale-toolbar">
-        <span>
-          场地分布图 <small>保持原图比例 · 放大后可滚动查看</small>
-        </span>
-        <div>
-          <button
-            aria-label="缩小场地图"
-            onClick={() => setZoom((z) => Math.max(0.75, z - 0.25))}
-            disabled={zoom <= 0.75}
-          >
-            <Minus size={17} />
-          </button>
-          <output aria-label="地图缩放比例">{Math.round(zoom * 100)}%</output>
-          <button
-            aria-label="放大场地图"
-            onClick={() => setZoom((z) => Math.min(3, z + 0.25))}
-            disabled={zoom >= 3}
-          >
-            <Plus size={17} />
-          </button>
-          <button
-            aria-label="重置场地图"
-            onClick={() => {
-              setZoom(1);
-              frame.current.scrollTo(0, 0);
-            }}
-          >
-            <ArrowsClockwise size={17} />
-            适配
-          </button>
-          <button
-            aria-label={expanded ? "收起场地图" : "展开场地图"}
-            aria-pressed={expanded}
-            onClick={() => setExpanded((v) => !v)}
-          >
-            {expanded ? <ArrowsIn size={17} /> : <ArrowsOut size={17} />}
-            <span>{expanded ? "收起" : "展开"}</span>
-          </button>
-        </div>
-      </div>
       <div ref={frame} className={`map-scroll ${zoom > 1 ? "is-zoomed" : ""}`}>
         <div className="map-canvas">
           <svg
@@ -225,6 +185,57 @@ export default function VenueMap({
               );
             })}
           </svg>
+        </div>
+      </div>
+      <div className="map-scale-toolbar">
+        <div className="legend" aria-label="场地状态图例">
+          <span>
+            <i />
+            可预约
+          </span>
+          <span>
+            <i className="occupied" />
+            已占用
+          </span>
+          <span>
+            <i className="closed" />
+            暂停
+          </span>
+        </div>
+        <div className="map-zoom-controls">
+          <button
+            aria-label="缩小场地图"
+            onClick={() => setZoom((z) => Math.max(0.75, z - 0.25))}
+            disabled={zoom <= 0.75}
+          >
+            <Minus size={17} />
+          </button>
+          <output aria-label="地图缩放比例">{Math.round(zoom * 100)}%</output>
+          <button
+            aria-label="放大场地图"
+            onClick={() => setZoom((z) => Math.min(3, z + 0.25))}
+            disabled={zoom >= 3}
+          >
+            <Plus size={17} />
+          </button>
+          <button
+            aria-label="重置场地图"
+            onClick={() => {
+              setZoom(1);
+              frame.current.scrollTo(0, 0);
+            }}
+          >
+            <ArrowsClockwise size={17} />
+            适配
+          </button>
+          <button
+            aria-label={expanded ? "收起场地图" : "展开场地图"}
+            aria-pressed={expanded}
+            onClick={() => setExpanded((v) => !v)}
+          >
+            {expanded ? <ArrowsIn size={17} /> : <ArrowsOut size={17} />}
+            <span>{expanded ? "收起" : "展开"}</span>
+          </button>
         </div>
       </div>
     </div>

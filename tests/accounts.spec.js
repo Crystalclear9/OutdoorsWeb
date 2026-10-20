@@ -892,7 +892,7 @@ test("超级管理员从运行维护界面执行备份，日志支持检索和�
   page,
 }) => {
   await adminLogin(page);
-  const accountBox = await page.locator(".sidebar-account").boundingBox();
+  const accountBox = await page.locator(".user-bar").boundingBox();
   expect(accountBox.y + accountBox.height).toBeLessThanOrEqual(
     page.viewportSize().height + 1,
   );

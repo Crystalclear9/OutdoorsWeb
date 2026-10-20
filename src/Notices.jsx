@@ -200,7 +200,7 @@ export default function Notices({ items, user, onSaved, connected }) {
           >
             {connected
               ? "新的通知将在这里发布。"
-              : "请连接后端后查看最新公告。"}
+              : "公告暂时无法加载，请稍后重试。"}
           </Empty>
         )}
       </section>

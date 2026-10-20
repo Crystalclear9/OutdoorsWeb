@@ -168,6 +168,8 @@ export async function createApp(options = {}) {
             ".png": "image/png",
             ".svg": "image/svg+xml",
             ".ico": "image/x-icon",
+            ".woff2": "font/woff2",
+            ".txt": "text/plain; charset=utf-8",
           };
         fail(!types[ext], 404, "文件不存在");
         let bytes;

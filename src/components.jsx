@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
   X,
@@ -16,6 +16,7 @@ import Sessions from "./Sessions.jsx";
 import Mfa from "./Mfa.jsx";
 import Identity, { LoginExtras } from "./Identity.jsx";
 import ExternalSignup from "./ExternalSignup.jsx";
+import universitySignature from "./assets/hust-signature.png";
 
 export function Button({ children, loading, className = "", ...props }) {
   return (
@@ -87,12 +88,17 @@ export function Status({ value }) {
   );
 }
 export function Modal({ title, description, children, onClose, wide = false }) {
+  const returnFocus = useRef(document.activeElement);
   return (
     <Dialog.Root open onOpenChange={(v) => !v && onClose()}>
       <Dialog.Portal>
         <Dialog.Overlay className="dialog-overlay" />
         <Dialog.Content
           className={`dialog-content ${wide ? "dialog-wide" : ""}`}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            if (returnFocus.current?.isConnected) returnFocus.current.focus();
+          }}
         >
           <div className="dialog-heading">
             <div>
@@ -146,13 +152,14 @@ export function PasswordInput({
 export function Brand() {
   return (
     <div className="brand">
-      <span className="brand-mark">
-        <Buildings size={27} weight="bold" />
+      <img
+        className="university-signature"
+        src={universitySignature}
+        alt="华中科技大学"
+      />
+      <span className="brand-service">
+        大学生活动中心<small>户外广场布展预约</small>
       </span>
-      <div>
-        <strong>华中科技大学</strong>
-        <small>大学生活动中心 · 场地服务</small>
-      </div>
     </div>
   );
 }
@@ -248,16 +255,18 @@ export function AuthPage({
       <section className="auth-story">
         <Brand />
         <div className="auth-story-copy">
-          <span className="section-kicker">CAMPUS SPACE, SHARED.</span>
+          <span className="section-kicker">
+            华中科技大学 · 公共空间预约平台
+          </span>
           <h1>
-            好的相遇，
+            户外广场
             <br />
-            从这里开始。
+            布展预约
           </h1>
           <p>
-            连接企业与校园，
+            查询场地，提交布展申请。
             <br />
-            让每一场活动都有合适的位置。
+            登录后查看申请与审核结果。
           </p>
         </div>
         <div className="auth-architecture" aria-hidden="true">
@@ -275,7 +284,7 @@ export function AuthPage({
         </div>
         <div className="auth-story-footer">
           <ShieldCheck size={19} />
-          账号保护 · 有序预约 · 透明审核
+          华中科技大学 · 大学生活动中心
         </div>
       </section>
       <section className="auth-form-side">
@@ -285,7 +294,7 @@ export function AuthPage({
         </button>
         <div className="auth-form-wrap">
           <span className="section-kicker">
-            {mode === "login" ? "欢迎回来" : "开启校园布展之旅"}
+            {mode === "login" ? "欢迎回来" : "企业账号注册"}
           </span>
           <h2>
             {signup

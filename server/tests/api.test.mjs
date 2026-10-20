@@ -375,15 +375,20 @@ test("暂停开放、公告及审计均需管理员权限", async (t) => {
     (await client().request("/notices")).data.items[0].title,
     "场地须知",
   );
-  await m.request(`/notices/${id}`, "PATCH", {
-    title: "更新标题",
-    content: "更新正文",
-  });
+  await m.request(
+    `/notices/${id}`,
+    "PATCH",
+    {
+      title: "更新标题",
+      content: "更新正文",
+    },
+    { "If-Match": '"1"' },
+  );
   assert.equal(
     (await client().request("/notices")).data.items[0].title,
     "更新标题",
   );
-  await m.request(`/notices/${id}`, "DELETE");
+  await m.request(`/notices/${id}`, "DELETE", undefined, { "If-Match": '"2"' });
   assert.equal((await client().request("/notices")).data.items.length, 0);
   await m.request("/closures", "POST", {
     slot: 1,

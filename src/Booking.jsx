@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   UploadSimple,
   FileImage,
@@ -10,9 +10,11 @@ import {
 } from "@phosphor-icons/react";
 import { Button, ErrorBox, Modal, Status } from "./components.jsx";
 import { api, getDesign } from "./api.js";
+import { can } from "./permissions.js";
 import { dateString, slotName, zoneName, formatDate } from "./utils.js";
 
 export function BookingForm({ user, slot, date, onClose, onSaved }) {
+  const request = useRef(null);
   const [image, setImage] = useState(null),
     [name, setName] = useState(""),
     [error, setError] = useState(""),
@@ -42,9 +44,22 @@ export function BookingForm({ user, slot, date, onClose, onSaved }) {
     if (!image) return setError("请上传桁架设计图");
     setBusy(true);
     try {
+      const payload = {
+        ...Object.fromEntries(new FormData(e.currentTarget)),
+        image,
+      };
+      const fingerprint = JSON.stringify(payload);
+      if (request.current?.fingerprint !== fingerprint)
+        request.current = {
+          fingerprint,
+          key: Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) =>
+            b.toString(16).padStart(2, "0"),
+          ).join(""),
+        };
       await api("/bookings", {
         method: "POST",
-        body: { ...Object.fromEntries(new FormData(e.currentTarget)), image },
+        headers: { "Idempotency-Key": request.current.key },
+        body: payload,
       });
       onSaved();
     } catch (e) {
@@ -195,7 +210,8 @@ export function BookingForm({ user, slot, date, onClose, onSaved }) {
   );
 }
 
-export function BookingDetail({ item, user, onClose, onSaved }) {
+export function BookingDetail({ item: initial, user, onClose, onSaved }) {
+  const [item, setItem] = useState(initial);
   const [image, setImage] = useState(null),
     [imageError, setImageError] = useState(""),
     [reason, setReason] = useState(""),
@@ -222,11 +238,19 @@ export function BookingDetail({ item, user, onClose, onSaved }) {
     try {
       await api(`/bookings/${item.id}/${type}`, {
         method: "POST",
+        headers: { "If-Match": `"${item.version}"` },
         ...(type === "review" ? { body: { status, reason } } : {}),
       });
       onSaved(type === "withdraw" ? "申请已撤回" : `申请${status}`);
     } catch (e) {
       setError(e.message);
+      if (e.status === 409) {
+        try {
+          setItem((await api(`/bookings/${item.id}`)).booking);
+        } catch {
+          /* Authorization failures are handled globally. */
+        }
+      }
     } finally {
       setBusy("");
     }
@@ -234,7 +258,7 @@ export function BookingDetail({ item, user, onClose, onSaved }) {
   return (
     <Modal
       title={
-        user.role === "admin" && item.status === "待审核"
+        can(user, "bookings.review") && item.status === "待审核"
           ? "审核布展申请"
           : "申请详情"
       }
@@ -309,7 +333,7 @@ export function BookingDetail({ item, user, onClose, onSaved }) {
           </div>
         </div>
       )}
-      {user.role === "admin" && item.status === "待审核" && (
+      {can(user, "bookings.review") && item.status === "待审核" && (
         <label>
           审核意见 <span className="muted">未通过时必填</span>
           <textarea
@@ -323,7 +347,7 @@ export function BookingDetail({ item, user, onClose, onSaved }) {
       )}
       <ErrorBox>{error}</ErrorBox>
       <div className="dialog-actions">
-        {user.role === "admin" && item.status === "待审核" ? (
+        {can(user, "bookings.review") && item.status === "待审核" ? (
           <>
             <Button
               className="danger-outline"

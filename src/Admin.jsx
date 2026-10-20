@@ -9,6 +9,7 @@ import {
   ClipboardText,
 } from "@phosphor-icons/react";
 import { api } from "./api.js";
+import { PERMISSIONS } from "./permissions.js";
 import { Button, ErrorBox, Empty, Modal } from "./components.jsx";
 import { dateString, slotName, formatDate } from "./utils.js";
 
@@ -39,6 +40,7 @@ export function UsersPage({ notify }) {
       if (modal.type === "reset") {
         const r = await api(`/users/${modal.user.id}/reset-password`, {
           method: "POST",
+          headers: { "If-Match": `"${modal.user.version}"` },
         });
         setModal({
           type: "password",
@@ -49,6 +51,7 @@ export function UsersPage({ notify }) {
         await api(`/users/${modal.user.id}/status`, {
           method: "POST",
           body: { disabled: !modal.user.disabled },
+          headers: { "If-Match": `"${modal.user.version}"` },
         });
         setModal(null);
         notify("账号状态已更新");
@@ -403,6 +406,11 @@ export function ClosuresPage({ notify, onChange }) {
 }
 
 const ACTIONS = {
+  "access.staff_created": "创建工作人员",
+  "access.denied": "拒绝越权或安全校验失败的请求",
+  "access.permissions_changed": "变更业务授权",
+  "account.session_revoked": "撤销登录会话",
+  "account.other_sessions_revoked": "退出其他设备",
   "account.admin_created": "创建管理员",
   "account.admin_recovered": "恢复管理员账号",
   "account.registered": "企业注册",
@@ -453,7 +461,33 @@ export function AuditPage() {
             {items.map((a) => (
               <tr key={a.id}>
                 <td>{a.email || "系统"}</td>
-                <td>{ACTIONS[a.action] || a.action}</td>
+                <td>
+                  {ACTIONS[a.action] || a.action}
+                  {a.action.startsWith("access.") && a.details !== "{}" && (
+                    <small>
+                      {(() => {
+                        try {
+                          const d = JSON.parse(a.details),
+                            labels = (keys) =>
+                              (keys || [])
+                                .map(
+                                  (k) =>
+                                    PERMISSIONS.find((p) => p.key === k)
+                                      ?.label || k,
+                                )
+                                .join("、") || "无";
+                          return d.after
+                            ? `${labels(d.before)} → ${labels(d.after)}`
+                            : d.permissions
+                              ? `授权：${labels(d.permissions)}`
+                              : "";
+                        } catch {
+                          return "";
+                        }
+                      })()}
+                    </small>
+                  )}
+                </td>
                 <td className="monospace">{a.target}</td>
                 <td>
                   {new Date(a.created).toLocaleString("zh-CN", {

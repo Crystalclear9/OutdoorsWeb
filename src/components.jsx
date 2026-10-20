@@ -12,6 +12,7 @@ import {
   WarningCircle,
 } from "@phosphor-icons/react";
 import { api, setCsrf } from "./api.js";
+import Sessions from "./Sessions.jsx";
 
 export function Button({ children, loading, className = "", ...props }) {
   return (
@@ -368,6 +369,7 @@ export function AccountPage({ user, onUser, onLogout, notify }) {
         </Button>
       </section>
       <div className="account-forms">
+        {!user.mustChangePassword && <Sessions notify={notify} />}
         {user.mustChangePassword && (
           <ErrorBox>
             您正在使用临时密码，请先设置新密码，再继续使用业务功能。

@@ -387,3 +387,131 @@ test("公告可直接投递，失败保留内容，发布后游客立即可读",
   );
   await context.close();
 });
+
+test("超级管理员创建工作人员、按职责授权并即时撤销旧登录", async ({
+  page,
+  browser,
+}) => {
+  await adminLogin(page);
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "授权管理", exact: true })
+    .click();
+  await page.getByRole("button", { name: "新增管理员" }).click();
+  const email = `publisher-${Date.now()}@staff.local`;
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("管理员姓名").fill("公告工作人员");
+  await dialog.getByLabel("登录邮箱").fill(email);
+  await dialog.getByRole("checkbox", { name: /公告管理/ }).check();
+  await dialog.locator("[name=currentPassword]").fill("BrowserAdmin123!");
+  await dialog.getByRole("button", { name: "创建并授权", exact: true }).click();
+  const temporary = await page.locator(".temporary-password").textContent();
+  await page.getByRole("button", { name: "已妥善记录" }).click();
+  const context = await browser.newContext(),
+    staff = await context.newPage();
+  await staff.goto("/");
+  await staff.getByRole("button", { name: "登录 / 注册" }).click();
+  await staff.locator("[name=email]").fill(email);
+  await staff.locator("[name=password]").fill(temporary);
+  await staff.getByRole("button", { name: "登录账号", exact: true }).click();
+  await expect(
+    staff.getByText("您正在使用临时密码，请先设置新密码，再继续使用业务功能。"),
+  ).toBeVisible();
+  await staff.locator("[name=currentPassword]").fill(temporary);
+  await staff.locator("[name=newPassword]").fill("ScopedStaffPassword123");
+  await staff.locator("[name=confirm]").fill("ScopedStaffPassword123");
+  await staff.getByRole("button", { name: "更新密码" }).click();
+  await expect(
+    staff.getByRole("heading", { name: "登录您的账号" }),
+  ).toBeVisible();
+  await staff.locator("[name=email]").fill(email);
+  await staff.locator("[name=password]").fill("ScopedStaffPassword123");
+  await staff.getByRole("button", { name: "登录账号", exact: true }).click();
+  await expect(
+    staff
+      .getByRole("navigation")
+      .getByRole("button", { name: "企业申报审核", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    staff
+      .getByRole("navigation")
+      .getByRole("button", { name: "授权管理", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    staff
+      .getByRole("navigation")
+      .getByRole("button", { name: "账号管理", exact: true }),
+  ).toHaveCount(0);
+  await staff
+    .getByRole("navigation")
+    .getByRole("button", { name: "通知公告", exact: true })
+    .click();
+  await expect(staff.getByRole("form", { name: "快捷公告投递" })).toBeVisible();
+  await page.reload();
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "授权管理", exact: true })
+    .click();
+  const row = page.getByRole("row").filter({ hasText: email });
+  await row.getByRole("button", { name: "调整授权" }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("checkbox", { name: /公告管理/ })
+    .uncheck();
+  await page
+    .getByRole("dialog")
+    .getByRole("checkbox", { name: /场地开放管理/ })
+    .check();
+  await page
+    .getByRole("dialog")
+    .locator("[name=currentPassword]")
+    .fill("BrowserAdmin123!");
+  await page.getByRole("button", { name: "保存授权", exact: true }).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await staff.getByLabel("公告标题").fill("已撤销权限不得发布");
+  await staff.getByLabel("公告正文").fill("此请求应被服务端拒绝");
+  await staff.getByRole("button", { name: "发布公告", exact: true }).click();
+  await expect(
+    staff.getByRole("button", { name: "登录 / 注册" }),
+  ).toBeVisible();
+  await staff.getByRole("button", { name: "登录 / 注册" }).click();
+  await staff.locator("[name=email]").fill(email);
+  await staff.locator("[name=password]").fill("ScopedStaffPassword123");
+  await staff.getByRole("button", { name: "登录账号", exact: true }).click();
+  await expect(
+    staff
+      .getByRole("navigation")
+      .getByRole("button", { name: "场地开放安排", exact: true }),
+  ).toBeVisible();
+  await staff
+    .getByRole("navigation")
+    .getByRole("button", { name: "通知公告", exact: true })
+    .click();
+  await expect(staff.getByRole("form", { name: "快捷公告投递" })).toHaveCount(
+    0,
+  );
+  await context.close();
+});
+
+test("账号可查看登录设备，并退出其他设备", async ({ page, browser }) => {
+  const email = await register(page, "设备会话管理企业");
+  const context = await browser.newContext(),
+    other = await context.newPage();
+  await other.goto("/");
+  await other.getByRole("button", { name: "登录 / 注册" }).click();
+  await other.locator("[name=email]").fill(email);
+  await other.locator("[name=password]").fill(password);
+  await other.getByRole("button", { name: "登录账号", exact: true }).click();
+  await expect(
+    other.getByRole("heading", { name: "场地有序，活动从容。" }),
+  ).toBeVisible();
+  await page.locator(".account-link").click();
+  await expect(page.locator(".session-list>div")).toHaveCount(2);
+  await page.getByRole("button", { name: "退出其他设备", exact: true }).click();
+  await expect(page.locator(".session-list>div")).toHaveCount(1);
+  await other.reload();
+  await expect(
+    other.getByRole("button", { name: "登录 / 注册" }),
+  ).toBeVisible();
+  await context.close();
+});

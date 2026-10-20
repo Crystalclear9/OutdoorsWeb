@@ -31,6 +31,8 @@ import VenueMap from "./VenueMap.jsx";
 import Records from "./Records.jsx";
 import Notices from "./Notices.jsx";
 import Dashboard from "./Dashboard.jsx";
+import Access from "./Access.jsx";
+import { can } from "./permissions.js";
 import { VENUE_SEGMENTS, inSegment } from "./venue-layout.js";
 
 const titles = {
@@ -44,6 +46,7 @@ const titles = {
   account: ["您的账号，安心管理。", "维护企业资料与账号安全。"],
   users: ["每一个账号，妥善管理。", "管理企业访问权限、账号状态与密码恢复。"],
   closures: ["让场地安排井然有序。", "统一维护桁架开放与暂停安排。"],
+  access: ["按职责授权，按权限操作。", "管理工作人员授权与账号访问范围。"],
   audit: ["有记录，也有依据。", "查看账号及业务操作记录。"],
 };
 export default function App() {
@@ -118,7 +121,11 @@ export default function App() {
     };
   }, [date, version, page]);
   useEffect(() => {
-    if (user && !user.mustChangePassword)
+    if (
+      user &&
+      !user.mustChangePassword &&
+      (user.role === "enterprise" || can(user, "bookings.review"))
+    )
       api("/summary")
         .then((r) => setCounts(r.counts))
         .catch((e) => notify(e.message));
@@ -172,7 +179,7 @@ export default function App() {
       return;
     }
     if (admin) {
-      go("records");
+      go(can(user, "bookings.review") ? "records" : "overview");
       return;
     }
     setModal({ type: "booking" });
@@ -187,17 +194,16 @@ export default function App() {
   const nav = [
     ["overview", "服务工作台", SquaresFour],
     ["venue", "场地查询", MapTrifold],
-    ...(user
+    ...(user?.role === "enterprise" || can(user, "bookings.review")
       ? [["records", admin ? "企业申报审核" : "我的申请", ClipboardText]]
       : []),
     ["notices", "通知公告", Megaphone],
-    ...(admin
-      ? [
-          ["closures", "场地开放安排", CalendarBlank],
-          ["users", "账号管理", Users],
-          ["audit", "操作日志", ShieldCheck],
-        ]
+    ...(can(user, "venue.manage")
+      ? [["closures", "场地开放安排", CalendarBlank]]
       : []),
+    ...(can(user, "accounts.manage") ? [["users", "账号管理", Users]] : []),
+    ...(can(user, "audit.read") ? [["audit", "操作日志", ShieldCheck]] : []),
+    ...(user?.isSuperAdmin ? [["access", "授权管理", ShieldCheck]] : []),
   ];
   const busy = venue.occupied.find((b) => b.slot === selected),
     closed = venue.closed.find((b) => b.slot === selected),
@@ -356,17 +362,18 @@ export default function App() {
               <h1>{titles[page]?.[0]}</h1>
               <p>{titles[page]?.[1]}</p>
             </div>
-            {["venue", "records"].includes(page) && (
-              <Button
-                className="primary"
-                onClick={beginBooking}
-                disabled={!connected || sessionLoading}
-              >
-                {admin ? <ShieldCheck size={19} /> : <Plus size={20} />}{" "}
-                {admin ? "查看待审核申请" : "发起布展申请"}
-                <ArrowUpRight size={17} />
-              </Button>
-            )}
+            {["venue", "records"].includes(page) &&
+              (!admin || can(user, "bookings.review")) && (
+                <Button
+                  className="primary"
+                  onClick={beginBooking}
+                  disabled={!connected || sessionLoading}
+                >
+                  {admin ? <ShieldCheck size={19} /> : <Plus size={20} />}{" "}
+                  {admin ? "查看待审核申请" : "发起布展申请"}
+                  <ArrowUpRight size={17} />
+                </Button>
+              )}
           </div>
           {!connected && serviceError && (
             <div className="service-warning">
@@ -666,14 +673,17 @@ export default function App() {
               </div>
             </>
           )}
-          {page === "records" && user && !user.mustChangePassword && (
-            <Records
-              key={user.id}
-              user={user}
-              notify={notify}
-              onChange={refresh}
-            />
-          )}
+          {page === "records" &&
+            user &&
+            !user.mustChangePassword &&
+            (user.role === "enterprise" || can(user, "bookings.review")) && (
+              <Records
+                key={user.id}
+                user={user}
+                notify={notify}
+                onChange={refresh}
+              />
+            )}
           {page === "notices" && (
             <Notices
               items={notices}
@@ -694,11 +704,16 @@ export default function App() {
               notify={notify}
             />
           )}
-          {page === "users" && admin && <UsersPage notify={notify} />}
-          {page === "closures" && admin && (
+          {page === "users" && can(user, "accounts.manage") && (
+            <UsersPage notify={notify} />
+          )}
+          {page === "closures" && can(user, "venue.manage") && (
             <ClosuresPage notify={notify} onChange={refresh} />
           )}
-          {page === "audit" && admin && <AuditPage />}
+          {page === "audit" && can(user, "audit.read") && <AuditPage />}
+          {page === "access" && user?.isSuperAdmin && (
+            <Access notify={notify} />
+          )}
           <footer className="page-footer">
             <Brand />
             <span>校园公共空间，让每一场活动更有序。</span>

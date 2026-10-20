@@ -23,11 +23,11 @@ try {
   try {
     if (user)
       db.prepare(
-        "UPDATE users SET password_hash=?,disabled=0,must_change=0 WHERE id=?",
+        "UPDATE users SET password_hash=?,disabled=0,must_change=0,is_super=1,version=version+1 WHERE id=?",
       ).run(hashed, id);
     else
       db.prepare(
-        "INSERT INTO users(id,email,password_hash,role,company,contact,phone,created) VALUES(?,?,?,?,?,?,?,?)",
+        "INSERT INTO users(id,email,password_hash,role,company,contact,phone,created,is_super) VALUES(?,?,?,?,?,?,?,?,1)",
       ).run(id, email, hashed, "admin", "大学生活动中心", "管理员", "", time);
     db.prepare("DELETE FROM sessions WHERE user_id=?").run(id);
     db.prepare(

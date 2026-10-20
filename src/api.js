@@ -28,9 +28,11 @@ export async function api(path, options = {}) {
     throw new Error("当前站点尚未连接后端。请使用 Docker 完整服务地址访问。");
   const data = await res.json();
   if (!res.ok) {
-    if (res.status === 401 && !path.startsWith("/auth/"))
+    if (res.status === 401 && !["/auth/login", "/auth/register"].includes(path))
       window.dispatchEvent(new Event("session-expired"));
-    throw new Error(data.error || "操作失败，请稍后重试");
+    const error = new Error(data.error || "操作失败，请稍后重试");
+    error.status = res.status;
+    throw error;
   }
   return data;
 }
@@ -38,6 +40,9 @@ export async function getDesign(id) {
   const res = await fetch(`${BASE}/api/bookings/${id}/image`, {
     credentials: "include",
   });
-  if (!res.ok) throw new Error("无法加载设计图");
+  if (!res.ok) {
+    if (res.status === 401) window.dispatchEvent(new Event("session-expired"));
+    throw new Error("无法加载设计图");
+  }
   return URL.createObjectURL(await res.blob());
 }

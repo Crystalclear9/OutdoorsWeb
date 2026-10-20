@@ -14,6 +14,7 @@ import { api } from "./api.js";
 import { Button, Empty, ErrorBox, Status } from "./components.jsx";
 import { BookingDetail } from "./Booking.jsx";
 import { slotName } from "./utils.js";
+import { can } from "./permissions.js";
 
 export default function Dashboard({
   user,
@@ -30,11 +31,13 @@ export default function Dashboard({
     [loading, setLoading] = useState(false),
     [error, setError] = useState(""),
     [detail, setDetail] = useState(null);
-  const admin = user?.role === "admin",
+  const admin = can(user, "bookings.review"),
+    staff = user?.role === "admin",
+    publishing = can(user, "notices.manage"),
     total = Object.values(counts).reduce((a, b) => a + b, 0);
   useEffect(() => {
     let active = true;
-    if (!user || user.mustChangePassword) {
+    if (!user || user.mustChangePassword || (staff && !admin)) {
       setItems([]);
       return;
     }
@@ -54,50 +57,77 @@ export default function Dashboard({
       active = false;
     };
   }, [user?.id, user?.mustChangePassword, admin, version]);
-  const metrics = user
-    ? [
-        [admin ? "待处理申请" : "我的待审核", counts["待审核"] || 0, Clock],
-        ["已通过", counts["已通过"] || 0, CheckCircle],
-        ["需调整申请", counts["未通过"] || 0, ClipboardText],
-        [admin ? "累计申报" : "我的申请总数", total, Buildings],
-      ]
-    : [];
+  const metrics =
+    user && (!staff || admin)
+      ? [
+          [admin ? "待处理申请" : "我的待审核", counts["待审核"] || 0, Clock],
+          ["已通过", counts["已通过"] || 0, CheckCircle],
+          ["需调整申请", counts["未通过"] || 0, ClipboardText],
+          [admin ? "累计申报" : "我的申请总数", total, Buildings],
+        ]
+      : [];
   return (
     <div className="dashboard">
       <section className="workspace-welcome">
         <div>
           <span className="section-kicker">
-            {admin ? "管理员工作空间" : user ? "企业工作空间" : "校园布展服务"}
+            {staff ? "管理员工作空间" : user ? "企业工作空间" : "校园布展服务"}
           </span>
           <h2>
-            {admin
-              ? "先处理待办，再安排新的活动。"
-              : user
-                ? `${user.contact}，欢迎回来。`
-                : "从了解场地，到有序开展。"}
+            {staff && !admin
+              ? `${user.contact}，按职责开展工作。`
+              : admin
+                ? "先处理待办，再安排新的活动。"
+                : user
+                  ? `${user.contact}，欢迎回来。`
+                  : "从了解场地，到有序开展。"}
           </h2>
           <p>
-            {admin
-              ? `当前有 ${counts["待审核"] || 0} 条申请等待审核。您也可以直接发布活动通知。`
-              : user
-                ? "在这里跟进申请进度、查看审核意见和最新通知。"
-                : "先查看开放位置与预约须知，登录企业账号后即可提交申请。"}
+            {staff && !admin
+              ? "您的账号仅可使用已授权功能，菜单将按职责显示。"
+              : admin
+                ? `当前有 ${counts["待审核"] || 0} 条申请等待审核。您也可以直接发布活动通知。`
+                : user
+                  ? "在这里跟进申请进度、查看审核意见和最新通知。"
+                  : "先查看开放位置与预约须知，登录企业账号后即可提交申请。"}
           </p>
         </div>
         <div className="workspace-actions">
           <Button
             className="primary"
             disabled={!connected}
-            onClick={() => (admin ? onNavigate("records") : onApply())}
+            onClick={() =>
+              admin
+                ? onNavigate("records")
+                : staff
+                  ? onNavigate(
+                      publishing
+                        ? "notices"
+                        : can(user, "venue.manage")
+                          ? "closures"
+                          : can(user, "accounts.manage")
+                            ? "users"
+                            : can(user, "audit.read")
+                              ? "audit"
+                              : "account",
+                    )
+                  : onApply()
+            }
           >
-            {admin ? "处理企业申请" : "发起布展申请"}
+            {admin
+              ? "处理企业申请"
+              : staff
+                ? publishing
+                  ? "编写通知公告"
+                  : "打开已授权功能"
+                : "发起布展申请"}
             <ArrowRight size={18} />
           </Button>
           <button
             className="text-button"
-            onClick={() => onNavigate(admin ? "notices" : "venue")}
+            onClick={() => onNavigate(publishing ? "notices" : "venue")}
           >
-            {admin ? "发布活动通知" : "查看可预约场地"}
+            {publishing ? "发布活动通知" : "查看可预约场地"}
             <ArrowUpRight size={17} />
           </button>
         </div>
@@ -128,7 +158,13 @@ export default function Dashboard({
           <div className="card-header">
             <div>
               <h2>
-                {admin ? "待办申请" : user ? "最近的申请" : "预约办理指引"}
+                {admin
+                  ? "待办申请"
+                  : staff
+                    ? "已授权工作"
+                    : user
+                      ? "最近的申请"
+                      : "预约办理指引"}
               </h2>
               <p>
                 {admin
@@ -169,6 +205,10 @@ export default function Dashboard({
                 <MapTrifold size={18} />
               </Button>
             </div>
+          ) : staff && !admin ? (
+            <Empty icon={ShieldCheck} title="按职责处理工作">
+              请从左侧菜单进入已授权业务。需要其他权限时，请联系超级管理员。
+            </Empty>
           ) : loading ? (
             <div className="loading-block">正在加载申请…</div>
           ) : items.length ? (
@@ -229,10 +269,10 @@ export default function Dashboard({
           )}
           <div className="dashboard-notice-footer">
             <Button
-              className={admin ? "primary" : "secondary"}
+              className={publishing ? "primary" : "secondary"}
               onClick={() => onNavigate("notices")}
             >
-              {admin ? "编写并发布公告" : "查看全部公告"}
+              {publishing ? "编写并发布公告" : "查看全部公告"}
               <ArrowUpRight size={17} />
             </Button>
           </div>
@@ -257,7 +297,7 @@ export default function Dashboard({
             <ArrowRight size={18} />
           </button>
         )}
-        {admin && (
+        {can(user, "venue.manage") && (
           <button onClick={() => onNavigate("closures")}>
             <Clock size={25} />
             <span>

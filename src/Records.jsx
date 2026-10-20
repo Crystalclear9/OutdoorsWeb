@@ -8,6 +8,7 @@ import {
   ArrowsClockwise,
 } from "@phosphor-icons/react";
 import { api } from "./api.js";
+import { can } from "./permissions.js";
 import { Empty, ErrorBox, Status, Button } from "./components.jsx";
 import { slotName } from "./utils.js";
 import { BookingDetail } from "./Booking.jsx";
@@ -127,7 +128,7 @@ export default function Records({ user, notify, onChange }) {
                         className="text-button"
                         onClick={() => setSelected(b)}
                       >
-                        {user.role === "admin" && b.status === "待审核"
+                        {can(user, "bookings.review") && b.status === "待审核"
                           ? "审核申请"
                           : "查看详情"}
                         <ArrowUpRight size={16} />

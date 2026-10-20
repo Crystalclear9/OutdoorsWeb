@@ -4,12 +4,15 @@ import path from "node:path";
 
 export function openStore(filename) {
   if (filename !== ":memory:")
-    mkdirSync(path.dirname(path.resolve(filename)), { recursive: true });
+    mkdirSync(path.dirname(path.resolve(filename)), {
+      recursive: true,
+      mode: 0o700,
+    });
   const db = new DatabaseSync(filename);
   db.exec(`
+    PRAGMA busy_timeout=5000;
     PRAGMA journal_mode=WAL;
     PRAGMA foreign_keys=ON;
-    PRAGMA busy_timeout=5000;
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE COLLATE NOCASE,
       password_hash TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('enterprise','admin')),
@@ -48,5 +51,98 @@ export function openStore(filename) {
       key TEXT PRIMARY KEY, attempts INTEGER NOT NULL, reset INTEGER NOT NULL
     );
   `);
+  // Additive, transactional migration of existing databases; never reseed data.
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const columns = (table) =>
+      db
+        .prepare(`PRAGMA table_info(${table})`)
+        .all()
+        .map((c) => c.name);
+    if (!columns("audit").includes("details"))
+      db.exec(
+        "ALTER TABLE audit ADD COLUMN details TEXT NOT NULL DEFAULT '{}'",
+      );
+    if (!columns("users").includes("is_super")) {
+      db.exec(
+        "ALTER TABLE users ADD COLUMN is_super INTEGER NOT NULL DEFAULT 0",
+      );
+      db.exec("UPDATE users SET is_super=1 WHERE role='admin'");
+    }
+    for (const table of ["users", "bookings", "notices"])
+      if (!columns(table).includes("version"))
+        db.exec(
+          `ALTER TABLE ${table} ADD COLUMN version INTEGER NOT NULL DEFAULT 1`,
+        );
+    for (const [name, type] of [
+      ["id", "TEXT NOT NULL DEFAULT ''"],
+      ["created", "INTEGER NOT NULL DEFAULT 0"],
+      ["agent", "TEXT NOT NULL DEFAULT ''"],
+    ])
+      if (!columns("sessions").includes(name))
+        db.exec(`ALTER TABLE sessions ADD COLUMN ${name} ${type}`);
+    db.exec("UPDATE sessions SET id=lower(hex(randomblob(16))) WHERE id=''");
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS closures_dates ON closures(slot,start,end);
+      CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user_id,expires);
+      CREATE UNIQUE INDEX IF NOT EXISTS session_public_id ON sessions(id);
+      CREATE TABLE IF NOT EXISTS user_permissions (
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        permission TEXT NOT NULL, PRIMARY KEY(user_id,permission)
+      );
+      CREATE TABLE IF NOT EXISTS idempotency (
+        user_id TEXT NOT NULL REFERENCES users(id), key TEXT NOT NULL,
+        request_hash TEXT NOT NULL, response TEXT NOT NULL, created INTEGER NOT NULL,
+        PRIMARY KEY(user_id,key)
+      );
+      CREATE TRIGGER IF NOT EXISTS booking_overlap_insert BEFORE INSERT ON bookings
+      WHEN NEW.status='已通过' BEGIN
+        SELECT CASE WHEN EXISTS(SELECT 1 FROM bookings WHERE slot=NEW.slot AND status='已通过' AND start<=NEW.end AND end>=NEW.start)
+          OR EXISTS(SELECT 1 FROM closures WHERE slot=NEW.slot AND start<=NEW.end AND end>=NEW.start)
+          THEN RAISE(ABORT,'SLOT_CONFLICT') END;
+      END;
+      CREATE TRIGGER IF NOT EXISTS booking_overlap_update BEFORE UPDATE OF status,slot,start,end ON bookings
+      WHEN NEW.status='已通过' BEGIN
+        SELECT CASE WHEN EXISTS(SELECT 1 FROM bookings WHERE id<>NEW.id AND slot=NEW.slot AND status='已通过' AND start<=NEW.end AND end>=NEW.start)
+          OR EXISTS(SELECT 1 FROM closures WHERE slot=NEW.slot AND start<=NEW.end AND end>=NEW.start)
+          THEN RAISE(ABORT,'SLOT_CONFLICT') END;
+      END;
+      CREATE TRIGGER IF NOT EXISTS closure_overlap_insert BEFORE INSERT ON closures BEGIN
+        SELECT CASE WHEN EXISTS(SELECT 1 FROM bookings WHERE slot=NEW.slot AND status='已通过' AND start<=NEW.end AND end>=NEW.start)
+          OR EXISTS(SELECT 1 FROM closures WHERE slot=NEW.slot AND start<=NEW.end AND end>=NEW.start)
+          THEN RAISE(ABORT,'SLOT_CONFLICT') END;
+      END;
+      CREATE TRIGGER IF NOT EXISTS closure_overlap_update BEFORE UPDATE ON closures BEGIN
+        SELECT CASE WHEN EXISTS(SELECT 1 FROM bookings WHERE slot=NEW.slot AND status='已通过' AND start<=NEW.end AND end>=NEW.start)
+          OR EXISTS(SELECT 1 FROM closures WHERE id<>NEW.id AND slot=NEW.slot AND start<=NEW.end AND end>=NEW.start)
+          THEN RAISE(ABORT,'SLOT_CONFLICT') END;
+      END;
+      CREATE TRIGGER IF NOT EXISTS booking_duplicate_pending BEFORE INSERT ON bookings
+      WHEN NEW.status='待审核' BEGIN
+        SELECT CASE WHEN EXISTS(SELECT 1 FROM bookings WHERE user_id=NEW.user_id AND slot=NEW.slot AND status='待审核' AND start<=NEW.end AND end>=NEW.start)
+          THEN RAISE(ABORT,'DUPLICATE_PENDING') END;
+      END;
+      CREATE TRIGGER IF NOT EXISTS booking_state_transition BEFORE UPDATE OF status ON bookings
+      WHEN NEW.status<>OLD.status AND (OLD.status<>'待审核' OR NEW.status NOT IN ('已通过','未通过','已撤回'))
+      BEGIN SELECT RAISE(ABORT,'INVALID_BOOKING_STATE'); END;
+      CREATE TRIGGER IF NOT EXISTS booking_immutable_details BEFORE UPDATE OF user_id,slot,start,end ON bookings
+      WHEN NEW.user_id<>OLD.user_id OR NEW.slot<>OLD.slot OR NEW.start<>OLD.start OR NEW.end<>OLD.end
+      BEGIN SELECT RAISE(ABORT,'IMMUTABLE_BOOKING'); END;
+      CREATE TRIGGER IF NOT EXISTS booking_valid_range BEFORE INSERT ON bookings
+      WHEN length(NEW.start)<>10 OR length(NEW.end)<>10 OR date(NEW.start) IS NULL OR date(NEW.end) IS NULL
+        OR date(NEW.start)<>NEW.start OR date(NEW.end)<>NEW.end OR NEW.end<NEW.start OR julianday(NEW.end)-julianday(NEW.start)>2
+      BEGIN SELECT RAISE(ABORT,'INVALID_DATE_RANGE'); END;
+      CREATE TRIGGER IF NOT EXISTS closure_valid_range BEFORE INSERT ON closures
+      WHEN length(NEW.start)<>10 OR length(NEW.end)<>10 OR date(NEW.start) IS NULL OR date(NEW.end) IS NULL
+        OR date(NEW.start)<>NEW.start OR date(NEW.end)<>NEW.end OR NEW.end<NEW.start
+      BEGIN SELECT RAISE(ABORT,'INVALID_DATE_RANGE'); END;
+      PRAGMA user_version=2;
+    `);
+    db.exec("COMMIT");
+  } catch (e) {
+    db.exec("ROLLBACK");
+    db.close();
+    throw e;
+  }
   return db;
 }

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Plus, Megaphone, ArrowUpRight } from "@phosphor-icons/react";
 import { api } from "./api.js";
+import { can } from "./permissions.js";
 import { Button, ErrorBox, Empty, Modal } from "./components.jsx";
 import { formatDate } from "./utils.js";
 
@@ -45,6 +46,7 @@ export default function Notices({ items, user, onSaved, connected }) {
       const form = Object.fromEntries(new FormData(e.currentTarget));
       await api(`/notices${modal.item ? "/" + modal.item.id : ""}`, {
         method: modal.item ? "PATCH" : "POST",
+        headers: modal.item ? { "If-Match": `"${modal.item.version}"` } : {},
         body: { ...form, pinned: form.pinned === "on" },
       });
       setModal(null);
@@ -58,7 +60,10 @@ export default function Notices({ items, user, onSaved, connected }) {
   async function remove() {
     setBusy(true);
     try {
-      await api(`/notices/${modal.item.id}`, { method: "DELETE" });
+      await api(`/notices/${modal.item.id}`, {
+        method: "DELETE",
+        headers: { "If-Match": `"${modal.item.version}"` },
+      });
       setModal(null);
       onSaved("公告已删除");
     } catch (e) {
@@ -69,7 +74,7 @@ export default function Notices({ items, user, onSaved, connected }) {
   }
   return (
     <>
-      {user?.role === "admin" && (
+      {can(user, "notices.manage") && (
         <section className="card notice-composer">
           <div className="card-header">
             <div>
@@ -162,7 +167,7 @@ export default function Notices({ items, user, onSaved, connected }) {
               </p>
               <small>大学生活动中心 · {formatDate(n.updated)}</small>
             </div>
-            {user?.role === "admin" ? (
+            {can(user, "notices.manage") ? (
               <div className="row-actions">
                 <button
                   className="text-button"

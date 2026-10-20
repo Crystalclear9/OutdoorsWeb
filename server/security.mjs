@@ -36,5 +36,8 @@ export const publicUser = (user) =>
         disabled: !!user.disabled,
         mustChangePassword: !!user.must_change,
         created: user.created,
+        version: user.version,
+        isSuperAdmin: user.role === "admin" && !!user.is_super,
+        permissions: user.role === "admin" ? user.permissions || [] : [],
       }
     : null;

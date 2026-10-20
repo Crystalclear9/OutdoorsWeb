@@ -3,6 +3,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY src ./src
+COPY shared ./shared
 COPY scripts ./scripts
 COPY vite.config.js ./
 RUN npm run build
@@ -11,6 +12,7 @@ FROM node:24-bookworm-slim
 ENV NODE_ENV=production PORT=3001 HOST=0.0.0.0 DB_PATH=/app/data/app.sqlite
 WORKDIR /app
 COPY --chown=node:node server ./server
+COPY --chown=node:node shared ./shared
 COPY --chown=node:node --from=build /app/dist ./dist
 COPY --chown=node:node package.json ./
 RUN mkdir -p /app/data && chown node:node /app/data

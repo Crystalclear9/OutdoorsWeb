@@ -5,9 +5,13 @@ import { Button, ErrorBox, PasswordInput } from "./components.jsx";
 export default function ExternalSignup({ proof, onSuccess, onCancel }) {
   const [info, setInfo] = useState(null),
     [error, setError] = useState(""),
+    [expired, setExpired] = useState(false),
     [busy, setBusy] = useState(false);
   useEffect(() => {
     let active = true;
+    setInfo(null);
+    setError("");
+    setExpired(false);
     api("/auth/signup/inspect", { method: "POST", body: { proof } })
       .then((r) => {
         if (active) setInfo(r);
@@ -17,10 +21,19 @@ export default function ExternalSignup({ proof, onSuccess, onCancel }) {
       active = false;
     };
   }, [proof]);
+  useEffect(() => {
+    if (!info) return;
+    const timer = setTimeout(
+      () => setExpired(true),
+      info.validForMs ?? Math.max(0, info.expires - Date.now()),
+    );
+    return () => clearTimeout(timer);
+  }, [info]);
   async function submit(e) {
     e.preventDefault();
     const values = Object.fromEntries(new FormData(e.currentTarget));
     setError("");
+    if (expired) return setError("注册凭据已过期，请重新验证登录方式");
     if (values.password !== values.confirm)
       return setError("两次输入的密码不一致");
     setBusy(true);
@@ -33,6 +46,8 @@ export default function ExternalSignup({ proof, onSuccess, onCancel }) {
       );
     } catch (e) {
       setError(e.message);
+      if (e.status === 400 && e.message.startsWith("注册凭据"))
+        setExpired(true);
     } finally {
       setBusy(false);
     }
@@ -44,12 +59,19 @@ export default function ExternalSignup({ proof, onSuccess, onCancel }) {
         {info
           ? { sms: "手机号", qq: "QQ", wechat: "微信" }[info.provider] +
             "已验证。填写企业资料后即可创建企业账号。"
-          : "正在核实登录凭据…"}
+          : error
+            ? "无法核实登录凭据，请重新验证。"
+            : "正在核实登录凭据…"}
         已有邮箱账号请返回登录，再在账号设置中绑定，避免重复建号。
       </p>
       <ErrorBox>{error}</ErrorBox>
+      {expired && (
+        <ErrorBox>
+          注册凭据已过期，已填写的资料暂时保留，请重新验证登录方式。
+        </ErrorBox>
+      )}
       {info && (
-        <>
+        <fieldset className="signup-fields" disabled={busy || expired}>
           <label>
             登录邮箱
             <input
@@ -111,10 +133,10 @@ export default function ExternalSignup({ proof, onSuccess, onCancel }) {
           <Button className="primary full" loading={busy} type="submit">
             完成资料并进入工作台
           </Button>
-        </>
+        </fieldset>
       )}
       <Button className="secondary full" disabled={busy} onClick={onCancel}>
-        返回账号登录
+        {expired || (!info && error) ? "重新验证登录方式" : "返回账号登录"}
       </Button>
     </form>
   );

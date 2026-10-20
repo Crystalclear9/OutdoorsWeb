@@ -299,7 +299,7 @@ export function AuthPage({
               ? "管理您的布展申请，随时掌握审核进度。"
               : "填写企业信息，账号创建后即可提交申请。"}
           </p>
-          {!signup && (
+          {!signup && !mfa && (
             <div className="auth-switch">
               <button
                 className={mode === "login" ? "selected" : ""}
@@ -323,6 +323,7 @@ export function AuthPage({
           )}
           {signup ? (
             <ExternalSignup
+              key={signup}
               proof={signup}
               onCancel={clearSignup}
               onSuccess={(r) => {

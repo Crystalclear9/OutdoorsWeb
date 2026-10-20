@@ -9,7 +9,7 @@ export function openStore(filename) {
       mode: 0o700,
     });
   const db = new DatabaseSync(filename);
-  if (db.prepare("PRAGMA user_version").get().user_version > 5) {
+  if (db.prepare("PRAGMA user_version").get().user_version > 6) {
     db.close();
     throw new Error("数据库版本高于当前程序，请使用匹配版本，禁止直接降级");
   }
@@ -182,11 +182,15 @@ export function openStore(filename) {
       CREATE TRIGGER IF NOT EXISTS booking_cancel_insert BEFORE INSERT ON bookings
       WHEN NEW.cancelled NOT IN (0,1) OR (NEW.cancelled=1 AND NEW.status<>'已通过')
       BEGIN SELECT RAISE(ABORT,'INVALID_BOOKING_STATE'); END;
-      PRAGMA user_version=5;
+      PRAGMA user_version=6;
     `);
     if (!columns("delivery_jobs").includes("version"))
       db.exec(
         "ALTER TABLE delivery_jobs ADD COLUMN version INTEGER NOT NULL DEFAULT 1",
+      );
+    if (!columns("sms_codes").includes("user_id"))
+      db.exec(
+        "ALTER TABLE sms_codes ADD COLUMN user_id TEXT REFERENCES users(id)",
       );
     db.exec("COMMIT");
   } catch (e) {

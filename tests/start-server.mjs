@@ -20,6 +20,8 @@ app.db
 for (const [proof, provider, subject] of [
   ["c".repeat(64), "wechat", "browser-new-company"],
   ["d".repeat(64), "sms", "13600136000"],
+  ["e".repeat(64), "qq", "browser-slow-session"],
+  ["f".repeat(64), "qq", "browser-expiring-proof"],
 ])
   app.db
     .prepare("INSERT INTO signup_proofs VALUES(?,?,?,?,?)")

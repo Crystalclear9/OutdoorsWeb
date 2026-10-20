@@ -162,7 +162,7 @@ export function integrationRoutes(db, sec, send, captcha, mfa, options = {}) {
         400,
         "手机号或验证用途无效",
       );
-      if (b.purpose === "link") sec.current(req);
+      const owner = b.purpose === "link" ? sec.current(req) : null;
       sec.limit(`sms-ip:${req.clientIp}`, 10, 3600000);
       sec.limit(`sms-phone-minute:${b.phone}`, 1, 60000);
       sec.limit(`sms-phone-day:${b.phone}`, 10, 86400000);
@@ -174,8 +174,14 @@ export function integrationRoutes(db, sec, send, captcha, mfa, options = {}) {
         b.phone,
         `【华中科技大学场地服务】验证码 ${code}，5分钟内有效。请勿向他人提供。`,
       );
+      if (owner)
+        fail(
+          sec.current(req).id !== owner.id,
+          403,
+          "发送期间账号已变化，请重新获取验证码",
+        );
       db.prepare(
-        "INSERT INTO sms_codes(id,phone,binding,answer,purpose,expires) VALUES(?,?,?,?,?,?)",
+        "INSERT INTO sms_codes(id,phone,binding,answer,purpose,expires,user_id) VALUES(?,?,?,?,?,?,?)",
       ).run(
         hashToken(id),
         b.phone,
@@ -183,6 +189,7 @@ export function integrationRoutes(db, sec, send, captcha, mfa, options = {}) {
         hashToken(id + code),
         b.purpose,
         Date.now() + 300000,
+        owner?.id || null,
       );
       send(res, { id, expiresIn: 300 });
       return true;
@@ -211,6 +218,7 @@ export function integrationRoutes(db, sec, send, captcha, mfa, options = {}) {
       db.prepare("UPDATE sms_codes SET attempts=attempts+1 WHERE id=?").run(id);
       if (row.purpose === "link") {
         const user = sec.current(req);
+        fail(row.user_id !== user.id, 403, "验证码不属于当前账号，请重新获取");
         fail(
           typeof b.currentPassword !== "string" ||
             b.currentPassword.length > 128 ||
@@ -220,9 +228,16 @@ export function integrationRoutes(db, sec, send, captcha, mfa, options = {}) {
         );
         sec.write(req, null, (fresh) => {
           fail(fresh.password_hash !== user.password_hash, 409, "密码已变化");
+          const proof = db
+            .prepare("SELECT * FROM sms_codes WHERE id=?")
+            .get(id);
           fail(
-            !db.prepare("SELECT id FROM sms_codes WHERE id=?").get(id) ||
-              row.answer !== hashToken(b.id + b.code),
+            !proof ||
+              proof.expires <= Date.now() ||
+              proof.attempts > 5 ||
+              proof.user_id !== fresh.id ||
+              proof.binding !== hashToken(binding(req)) ||
+              proof.answer !== hashToken(b.id + b.code),
             400,
             "验证码错误或已使用",
           );

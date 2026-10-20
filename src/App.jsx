@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   SquaresFour,
   MapTrifold,
@@ -75,6 +75,7 @@ export default function App() {
     [counts, setCounts] = useState({}),
     [version, setVersion] = useState(0);
   const admin = user?.role === "admin";
+  const sessionGeneration = useRef(0);
   const refresh = () => setVersion((v) => v + 1);
   const notify = (message) => setToast(message);
   const changeZone = (value) => {
@@ -110,17 +111,28 @@ export default function App() {
   }, []);
   useEffect(() => {
     let active = true;
+    const generation = sessionGeneration.current;
     api("/auth/session")
       .then((r) => {
-        if (active) {
+        if (active && generation === sessionGeneration.current) {
           setCsrf(r.csrf);
           setUser(r.user);
           if (r.user?.mustChangePassword || r.user?.mfaRequired)
             setPage("account");
         }
       })
-      .catch((e) => active && setServiceError(e.message))
-      .finally(() => active && setSessionLoading(false));
+      .catch(
+        (e) =>
+          active &&
+          generation === sessionGeneration.current &&
+          setServiceError(e.message),
+      )
+      .finally(
+        () =>
+          active &&
+          generation === sessionGeneration.current &&
+          setSessionLoading(false),
+      );
     return () => {
       active = false;
     };
@@ -150,6 +162,7 @@ export default function App() {
     };
   }, [date, version, page]);
   useEffect(() => {
+    let active = true;
     if (
       user &&
       !user.mustChangePassword &&
@@ -157,9 +170,12 @@ export default function App() {
       (user.role === "enterprise" || can(user, "bookings.review"))
     )
       api("/summary")
-        .then((r) => setCounts(r.counts))
-        .catch((e) => notify(e.message));
+        .then((r) => active && setCounts(r.counts))
+        .catch((e) => active && notify(e.message));
     else setCounts({});
+    return () => {
+      active = false;
+    };
   }, [user, version]);
   useEffect(() => {
     const t = setInterval(refresh, 30000);
@@ -167,6 +183,8 @@ export default function App() {
   }, []);
   useEffect(() => {
     const fn = () => {
+      sessionGeneration.current++;
+      setSessionLoading(false);
       setUser(null);
       setCsrf(null);
       setPage("overview");
@@ -182,6 +200,7 @@ export default function App() {
     return () => clearTimeout(t);
   }, [toast]);
   async function logout() {
+    sessionGeneration.current++;
     try {
       await api("/auth/logout", { method: "POST" });
       setUser(null);
@@ -215,6 +234,8 @@ export default function App() {
     setModal({ type: "booking" });
   }
   function onAuth(u) {
+    sessionGeneration.current++;
+    setSessionLoading(false);
     setExternalSignup(null);
     setOauthMfa(null);
     setUser(u);

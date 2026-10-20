@@ -54,6 +54,7 @@ export function externalRegistration(db, sec, send, binding) {
           provider: old.provider,
           phone: old.provider === "sms" ? old.subject : "",
           expires: old.expires,
+          validForMs: Math.max(0, old.expires - Date.now()),
         });
         return true;
       }

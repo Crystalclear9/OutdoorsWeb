@@ -798,24 +798,34 @@ nav button b {
 }
 .sidebar-support {
   margin-top: auto;
-  padding: 28px 14px;
-}
-.sidebar-support h3 {
-  font-size: 13px;
-  color: #597089;
-}
-.sidebar-support p {
-  font-size: 11px;
-  color: #98a4b1;
-  line-height: 1.9;
-  margin: 8px 0 14px;
+  padding: 16px 4px;
 }
 .sidebar-help-button {
-  width: 36px;
-  height: 36px;
-  margin: 0 0 10px -6px;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 64px;
+  padding: 12px 8px;
   color: #6c87a4;
-  border-radius: 6px;
+  border-radius: 8px;
+  text-align: left;
+}
+.sidebar-help-copy {
+  display: grid;
+  gap: 4px;
+}
+.sidebar-help-copy strong {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: #597089;
+}
+.sidebar-help-copy small {
+  font-size: 11px;
+  line-height: 1.6;
+  color: #7e8d9d;
 }
 .sidebar-help-button:hover {
   color: var(--accent);
@@ -2602,7 +2612,7 @@ tr:hover td {
     padding: 20px;
   }
   .sidebar-support {
-    padding: 20px 13px;
+    padding: 16px 4px;
   }
   .main-shell {
     margin-left: 0;

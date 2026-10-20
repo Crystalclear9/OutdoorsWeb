@@ -265,10 +265,12 @@ export default function App() {
             title="打开使用指南"
             onClick={() => setModal({ type: "help" })}
           >
-            <Question size={24} />
+            <Question size={22} />
+            <span className="sidebar-help-copy">
+              <strong>使用帮助</strong>
+              <small>材料、规则与审核流程</small>
+            </span>
           </button>
-          <h3>使用帮助</h3>
-          <p>了解申报材料、预约规则与审核流程。</p>
         </div>
         <div className="sidebar-account">
           {user ? (

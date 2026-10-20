@@ -28,3 +28,61 @@ test("校园界面使用真实会话，预览参数不能切换身份，字体�
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(help).toBeFocused();
 });
+
+test("真实管理员在手机、平板和桌面均可进入全部功能且页面不横向溢出", async ({
+  page,
+}) => {
+  test.setTimeout(60000);
+  await page.goto("/");
+  await page.getByRole("button", { name: "登录 / 注册" }).click();
+  await page.locator("[name=email]").fill("admin@test.local");
+  await page.locator("[name=password]").fill("BrowserAdmin123!");
+  await page.getByLabel("图片验证码", { exact: true }).fill("246789");
+  await page.getByRole("button", { name: "登录账号", exact: true }).click();
+  await expect(page.locator(".account-link")).toBeVisible();
+  for (const width of [320, 390, 768, 1024, 1280, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const name of [
+      "服务工作台",
+      "场地查询",
+      "企业申报审核",
+      "通知公告",
+      "场地开放安排",
+      "账号管理",
+      "授权管理",
+      "操作日志",
+      "运行维护",
+    ]) {
+      if (width <= 760)
+        await page.getByRole("button", { name: "打开导航" }).click();
+      await page
+        .getByRole("navigation")
+        .getByRole("button", { name, exact: true })
+        .click();
+      await expect(page.locator(".breadcrumb strong")).toHaveText(name);
+      await expect(page.locator(".nav-scrim")).toHaveCount(0);
+      const overflow = await page.evaluate(() => ({
+        viewport: innerWidth,
+        document: document.documentElement.scrollWidth,
+      }));
+      expect(overflow.document, `${width}px / ${name}`).toBeLessThanOrEqual(
+        overflow.viewport,
+      );
+    }
+    await page.locator(".account-link").click();
+    await expect(
+      page.getByRole("heading", { name: "账号安全", exact: true }),
+    ).toBeVisible();
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+      `${width}px / 账号设置`,
+    ).toBeLessThanOrEqual(width);
+  }
+  await page.getByRole("button", { name: "退出登录", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "登录您的账号", exact: true }),
+  ).toBeVisible();
+  expect(
+    (await (await page.request.get("/api/auth/session")).json()).user,
+  ).toBeNull();
+});

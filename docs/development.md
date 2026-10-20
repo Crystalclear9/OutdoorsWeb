@@ -35,7 +35,7 @@ npm run test:visual
 
 PowerShell 使用 `$env:PLAYWRIGHT_CHANNEL="chromium"` 设置环境变量；Linux/macOS 可执行 `PLAYWRIGHT_CHANNEL=chromium npm run test:e2e`。无系统依赖的 Linux 主机可先执行 `npx playwright install --with-deps chromium`。
 
-最近一轮为 57 项后端测试、26 项浏览器测试。新增回归覆盖畸形请求后服务继续运行、密码计算排队上限、跨进程验证次数、注册过期及旧响应覆盖新登录等情况。测试数量会随代码增加，以实际输出为准。
+最近一轮为 57 项后端测试、27 项浏览器测试。新增回归覆盖畸形请求后服务继续运行、密码计算排队上限、跨进程验证次数、注册过期及旧响应覆盖新登录等情况。测试数量会随代码增加，以实际输出为准。
 
 ## 常用命令
 

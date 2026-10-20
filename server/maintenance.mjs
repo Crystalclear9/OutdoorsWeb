@@ -2,6 +2,9 @@ import { fork } from "node:child_process";
 import { statfsSync, statSync } from "node:fs";
 import path from "node:path";
 import { tx } from "./core.mjs";
+import { offsiteConfigured } from "./offsite.mjs";
+import { transportConfigured } from "./integrations.mjs";
+import { randomUUID } from "node:crypto";
 
 const integer = (v, f, min, max) => {
   const n = Number(v ?? f);
@@ -77,6 +80,21 @@ export function createMaintenance(db, dbPath, options = {}) {
   function run(force = false) {
     if (memory) return Promise.resolve({ ok: true, skipped: true });
     if (running) return running;
+    const leaseId = randomUUID();
+    const acquired = tx(db, () => {
+      const lease = state("maintenanceLease");
+      if (lease?.expires > Date.now()) return false;
+      db.prepare(
+        "INSERT INTO maintenance_state VALUES('maintenanceLease',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+      ).run(JSON.stringify({ id: leaseId, expires: Date.now() + 3600000 }));
+      return true;
+    });
+    if (!acquired)
+      return Promise.resolve({
+        ok: true,
+        skipped: true,
+        reason: "另一个服务实例正在维护",
+      });
     running = new Promise((resolve) => {
       const child = fork(
         new URL("./maintenance-worker.mjs", import.meta.url),
@@ -119,6 +137,12 @@ export function createMaintenance(db, dbPath, options = {}) {
         return result;
       })
       .finally(() => {
+        tx(db, () => {
+          if (state("maintenanceLease")?.id === leaseId)
+            db.prepare(
+              "DELETE FROM maintenance_state WHERE key='maintenanceLease'",
+            ).run();
+        });
         running = null;
       });
     return running;
@@ -137,10 +161,13 @@ export function createMaintenance(db, dbPath, options = {}) {
         try {
           const file = path.resolve(config.backupDir, backup.file);
           const info = statSync(file);
+          const keyInfo = statSync(file + ".mfa-key");
           if (
             path.dirname(file) !== config.backupDir ||
             !info.isFile() ||
-            info.size < 100
+            info.size < 100 ||
+            !keyInfo.isFile() ||
+            keyInfo.size !== 32
           )
             throw new Error();
         } catch {
@@ -158,13 +185,24 @@ export function createMaintenance(db, dbPath, options = {}) {
       if (!config.backupHours) warnings.push("自动备份已关闭");
       return {
         health: h,
-        running: !!running,
+        running: !!running || state("maintenanceLease")?.expires > Date.now(),
         maintenance,
         backup,
         backupHours: config.backupHours,
         keep: config.keep,
         minFreeMb: minBytes / 1024 / 1024,
-        localBackupOnly: true,
+        localBackupOnly: !offsiteConfigured(),
+        offsiteConfigured: offsiteConfigured(),
+        offsite: state("offsite"),
+        alertConfigured: !!process.env.ALERT_WEBHOOK_URL,
+        externalAlert: state("externalAlert"),
+        communicationConfigured: transportConfigured(),
+        deliveries: db
+          .prepare(
+            "SELECT state,COUNT(*) count FROM delivery_jobs GROUP BY state",
+          )
+          .all(),
+        archiveCount: db.prepare("SELECT COUNT(*) n FROM archives").get().n,
         warnings,
         pendingOver24: db
           .prepare(

@@ -1,5 +1,6 @@
 const BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 let csrf = null;
+export const apiUrl = (path) => `${BASE}/api${path}`;
 export function setCsrf(value) {
   csrf = value;
 }
@@ -28,7 +29,7 @@ export async function api(path, options = {}) {
     throw new Error("当前站点尚未连接后端。请使用 Docker 完整服务地址访问。");
   const data = await res.json();
   if (!res.ok) {
-    if (res.status === 401 && !["/auth/login", "/auth/register"].includes(path))
+    if (res.status === 401 && !path.startsWith("/auth/"))
       window.dispatchEvent(new Event("session-expired"));
     const error = new Error(data.error || "操作失败，请稍后重试");
     error.status = res.status;

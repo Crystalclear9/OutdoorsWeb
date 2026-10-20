@@ -464,6 +464,12 @@ function ReviewDetail({
             <Status value={item.status} />
             <h2>{item.company}</h2>
             <small className="monospace">{item.id}</small>
+            {item.reschedule_of && (
+              <p className="field-note">
+                改期申请 · 批准后替换原预约 {item.reschedule_of}
+                ，退回时保留原预约。
+              </p>
+            )}
           </div>
           <div>
             <button

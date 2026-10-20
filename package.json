@@ -11,18 +11,25 @@
     "preview": "vite preview --host 127.0.0.1",
     "test": "node --test server/tests/*.test.mjs && playwright test",
     "test:api": "node --test server/tests/*.test.mjs",
+    "test:load": "node scripts/load-test.mjs",
+    "test:visual": "playwright test --config playwright.visual.config.js",
     "test:e2e": "playwright test",
     "backup": "node --env-file-if-exists=.env server/backup.mjs",
+    "restore:encrypted": "node --env-file-if-exists=.env server/restore.mjs",
+    "monitor": "node --env-file-if-exists=.env server/monitor.mjs",
     "admin:recover": "node --env-file-if-exists=.env server/admin.mjs"
   },
   "engines": {
     "node": ">=24.0.0"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1153.0",
     "@phosphor-icons/react": "^2.1.10",
     "@radix-ui/react-dialog": "^1.3.1",
+    "qrcode": "^1.5.4",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "sharp": "^0.35.5"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",

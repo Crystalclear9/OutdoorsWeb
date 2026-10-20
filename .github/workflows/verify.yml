@@ -15,16 +15,21 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm run test:api
+      - run: npm run test:load
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
         env:
           PLAYWRIGHT_CHANNEL: chromium
       - run: docker build -t outdoorsweb:verify .
+      - name: Verify fixed visual baselines in the pinned browser environment
+        run: docker run --rm -v "$PWD:/workspace" -v /workspace/node_modules -w /workspace -e PLAYWRIGHT_CHANNEL=chromium mcr.microsoft.com/playwright:v1.64.1-noble sh -c 'npm ci && npm run test:visual'
       - name: Upload failure diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-failure-diagnostics
-          path: test-results/
+          path: |
+            test-results/
+            tmp/visual-results-*/
           if-no-files-found: ignore
           retention-days: 7

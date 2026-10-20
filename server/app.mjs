@@ -8,6 +8,7 @@ import { hashPassword, passwordValid } from "./security.mjs";
 import { createApi } from "./api.mjs";
 import { createMaintenance } from "./maintenance.mjs";
 import { clientAddress } from "./proxy.mjs";
+import { createDelivery } from "./delivery.mjs";
 import {
   createSecurity,
   fail,
@@ -78,6 +79,8 @@ export async function createApp(options = {}) {
         secureCookies: secure,
         captchaTestAnswer: options.captchaTestAnswer,
         maintenance,
+        dbPath,
+        integrations: options.integrations,
       }),
       security = createSecurity(db, secure);
     const server = createServer(async (req, res) => {
@@ -224,12 +227,19 @@ export async function createApp(options = {}) {
     });
     server.requestTimeout = 30000;
     server.headersTimeout = 15000;
+    const delivery = createDelivery(db, maintenance, {
+      ...options.integrations,
+      scheduled: options.maintenance?.scheduled,
+    });
     maintenance.start();
+    delivery.start();
     return {
       server,
       db,
       maintenance,
+      delivery,
       close: async () => {
+        await delivery.close();
         await maintenance.close();
         await new Promise((resolve) => server.close(resolve));
         db.close();

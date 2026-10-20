@@ -211,6 +211,7 @@ export function BookingForm({ user, slot, date, onClose, onSaved }) {
 }
 
 export function BookingDetail({ item: initial, user, onClose, onSaved }) {
+  const [rescheduling, setRescheduling] = useState(false);
   const [item, setItem] = useState(initial);
   const [cancelling, setCancelling] = useState(false),
     [cancelReason, setCancelReason] = useState(""),
@@ -268,6 +269,83 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
       setBusy("");
     }
   }
+  async function reschedule(e) {
+    e.preventDefault();
+    setBusy("reschedule");
+    setError("");
+    try {
+      await api(`/bookings/${item.id}/reschedule`, {
+        method: "POST",
+        headers: { "If-Match": `"${item.version}"` },
+        body: Object.fromEntries(new FormData(e.currentTarget)),
+      });
+      onSaved("改期申请已提交，原预约继续保留至改期批准");
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy("");
+    }
+  }
+  if (rescheduling)
+    return (
+      <Modal
+        title="申请改期或更换位置"
+        description={`原预约：${item.start} 至 ${item.end} · ${slotName(item.slot)}`}
+        onClose={() => setRescheduling(false)}
+      >
+        <form onSubmit={reschedule}>
+          <div className="info-box">
+            <p>
+              审批前保留原预约。新申请被退回或撤回时，原预约不受影响；批准后自动替换。沿用原企业资料和设计图。
+            </p>
+          </div>
+          <div className="form-columns">
+            <label>
+              新开始日期
+              <input
+                type="date"
+                name="start"
+                min={dateString()}
+                defaultValue={item.start}
+                required
+              />
+            </label>
+            <label>
+              新结束日期
+              <input
+                type="date"
+                name="end"
+                min={dateString()}
+                defaultValue={item.end}
+                required
+              />
+            </label>
+          </div>
+          <label>
+            新桁架位置
+            <select name="slot" defaultValue={item.slot}>
+              {Array.from({ length: 29 }, (_, i) => (
+                <option key={i} value={i + 1}>
+                  {slotName(i + 1)} · {zoneName(i + 1)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <ErrorBox>{error}</ErrorBox>
+          <div className="dialog-actions">
+            <Button
+              className="secondary"
+              onClick={() => setRescheduling(false)}
+            >
+              返回详情
+            </Button>
+            <Button className="primary" loading={!!busy} type="submit">
+              提交改期申请
+            </Button>
+          </div>
+        </form>
+      </Modal>
+    );
   return (
     <Modal
       title={
@@ -282,6 +360,13 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
       <div className="detail-layout">
         <div>
           <Status value={item.status} />
+          {item.reschedule_of && (
+            <div className="info-box">
+              <p>
+                这是改期申请，原预约 {item.reschedule_of} 在本次申请批准前保留。
+              </p>
+            </div>
+          )}
           <h3 className="detail-company">{item.company}</h3>
           <dl className="detail-dl">
             {[
@@ -382,11 +467,19 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
               checked={cancelConfirmed}
               onChange={(e) => setCancelConfirmed(e.target.checked)}
             />
-            确认取消并释放位置；需要改期时，请重新申报。
+            确认取消并释放位置，待审的改期申请也将撤回。
           </label>
         </div>
       )}
       <div className="dialog-actions">
+        {user.role === "enterprise" &&
+          item.status === "已通过" &&
+          item.start >= dateString() &&
+          !cancelling && (
+            <Button className="secondary" onClick={() => setRescheduling(true)}>
+              申请改期 / 换位
+            </Button>
+          )}
         {item.status === "已通过" &&
           item.end >= dateString() &&
           (can(user, "bookings.review") ||

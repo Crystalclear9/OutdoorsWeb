@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { hashToken, randomToken, publicUser } from "./security.mjs";
 import { PERMISSION_KEYS, can } from "../shared/permissions.js";
+import sharp from "sharp";
+let imageDecoders = 0;
+const imageQueue = [];
 
 export class HttpError extends Error {
   constructor(status, message) {
@@ -105,6 +108,9 @@ export function createSecurity(db, secure) {
     u
       ? {
           ...u,
+          mfa_enabled: !!db
+            .prepare("SELECT enabled FROM mfa WHERE user_id=?")
+            .get(u.id)?.enabled,
           permissions:
             u.role === "admin"
               ? u.is_super
@@ -137,6 +143,21 @@ export function createSecurity(db, secure) {
   function current(req, permission) {
     const u = session(req);
     fail(!u, 401, "登录已失效，请重新登录");
+    const requestPath = new URL(req.url, "http://localhost").pathname;
+    fail(
+      u.role === "admin" &&
+        process.env.REQUIRE_ADMIN_MFA === "true" &&
+        !u.mfa_enabled &&
+        !requestPath.startsWith("/api/auth/mfa") &&
+        ![
+          "/api/auth/logout",
+          "/api/auth/password",
+          "/api/auth/sessions",
+          "/api/auth/logout-others",
+        ].includes(requestPath),
+      403,
+      "请先在账号设置中开启两步验证",
+    );
     if (!["GET", "HEAD", "OPTIONS"].includes(req.method))
       fail(
         req.headers["x-csrf-token"] !== u.csrf,
@@ -206,7 +227,7 @@ export function createSecurity(db, secure) {
   }
   return { session, current, present, start, cookie, audit, write, limit };
 }
-export function decodeImage(value) {
+export async function decodeImage(value) {
   const m =
     typeof value === "string" &&
     value.match(
@@ -229,7 +250,38 @@ export function decodeImage(value) {
         : image.toString("ascii", 0, 4) === "RIFF" &&
           image.toString("ascii", 8, 12) === "WEBP";
   fail(!valid, 400, "图片内容与文件格式不匹配");
-  return { image, type: m[1] };
+  if (imageDecoders >= 2) {
+    fail(imageQueue.length >= 16, 503, "图片处理繁忙，请稍后重试");
+    await new Promise((resolve) => imageQueue.push(resolve));
+  } else imageDecoders++;
+  try {
+    const decoder = sharp(image, {
+      failOn: "warning",
+      limitInputPixels: 20000000,
+    });
+    const metadata = await decoder.metadata();
+    fail(
+      (metadata.pages || 1) !== 1 ||
+        metadata.width > 10000 ||
+        metadata.height > 10000,
+      400,
+      "图片须为静态图片，最长边不超过 10000 像素",
+    );
+    // Decode every pixel, remove metadata and re-encode before persisting untrusted input.
+    const decoded = await decoder.rotate().webp({ lossless: true }).toBuffer();
+    fail(decoded.length > 6 * 1024 * 1024, 400, "图片解码后过大，请降低分辨率");
+    return { image: decoded, type: "image/webp" };
+  } catch (e) {
+    if (e instanceof HttpError) throw e;
+    throw new HttpError(
+      400,
+      "图片损坏、无法完整解码或超过 2000 万像素，请重新导出后上传",
+    );
+  } finally {
+    const next = imageQueue.shift();
+    if (next) next();
+    else imageDecoders--;
+  }
 }
 export function databaseError(error) {
   const text = String(error);

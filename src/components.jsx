@@ -13,6 +13,8 @@ import {
 } from "@phosphor-icons/react";
 import { api, setCsrf } from "./api.js";
 import Sessions from "./Sessions.jsx";
+import Mfa from "./Mfa.jsx";
+import Identity, { LoginExtras } from "./Identity.jsx";
 
 export function Button({ children, loading, className = "", ...props }) {
   return (
@@ -154,7 +156,13 @@ export function Brand() {
   );
 }
 
-export function AuthPage({ initialMode = "login", onSuccess, onBack }) {
+export function AuthPage({
+  initialMode = "login",
+  initialMfa = null,
+  onSuccess,
+  onBack,
+}) {
+  const [mfa, setMfa] = useState(initialMfa);
   const [mode, setMode] = useState(initialMode),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -190,11 +198,35 @@ export function AuthPage({ initialMode = "login", onSuccess, onBack }) {
         method: "POST",
         body: { ...b, captchaId: challenge?.id, captcha: code },
       });
+      if (result.mfaRequired) {
+        setMfa(result.challenge);
+        return;
+      }
       setCsrf(result.csrf);
       onSuccess(result.user);
     } catch (e) {
       setError(e.message);
       await refreshCaptcha();
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function verifyMfa(e) {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const result = await api("/auth/mfa/login", {
+        method: "POST",
+        body: {
+          challenge: mfa,
+          code: new FormData(e.currentTarget).get("code"),
+        },
+      });
+      setCsrf(result.csrf);
+      onSuccess(result.user);
+    } catch (e) {
+      setError(e.message);
     } finally {
       setBusy(false);
     }
@@ -269,123 +301,164 @@ export function AuthPage({ initialMode = "login", onSuccess, onBack }) {
               企业注册
             </button>
           </div>
-          <form onSubmit={submit} key={mode}>
-            <label>
-              邮箱地址
-              <input
-                type="email"
-                name="email"
-                required
-                maxLength={254}
-                placeholder="name@company.com"
-                autoComplete="username"
-              />
-            </label>
-            {mode === "register" && (
-              <>
-                <label>
-                  企业名称
-                  <input
-                    name="company"
-                    required
-                    maxLength={80}
-                    placeholder="请输入企业完整名称"
-                    autoComplete="organization"
-                  />
-                </label>
-                <div className="form-columns">
-                  <label>
-                    联系人
-                    <input
-                      name="contact"
-                      required
-                      maxLength={30}
-                      placeholder="您的姓名"
-                      autoComplete="name"
-                    />
-                  </label>
-                  <label>
-                    联系电话
-                    <input
-                      name="phone"
-                      type="tel"
-                      required
-                      pattern="1[0-9]{10}"
-                      maxLength={11}
-                      placeholder="11 位手机号"
-                      autoComplete="tel"
-                    />
-                  </label>
-                </div>
-              </>
-            )}
-            <PasswordInput
-              label={mode === "register" ? "设置密码" : "密码"}
-              minLength={mode === "login" ? 1 : 10}
-              autoComplete={
-                mode === "login" ? "current-password" : "new-password"
-              }
-              placeholder={
-                mode === "login" ? "请输入密码" : "至少 10 位，包含字母和数字"
-              }
-            />
-            {mode === "register" && (
-              <PasswordInput
-                label="确认密码"
-                name="confirm"
-                placeholder="再次输入密码"
-              />
-            )}
-            <div className="captcha-field">
-              <label htmlFor="auth-captcha">图片验证码</label>
-              <div className="captcha-row">
+          {mfa ? (
+            <form onSubmit={verifyMfa}>
+              <h3>验证您的身份</h3>
+              <p>输入验证器中的动态验证码，或使用已保存的恢复码。</p>
+              <label>
+                动态验证码或恢复码
                 <input
-                  id="auth-captcha"
-                  name="captcha"
-                  value={code}
+                  name="code"
                   required
-                  maxLength={6}
-                  minLength={6}
-                  autoComplete="off"
-                  autoCapitalize="characters"
-                  spellCheck={false}
-                  placeholder="请输入 6 位数字"
-                  inputMode="numeric"
-                  pattern="[0-9]{6}"
-                  onChange={(e) => setCode(e.target.value.toUpperCase())}
-                  disabled={busy || captchaBusy}
+                  autoComplete="one-time-code"
+                  maxLength={32}
+                  autoFocus
                 />
-                <button
-                  type="button"
-                  className="captcha-image"
-                  aria-label="刷新图片验证码"
-                  disabled={busy || captchaBusy}
-                  onClick={refreshCaptcha}
-                >
-                  {challenge ? (
-                    <img
-                      src={challenge.image}
-                      alt="图片验证码，请输入图中六位数字"
+              </label>
+              <ErrorBox>{error}</ErrorBox>
+              <Button className="primary full" loading={busy} type="submit">
+                完成两步验证
+              </Button>
+              <Button
+                className="secondary full"
+                onClick={() => {
+                  setMfa(null);
+                  refreshCaptcha();
+                }}
+              >
+                返回重新登录
+              </Button>
+            </form>
+          ) : (
+            <form onSubmit={submit} key={mode}>
+              <label>
+                邮箱地址
+                <input
+                  type="email"
+                  name="email"
+                  required
+                  maxLength={254}
+                  placeholder="name@company.com"
+                  autoComplete="username"
+                />
+              </label>
+              {mode === "register" && (
+                <>
+                  <label>
+                    企业名称
+                    <input
+                      name="company"
+                      required
+                      maxLength={80}
+                      placeholder="请输入企业完整名称"
+                      autoComplete="organization"
                     />
-                  ) : (
-                    <span>{captchaBusy ? "正在生成…" : "点击重试"}</span>
-                  )}
-                </button>
+                  </label>
+                  <div className="form-columns">
+                    <label>
+                      联系人
+                      <input
+                        name="contact"
+                        required
+                        maxLength={30}
+                        placeholder="您的姓名"
+                        autoComplete="name"
+                      />
+                    </label>
+                    <label>
+                      联系电话
+                      <input
+                        name="phone"
+                        type="tel"
+                        required
+                        pattern="1[0-9]{10}"
+                        maxLength={11}
+                        placeholder="11 位手机号"
+                        autoComplete="tel"
+                      />
+                    </label>
+                  </div>
+                </>
+              )}
+              <PasswordInput
+                label={mode === "register" ? "设置密码" : "密码"}
+                minLength={mode === "login" ? 1 : 10}
+                autoComplete={
+                  mode === "login" ? "current-password" : "new-password"
+                }
+                placeholder={
+                  mode === "login" ? "请输入密码" : "至少 10 位，包含字母和数字"
+                }
+              />
+              {mode === "register" && (
+                <PasswordInput
+                  label="确认密码"
+                  name="confirm"
+                  placeholder="再次输入密码"
+                />
+              )}
+              <div className="captcha-field">
+                <label htmlFor="auth-captcha">图片验证码</label>
+                <div className="captcha-row">
+                  <input
+                    id="auth-captcha"
+                    name="captcha"
+                    value={code}
+                    required
+                    maxLength={6}
+                    minLength={6}
+                    autoComplete="off"
+                    autoCapitalize="characters"
+                    spellCheck={false}
+                    placeholder="请输入 6 位数字"
+                    inputMode="numeric"
+                    pattern="[0-9]{6}"
+                    onChange={(e) => setCode(e.target.value.toUpperCase())}
+                    disabled={busy || captchaBusy}
+                  />
+                  <button
+                    type="button"
+                    className="captcha-image"
+                    aria-label="刷新图片验证码"
+                    disabled={busy || captchaBusy}
+                    onClick={refreshCaptcha}
+                  >
+                    {challenge ? (
+                      <img
+                        src={challenge.image}
+                        alt="图片验证码，请输入图中六位数字"
+                      />
+                    ) : (
+                      <span>{captchaBusy ? "正在生成…" : "点击重试"}</span>
+                    )}
+                  </button>
+                </div>
+                <small>点击图片换一张 · 5 分钟有效</small>
+                <ErrorBox>{captchaError}</ErrorBox>
               </div>
-              <small>点击图片换一张 · 5 分钟有效</small>
-              <ErrorBox>{captchaError}</ErrorBox>
-            </div>
-            <ErrorBox>{error}</ErrorBox>
-            <Button
-              className="primary full"
-              loading={busy}
-              disabled={!challenge || captchaBusy}
-              type="submit"
-            >
-              {mode === "login" ? "登录账号" : "创建账号"}
-              <ArrowRight size={19} />
-            </Button>
-          </form>
+              <ErrorBox>{error}</ErrorBox>
+              <Button
+                className="primary full"
+                loading={busy}
+                disabled={!challenge || captchaBusy}
+                type="submit"
+              >
+                {mode === "login" ? "登录账号" : "创建账号"}
+                <ArrowRight size={19} />
+              </Button>
+            </form>
+          )}
+          {mode === "login" && !mfa && (
+            <LoginExtras
+              onResult={(r) => {
+                if (r.mfaRequired) setMfa(r.challenge);
+                else {
+                  setCsrf(r.csrf);
+                  onSuccess(r.user);
+                }
+              }}
+            />
+          )}
           {mode === "login" ? (
             <p className="auth-note">
               忘记密码？请联系大学生活动中心管理员核验身份并重置。
@@ -463,6 +536,20 @@ export function AccountPage({ user, onUser, onLogout, notify }) {
       </section>
       <div className="account-forms">
         {!user.mustChangePassword && <Sessions notify={notify} />}
+        {user.mfaRequired && (
+          <ErrorBox>
+            管理员账号须先开启两步验证，完成后即可使用业务功能。
+          </ErrorBox>
+        )}
+        {!user.mustChangePassword && (
+          <Mfa
+            notify={notify}
+            onChanged={() => api("/auth/session").then((r) => onUser(r.user))}
+          />
+        )}
+        {!user.mustChangePassword && !user.mfaRequired && (
+          <Identity notify={notify} />
+        )}
         {user.mustChangePassword && (
           <ErrorBox>
             您正在使用临时密码，请先设置新密码，再继续使用业务功能。

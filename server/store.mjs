@@ -9,7 +9,7 @@ export function openStore(filename) {
       mode: 0o700,
     });
   const db = new DatabaseSync(filename);
-  if (db.prepare("PRAGMA user_version").get().user_version > 3) {
+  if (db.prepare("PRAGMA user_version").get().user_version > 4) {
     db.close();
     throw new Error("数据库版本高于当前程序，请使用匹配版本，禁止直接降级");
   }
@@ -71,6 +71,7 @@ export function openStore(filename) {
         .all()
         .map((c) => c.name);
     for (const [name, type] of [
+      ["reschedule_of", "TEXT REFERENCES bookings(id)"],
       ["cancelled", "INTEGER NOT NULL DEFAULT 0"],
       ["cancel_reason", "TEXT NOT NULL DEFAULT ''"],
       ["cancelled_at", "TEXT"],
@@ -116,6 +117,19 @@ export function openStore(filename) {
         request_hash TEXT NOT NULL, response TEXT NOT NULL, created INTEGER NOT NULL,
         PRIMARY KEY(user_id,key)
       );
+      CREATE UNIQUE INDEX IF NOT EXISTS pending_reschedule ON bookings(reschedule_of) WHERE reschedule_of IS NOT NULL AND status='待审核';
+      CREATE TABLE IF NOT EXISTS onsite(date TEXT NOT NULL,slot INTEGER NOT NULL CHECK(slot BETWEEN 1 AND 29),present INTEGER NOT NULL CHECK(present IN (0,1)),note TEXT NOT NULL,actor TEXT NOT NULL REFERENCES users(id),updated TEXT NOT NULL,version INTEGER NOT NULL,PRIMARY KEY(date,slot));
+      CREATE TABLE IF NOT EXISTS mfa(user_id TEXT PRIMARY KEY REFERENCES users(id),secret TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 0,last_counter INTEGER NOT NULL DEFAULT -1,recovery TEXT NOT NULL DEFAULT '[]');
+      CREATE TABLE IF NOT EXISTS auth_challenges(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),kind TEXT NOT NULL,payload TEXT NOT NULL,expires INTEGER NOT NULL,attempts INTEGER NOT NULL DEFAULT 0);
+      CREATE TABLE IF NOT EXISTS external_identities(provider TEXT NOT NULL,subject TEXT NOT NULL,user_id TEXT NOT NULL REFERENCES users(id),PRIMARY KEY(provider,subject));
+      CREATE UNIQUE INDEX IF NOT EXISTS identity_per_user ON external_identities(provider,user_id);
+      CREATE TABLE IF NOT EXISTS oauth_states(id TEXT PRIMARY KEY,provider TEXT NOT NULL,user_id TEXT REFERENCES users(id),binding TEXT NOT NULL,expires INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS sms_codes(id TEXT PRIMARY KEY,phone TEXT NOT NULL,binding TEXT NOT NULL,answer TEXT NOT NULL,purpose TEXT NOT NULL,expires INTEGER NOT NULL,attempts INTEGER NOT NULL DEFAULT 0);
+      CREATE TABLE IF NOT EXISTS verified_phones(phone TEXT PRIMARY KEY,user_id TEXT NOT NULL UNIQUE REFERENCES users(id));
+      CREATE TABLE IF NOT EXISTS contact_preferences(user_id TEXT PRIMARY KEY REFERENCES users(id),sms INTEGER NOT NULL DEFAULT 0,voice INTEGER NOT NULL DEFAULT 0);
+      CREATE TABLE IF NOT EXISTS delivery_jobs(id TEXT PRIMARY KEY,kind TEXT NOT NULL,payload TEXT NOT NULL,state TEXT NOT NULL DEFAULT 'pending',attempts INTEGER NOT NULL DEFAULT 0,next_at INTEGER NOT NULL,last_error TEXT NOT NULL DEFAULT '',created TEXT NOT NULL,delivered TEXT);
+      CREATE INDEX IF NOT EXISTS delivery_due ON delivery_jobs(state,next_at);
+      CREATE TABLE IF NOT EXISTS archives(id TEXT PRIMARY KEY,kind TEXT NOT NULL,created TEXT NOT NULL,cutoff TEXT NOT NULL,records INTEGER NOT NULL,bytes INTEGER NOT NULL,sha256 TEXT NOT NULL,content BLOB NOT NULL);
       CREATE TRIGGER IF NOT EXISTS booking_overlap_insert BEFORE INSERT ON bookings
       WHEN NEW.status='已通过' AND NEW.cancelled=0 BEGIN
         SELECT CASE WHEN EXISTS(SELECT 1 FROM bookings WHERE slot=NEW.slot AND status='已通过' AND cancelled=0 AND start<=NEW.end AND end>=NEW.start)
@@ -163,8 +177,12 @@ export function openStore(filename) {
       CREATE TRIGGER IF NOT EXISTS booking_cancel_insert BEFORE INSERT ON bookings
       WHEN NEW.cancelled NOT IN (0,1) OR (NEW.cancelled=1 AND NEW.status<>'已通过')
       BEGIN SELECT RAISE(ABORT,'INVALID_BOOKING_STATE'); END;
-      PRAGMA user_version=3;
+      PRAGMA user_version=4;
     `);
+    if (!columns("delivery_jobs").includes("version"))
+      db.exec(
+        "ALTER TABLE delivery_jobs ADD COLUMN version INTEGER NOT NULL DEFAULT 1",
+      );
     db.exec("COMMIT");
   } catch (e) {
     db.exec("ROLLBACK");

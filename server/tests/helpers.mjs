@@ -9,7 +9,7 @@ export const TODAY = () =>
     day: "2-digit",
   }).format(new Date());
 export const IMAGE =
-  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=";
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEUlEQVQImWNw6Uhz6UhjgFAAIP4Eydx3XHYAAAAASUVORK5CYII=";
 export const booking = (extra = {}) => ({
   company: "并发测试企业",
   contact: "张老师",
@@ -61,12 +61,13 @@ export function client(origin) {
     },
   };
 }
-export async function fixture(t, dbPath = ":memory:") {
+export async function fixture(t, dbPath = ":memory:", options = {}) {
   const app = await createApp({
     dbPath,
     admin: ADMIN,
     captchaTestAnswer: "246789",
     maintenance: { scheduled: false },
+    ...options,
   });
   await new Promise((r) => app.server.listen(0, "127.0.0.1", r));
   const origin = `http://127.0.0.1:${app.server.address().port}`;

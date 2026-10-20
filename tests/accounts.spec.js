@@ -5,7 +5,7 @@ const design = {
   name: "design.png",
   mimeType: "image/png",
   buffer: Buffer.from(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=",
+    "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEUlEQVQImWNw6Uhz6UhjgFAAIP4Eydx3XHYAAAAASUVORK5CYII=",
     "base64",
   ),
 };
@@ -125,7 +125,11 @@ test("企业资料修改与密码更新后会话失效", async ({ page }) => {
   await expect(page.locator(".account-profile h2")).toHaveText(
     "已更新企业资料",
   );
-  await page.locator("[name=currentPassword]").fill(password);
+  await page
+    .locator("form")
+    .filter({ has: page.locator("[name=newPassword]") })
+    .locator("[name=currentPassword]")
+    .fill(password);
   await page.locator("[name=newPassword]").fill("UpdatedAccountPassword456");
   await page.locator("[name=confirm]").fill("UpdatedAccountPassword456");
   await page.getByRole("button", { name: "更新密码" }).click();
@@ -911,7 +915,14 @@ test("超级管理员从运行维护界面执行备份，日志支持检索和�
     .getByRole("button", { name: "操作日志", exact: true })
     .click();
   await page.getByLabel("搜索操作日志").fill("maintenance.requested");
-  await expect(page.locator("tbody")).toContainText("手动启动备份与清理");
+  await expect(
+    page
+      .locator(".card")
+      .filter({
+        has: page.getByRole("heading", { name: "操作日志", exact: true }),
+      })
+      .locator("tbody"),
+  ).toContainText("手动启动备份与清理");
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "导出本页" }).click();
   expect((await download).suggestedFilename()).toContain("审计日志");

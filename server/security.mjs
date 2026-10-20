@@ -38,6 +38,10 @@ export const publicUser = (user) =>
         created: user.created,
         version: user.version,
         isSuperAdmin: user.role === "admin" && !!user.is_super,
+        mfaRequired:
+          user.role === "admin" &&
+          process.env.REQUIRE_ADMIN_MFA === "true" &&
+          !user.mfa_enabled,
         permissions: user.role === "admin" ? user.permissions || [] : [],
       }
     : null;

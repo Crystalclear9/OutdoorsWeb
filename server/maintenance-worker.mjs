@@ -1,8 +1,20 @@
 import { DatabaseSync } from "node:sqlite";
-import { mkdir, readdir, unlink, statfs, rename, stat } from "node:fs/promises";
+import {
+  mkdir,
+  readdir,
+  unlink,
+  statfs,
+  rename,
+  stat,
+  readFile,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { today as businessDay } from "./core.mjs";
+import { archiveHistory } from "./business.mjs";
+import { offsiteConfigured, uploadOffsite } from "./offsite.mjs";
+import { alertExternal } from "./delivery.mjs";
 
 const config = JSON.parse(process.argv[2]),
   db = new DatabaseSync(config.dbPath);
@@ -75,6 +87,13 @@ try {
     throw e;
   }
   let last = null;
+  const archived = archiveHistory(
+    db,
+    Number(process.env.ARCHIVE_AFTER_DAYS || 365),
+  );
+  db.prepare("DELETE FROM auth_challenges WHERE expires<?").run(at);
+  db.prepare("DELETE FROM oauth_states WHERE expires<?").run(at);
+  db.prepare("DELETE FROM sms_codes WHERE expires<?").run(at);
   try {
     last = JSON.parse(
       db.prepare("SELECT value FROM maintenance_state WHERE key='backup'").get()
@@ -86,7 +105,12 @@ try {
     const file = path.resolve(config.backupDir, last.file);
     if (path.dirname(file) === path.resolve(config.backupDir))
       lastAvailable = await stat(file)
-        .then((s) => s.isFile() && s.size >= 100)
+        .then(
+          async (s) =>
+            s.isFile() &&
+            s.size >= 100 &&
+            (await stat(file + ".mfa-key")).size === 32,
+        )
         .catch(() => false);
   }
   let backup = last;
@@ -122,6 +146,10 @@ try {
     }
     await rename(partial, target);
     partial = null;
+    const mfaKey = process.env.APP_ENCRYPTION_KEY
+      ? Buffer.from(process.env.APP_ENCRYPTION_KEY, "hex")
+      : await readFile(path.join(path.dirname(config.dbPath), ".mfa-key"));
+    await writeFile(target + ".mfa-key", mfaKey, { flag: "wx", mode: 0o600 });
     backup = { at: new Date().toISOString(), file };
     save("backup", backup);
     const files = (await readdir(config.backupDir, { withFileTypes: true }))
@@ -131,13 +159,22 @@ try {
       .reverse();
     for (const name of files.slice(config.keep)) {
       const target = path.resolve(config.backupDir, name);
-      if (path.dirname(target) === path.resolve(config.backupDir))
+      if (path.dirname(target) === path.resolve(config.backupDir)) {
         await unlink(target);
+        await unlink(target + ".mfa-key").catch((e) => {
+          if (e.code !== "ENOENT") throw e;
+        });
+      }
     }
     for (const entry of await readdir(config.backupDir, {
       withFileTypes: true,
     }))
-      if (entry.isFile() && /^auto-\d{4}-.*\.sqlite\.part$/.test(entry.name)) {
+      if (
+        entry.isFile() &&
+        /^auto-\d{4}-.*\.sqlite(?:\.[a-f0-9-]+\.encrypted)?\.part$/.test(
+          entry.name,
+        )
+      ) {
         const target = path.resolve(config.backupDir, entry.name);
         if (
           path.dirname(target) === path.resolve(config.backupDir) &&
@@ -146,12 +183,38 @@ try {
           await unlink(target);
       }
   }
+  if (offsiteConfigured() && backup?.file) {
+    const old = JSON.parse(
+      db
+        .prepare("SELECT value FROM maintenance_state WHERE key='offsite'")
+        .get()?.value || "null",
+    );
+    if (!old?.verified || old.file !== backup.file) {
+      try {
+        save("offsite", {
+          ...(await uploadOffsite(
+            path.resolve(config.backupDir, backup.file),
+            config.dbPath,
+          )),
+          file: backup.file,
+        });
+      } catch (e) {
+        save("offsite", {
+          at: new Date().toISOString(),
+          verified: false,
+          error: e.message,
+        });
+        throw e;
+      }
+    }
+  }
   const disk = await statfs(path.dirname(config.dbPath)),
     freeBytes = Number(disk.bavail) * Number(disk.bsize);
   const result = {
     ok: true,
     at: new Date().toISOString(),
     removed,
+    archived,
     backup,
     freeBytes,
   };
@@ -166,6 +229,11 @@ try {
   };
   try {
     save("maintenance", result);
+    await alertExternal(
+      db,
+      "maintenance.failed",
+      "维护、备份或异机复制失败，请检查运行与维护页面",
+    );
   } catch {}
   process.send?.(result);
   process.exitCode = 1;

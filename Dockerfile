@@ -11,6 +11,8 @@ RUN npm run build
 FROM node:24-bookworm-slim
 ENV NODE_ENV=production PORT=3001 HOST=0.0.0.0 DB_PATH=/app/data/app.sqlite
 WORKDIR /app
+COPY package*.json ./
+RUN npm ci --omit=dev && npm cache clean --force
 COPY --chown=node:node server ./server
 COPY --chown=node:node shared ./shared
 COPY --chown=node:node --from=build /app/dist ./dist

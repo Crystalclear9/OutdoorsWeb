@@ -81,6 +81,53 @@ export default function Operations({ notify }) {
               <strong>{data.pendingOver24} 条</strong>
               <small>提交超过 24 小时仍待审核</small>
             </div>
+            <div>
+              <span>异机加密备份</span>
+              <strong>
+                {data.offsiteConfigured
+                  ? data.offsite?.verified
+                    ? "复制并校验成功"
+                    : "等待成功复制"
+                  : "尚未配置"}
+              </strong>
+              <small>
+                {data.offsite?.at ? format(data.offsite.at) : "S3 兼容对象存储"}
+              </small>
+            </div>
+            <div>
+              <span>外部故障告警</span>
+              <strong>
+                {data.alertConfigured
+                  ? data.externalAlert?.ok === false
+                    ? "告警发送失败"
+                    : "已配置"
+                  : "尚未配置"}
+              </strong>
+              <small>
+                {data.externalAlert?.at
+                  ? format(data.externalAlert.at)
+                  : "数据库、磁盘、备份、通知队列异常"}
+              </small>
+            </div>
+            <div>
+              <span>短信与电话通知</span>
+              <strong>
+                {data.communicationConfigured ? "已配置服务商" : "尚未配置"}
+              </strong>
+              <small>
+                {data.deliveries
+                  .map(
+                    (r) =>
+                      `${{ pending: "待发送", sending: "发送中", accepted: "服务商已受理", failed: "失败", uncertain: "需核实", cancelled: "已取消" }[r.state] || r.state} ${r.count}`,
+                  )
+                  .join(" · ") || "暂无外发任务"}
+              </small>
+            </div>
+            <div>
+              <span>历史资料归档</span>
+              <strong>{data.archiveCount} 份</strong>
+              <small>随数据库一起备份，设计图仍按原权限访问</small>
+            </div>
           </div>
           {data.warnings.map((w) => (
             <ErrorBox key={w}>{w}</ErrorBox>
@@ -110,9 +157,16 @@ export default function Operations({ notify }) {
               </p>
             )}
             <p>
-              自动清理不删除预约、设计图、账号或审计日志。默认备份位于同一数据卷，请定期复制到另一台设备；本机备份不能覆盖整机损坏的风险。
+              自动清理保留预约与账号；超过保留期的设计图和审计日志完整归档，随数据库备份。默认保留
+              365 天热数据，每次分批处理以减少审批阻塞。
             </p>
-            <p>外部告警与异机备份需要运维配置，当前页面不会代替外部监控。</p>
+            {data.offsite?.error && <ErrorBox>{data.offsite.error}</ErrorBox>}
+            {data.externalAlert?.error && (
+              <ErrorBox>{data.externalAlert.error}</ErrorBox>
+            )}
+            <p>
+              服务商受理不等于用户已收到。标记“需核实”的电话任务请先在服务商后台确认；系统不会自动重复拨打。网站进程停止时，需由独立监控服务探测健康检查地址。
+            </p>
           </div>
         </>
       )}

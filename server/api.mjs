@@ -8,6 +8,9 @@ import {
 } from "./security.mjs";
 import { PERMISSION_KEYS, can } from "../shared/permissions.js";
 import { createCaptcha } from "./captcha.mjs";
+import { businessRoutes, archivedImage } from "./business.mjs";
+import { createMfa } from "./mfa.mjs";
+import { integrationRoutes, enqueueResult } from "./integrations.mjs";
 import {
   createSecurity,
   HttpError,
@@ -51,18 +54,23 @@ export async function createApi(db, options = {}) {
     v.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
   const userById = (id) => db.prepare("SELECT * FROM users WHERE id=?").get(id);
   const bookingColumns =
-    "id,user_id,company,contact,phone,start,end,slot,status,reason,created,reviewed,version,cancelled,cancel_reason,cancelled_at";
+    "id,user_id,company,contact,phone,start,end,slot,status,reason,created,reviewed,version,cancelled,cancel_reason,cancelled_at,reschedule_of";
   const bookingById = (id) =>
     db.prepare(`SELECT ${bookingColumns} FROM bookings WHERE id=?`).get(id);
   const reviewCheck = (row) => {
     const blockers = [];
+    if (row.reschedule_of) {
+      const original = bookingById(row.reschedule_of);
+      if (!original || original.cancelled || original.start < today())
+        blockers.push("原预约已失效或已开始");
+    }
     if (row.start < today()) blockers.push("申请日期已过期");
     if (
       db
         .prepare(
-          "SELECT id FROM bookings WHERE id<>? AND slot=? AND status='已通过' AND cancelled=0 AND start<=? AND end>=?",
+          "SELECT id FROM bookings WHERE id<>? AND id<>COALESCE(?, '') AND slot=? AND status='已通过' AND cancelled=0 AND start<=? AND end>=?",
         )
-        .get(row.id, row.slot, row.end, row.start)
+        .get(row.id, row.reschedule_of, row.slot, row.end, row.start)
     )
       blockers.push("与已通过预约冲突");
     if (
@@ -94,6 +102,23 @@ export async function createApi(db, options = {}) {
       if (result === "已通过") {
         const checks = reviewCheck(row);
         fail(checks.blockers.length, 409, checks.blockers.join("；"));
+        if (row.reschedule_of) {
+          const original = bookingById(row.reschedule_of);
+          fail(
+            !original ||
+              original.status !== "已通过" ||
+              original.cancelled ||
+              original.start < today(),
+            409,
+            "原预约已失效或已开始，无法改期",
+          );
+          db.prepare(
+            "UPDATE bookings SET cancelled=1,cancel_reason=?,cancelled_at=?,version=version+1 WHERE id=?",
+          ).run(`改期至 ${row.id}`, now(), original.id);
+          audit(fresh.id, "booking.rescheduled", original.id, {
+            replacement: row.id,
+          });
+        }
       }
       db.prepare(
         "UPDATE bookings SET status=?,reason=?,reviewed=?,reviewer=?,version=version+1 WHERE id=?",
@@ -107,6 +132,12 @@ export async function createApi(db, options = {}) {
         row.user_id,
         result === "已通过" ? "布展申请已通过" : "布展申请需调整",
         `${row.company}：${reason || "请按批准日期和位置布展。"}`,
+        id,
+      );
+      enqueueResult(
+        db,
+        row.user_id,
+        `华中科技大学场地服务：您的布展申请${result}。${reason || "请按批准日期和位置布展。"}请登录网站查看详情。`,
         id,
       );
     });
@@ -150,6 +181,14 @@ export async function createApi(db, options = {}) {
     });
     res.end(JSON.stringify(data));
   };
+  const business = businessRoutes(db, sec, send, notifyReviewers);
+  const mfa = createMfa(db, options.dbPath, sec, send, {
+    secure: options.secureCookies,
+  });
+  const integrations = integrationRoutes(db, sec, send, captcha, mfa, {
+    ...options.integrations,
+    secure: options.secureCookies,
+  });
   async function stepUp(req, data) {
     const u = current(req, "super");
     limit(`access:${u.id}`, 10, 900000);
@@ -165,6 +204,9 @@ export async function createApi(db, options = {}) {
   return async function api(req, res, url) {
     const p = url.pathname,
       m = req.method;
+    if (await mfa.route(req, res, url)) return;
+    if (await integrations(req, res, url)) return;
+    if (await business(req, res, url)) return;
     if (p === "/api/health" && m === "GET") {
       const h = options.maintenance.health();
       return send(res, { ok: h.ok }, h.ok ? 200 : 503);
@@ -300,6 +342,7 @@ export async function createApi(db, options = {}) {
             old.token_hash,
           );
         audit(fresh.id, "account.login", fresh.id);
+        if (mfa.enabled(fresh.id)) return mfa.challenge(req, res, fresh);
         return start(req, res, fresh);
       });
       return send(res, result);
@@ -413,6 +456,9 @@ export async function createApi(db, options = {}) {
       return send(res, {
         date,
         total: 29,
+        actualPlaced: db
+          .prepare("SELECT COUNT(*) n FROM onsite WHERE date=? AND present=1")
+          .get(date).n,
         occupied: db
           .prepare(
             "SELECT slot,start,end FROM bookings WHERE status='已通过' AND cancelled=0 AND start<=? AND end>=?",
@@ -494,12 +540,13 @@ export async function createApi(db, options = {}) {
     }
     if (p === "/api/bookings" && m === "POST") {
       const u = current(req, "enterprise");
+      limit(`image-attempts:${u.id}`, 40, 3600000);
       const b = await body(req),
         f = fields(b),
         slot = Number(b.slot);
       dates(b.start, b.end, true);
       fail(!Number.isInteger(slot) || slot < 1 || slot > 29, 400, "桁架位无效");
-      const image = decodeImage(b.image);
+      const image = await decodeImage(b.image);
       const key = req.headers["idempotency-key"];
       fail(
         key !== undefined &&
@@ -628,15 +675,20 @@ export async function createApi(db, options = {}) {
     if (imageMatch && m === "GET") {
       const u = current(req),
         b = db
-          .prepare("SELECT user_id,image,image_type FROM bookings WHERE id=?")
+          .prepare(
+            "SELECT id,user_id,image,image_type FROM bookings WHERE id=?",
+          )
           .get(imageMatch[1]);
       permittedBooking(u, b);
+      const imageBytes = b.image.length
+        ? Buffer.from(b.image)
+        : archivedImage(db, b.id);
       res.writeHead(200, {
         "Content-Type": b.image_type,
         "Content-Security-Policy": "default-src 'none'",
         "Content-Disposition": "inline",
       });
-      res.end(Buffer.from(b.image));
+      res.end(imageBytes);
       return;
     }
     const bookingMatch = p.match(
@@ -671,6 +723,9 @@ export async function createApi(db, options = {}) {
           db.prepare(
             "UPDATE bookings SET cancelled=1,cancel_reason=?,cancelled_at=?,version=version+1 WHERE id=?",
           ).run(reason, now(), id);
+          db.prepare(
+            "UPDATE bookings SET status='已撤回',reason='原预约已取消，改期申请自动撤回',version=version+1 WHERE reschedule_of=? AND status='待审核'",
+          ).run(id);
           audit(fresh.id, "booking.cancelled", id, { reason });
           notify(row.user_id, "布展预约已取消", reason, id);
           notifyReviewers(

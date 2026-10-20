@@ -30,6 +30,13 @@ try {
         "INSERT INTO users(id,email,password_hash,role,company,contact,phone,created,is_super) VALUES(?,?,?,?,?,?,?,?,1)",
       ).run(id, email, hashed, "admin", "大学生活动中心", "管理员", "", time);
     db.prepare("DELETE FROM sessions WHERE user_id=?").run(id);
+    if (process.argv.includes("--reset-mfa")) {
+      db.prepare("DELETE FROM mfa WHERE user_id=?").run(id);
+      db.prepare("DELETE FROM auth_challenges WHERE user_id=?").run(id);
+      db.prepare(
+        "INSERT INTO audit(actor,action,target,created) VALUES(?,?,?,?)",
+      ).run(id, "account.mfa_recovered", id, time);
+    }
     db.prepare(
       "INSERT INTO audit(actor,action,target,created) VALUES(?,?,?,?)",
     ).run(id, "account.admin_recovered", id, time);

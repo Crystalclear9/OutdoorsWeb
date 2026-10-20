@@ -33,6 +33,9 @@ import Notices from "./Notices.jsx";
 import Dashboard from "./Dashboard.jsx";
 import Access from "./Access.jsx";
 import Operations from "./Operations.jsx";
+import Onsite from "./Onsite.jsx";
+import Archives from "./Archives.jsx";
+import Deliveries from "./Deliveries.jsx";
 import { can } from "./permissions.js";
 import { VENUE_SEGMENTS, inSegment } from "./venue-layout.js";
 
@@ -57,6 +60,7 @@ export default function App() {
     [connected, setConnected] = useState(false),
     [serviceError, setServiceError] = useState(""),
     [auth, setAuth] = useState(null),
+    [oauthMfa, setOauthMfa] = useState(null),
     [page, setPage] = useState("overview"),
     [mobile, setMobile] = useState(false),
     [modal, setModal] = useState(null),
@@ -79,9 +83,26 @@ export default function App() {
     }
   };
   const go = (p) => {
-    setPage(user?.mustChangePassword ? "account" : p);
+    setPage(user?.mustChangePassword || user?.mfaRequired ? "account" : p);
     setMobile(false);
   };
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (/^#mfa=[a-f0-9]{64}$/.test(hash)) {
+      setOauthMfa(hash.slice(5));
+      setAuth("login");
+    }
+    if (hash === "#oauth=linked") {
+      setPage("account");
+      notify("第三方账号已绑定");
+    }
+    if (hash.startsWith("#oauth=") || hash.startsWith("#mfa="))
+      window.history.replaceState(
+        null,
+        "",
+        window.location.pathname + window.location.search,
+      );
+  }, []);
   useEffect(() => {
     let active = true;
     api("/auth/session")
@@ -89,7 +110,8 @@ export default function App() {
         if (active) {
           setCsrf(r.csrf);
           setUser(r.user);
-          if (r.user?.mustChangePassword) setPage("account");
+          if (r.user?.mustChangePassword || r.user?.mfaRequired)
+            setPage("account");
         }
       })
       .catch((e) => active && setServiceError(e.message))
@@ -126,6 +148,7 @@ export default function App() {
     if (
       user &&
       !user.mustChangePassword &&
+      !user.mfaRequired &&
       (user.role === "enterprise" || can(user, "bookings.review"))
     )
       api("/summary")
@@ -187,9 +210,10 @@ export default function App() {
     setModal({ type: "booking" });
   }
   function onAuth(u) {
+    setOauthMfa(null);
     setUser(u);
     setAuth(null);
-    setPage(u.mustChangePassword ? "account" : "overview");
+    setPage(u.mustChangePassword || u.mfaRequired ? "account" : "overview");
     refresh();
     notify("登录成功");
   }
@@ -219,9 +243,13 @@ export default function App() {
     return (
       <>
         <AuthPage
+          initialMfa={oauthMfa}
           initialMode={auth}
           onSuccess={onAuth}
-          onBack={() => setAuth(null)}
+          onBack={() => {
+            setAuth(null);
+            setOauthMfa(null);
+          }}
         />
         {toast && (
           <div className="toast" role="status">
@@ -477,13 +505,15 @@ export default function App() {
                     <Clock size={25} />
                   </span>
                   <div>
-                    <p>暂停开放</p>
+                    <p>现场实际摆放</p>
                     <strong>
-                      {connected ? venue.closed.length : "—"}
+                      {connected ? (venue.actualPlaced ?? 0) : "—"}
                       <small>个</small>
                     </strong>
                   </div>
-                  <span className="metric-foot">所选日期的暂停安排</span>
+                  <span className="metric-foot">
+                    所选日期现场登记，与预约数分别统计
+                  </span>
                 </div>
               </div>
               <div className="venue-layout">
@@ -729,11 +759,22 @@ export default function App() {
             <UsersPage notify={notify} />
           )}
           {page === "closures" && can(user, "venue.manage") && (
-            <ClosuresPage notify={notify} onChange={refresh} />
+            <>
+              <Onsite notify={notify} onChange={refresh} />
+              <ClosuresPage notify={notify} onChange={refresh} />
+            </>
           )}
-          {page === "audit" && can(user, "audit.read") && <AuditPage />}
+          {page === "audit" && can(user, "audit.read") && (
+            <>
+              <AuditPage />
+              <Archives />
+            </>
+          )}
           {page === "operations" && user?.isSuperAdmin && (
-            <Operations notify={notify} />
+            <>
+              <Operations notify={notify} />
+              <Deliveries notify={notify} />
+            </>
           )}
           {page === "access" && user?.isSuperAdmin && (
             <Access notify={notify} />

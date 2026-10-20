@@ -161,20 +161,25 @@ export function createMfa(db, dbPath, sec, send, options = {}) {
           "验证请求无效",
         );
         const id = hashToken(b.challenge),
-          row = db
-            .prepare("SELECT * FROM auth_challenges WHERE id=? AND kind='mfa'")
-            .get(id);
-        fail(
-          !row ||
-            row.expires < Date.now() ||
-            row.attempts >= 5 ||
-            JSON.parse(row.payload).binding !== hashToken(binding(req)),
-          401,
-          "验证已过期，请重新登录",
-        );
-        db.prepare(
-          "UPDATE auth_challenges SET attempts=attempts+1 WHERE id=?",
-        ).run(id);
+          row = tx(db, () => {
+            const proof = db
+              .prepare(
+                "SELECT * FROM auth_challenges WHERE id=? AND kind='mfa'",
+              )
+              .get(id);
+            fail(
+              !proof ||
+                proof.expires <= Date.now() ||
+                proof.attempts >= 5 ||
+                JSON.parse(proof.payload).binding !== hashToken(binding(req)),
+              401,
+              "验证已过期，请重新登录",
+            );
+            db.prepare(
+              "UPDATE auth_challenges SET attempts=attempts+1 WHERE id=?",
+            ).run(id);
+            return proof;
+          });
         const result = tx(db, () => {
           const fresh = db
               .prepare("SELECT * FROM auth_challenges WHERE id=?")
@@ -185,6 +190,11 @@ export function createMfa(db, dbPath, sec, send, options = {}) {
             config = get(row.user_id);
           fail(
             !fresh ||
+              fresh.expires <= Date.now() ||
+              fresh.attempts > 5 ||
+              fresh.kind !== "mfa" ||
+              fresh.user_id !== row.user_id ||
+              fresh.payload !== row.payload ||
               !user ||
               user.disabled ||
               hashToken(user.password_hash) !==

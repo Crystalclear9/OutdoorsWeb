@@ -90,9 +90,15 @@ export async function createApp(options = {}) {
       res.setHeader("X-Content-Type-Options", "nosniff");
       res.setHeader("Referrer-Policy", "same-origin");
       res.setHeader("X-Frame-Options", "DENY");
+      let requestPath = "<invalid>";
       try {
-        const url = new URL(req.url, "http://localhost"),
-          p = url.pathname;
+        let url;
+        try {
+          url = new URL(req.url, "http://localhost");
+        } catch {
+          throw new HttpError(400, "请求地址无效");
+        }
+        const p = (requestPath = url.pathname);
         if (p.startsWith("/api/")) {
           res.setHeader("Cache-Control", "no-store");
           const origin = req.headers.origin,
@@ -185,16 +191,12 @@ export async function createApp(options = {}) {
         res.end(req.method === "HEAD" ? undefined : bytes);
       } catch (original) {
         const error = databaseError(original);
-        if (error.status === 403 && req.url.startsWith("/api/")) {
+        if (error.status === 403 && requestPath.startsWith("/api/")) {
           try {
             const actor = security.session(req);
             if (actor) {
               security.limit(`denied-audit:${actor.id}`, 10, 60000);
-              security.audit(
-                actor.id,
-                "access.denied",
-                new URL(req.url, "http://localhost").pathname,
-              );
+              security.audit(actor.id, "access.denied", requestPath);
             }
           } catch {
             /* Preserve the original authorization failure. */
@@ -206,7 +208,7 @@ export async function createApp(options = {}) {
               event: "request.failed",
               requestId,
               method: req.method,
-              path: new URL(req.url, "http://localhost").pathname,
+              path: requestPath,
               error: String(error.message),
             }),
           );

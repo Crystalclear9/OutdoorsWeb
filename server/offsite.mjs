@@ -12,7 +12,14 @@ import {
   createHash,
 } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
-import { readFile, stat, statfs, unlink, writeFile } from "node:fs/promises";
+import {
+  readFile,
+  stat,
+  statfs,
+  unlink,
+  writeFile,
+  lstat,
+} from "node:fs/promises";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import path from "node:path";
@@ -133,8 +140,15 @@ export async function uploadOffsite(source, dbPath, clientOverride) {
 }
 
 export async function restoreEncrypted(source, target) {
+  try {
+    await lstat(target);
+    throw new Error("恢复目标已存在，请选择新的数据库路径");
+  } catch (e) {
+    if (e.code !== "ENOENT") throw e;
+  }
   const key = encryptionKey(),
     size = (await stat(source)).size;
+  if (size < 68) throw new Error("加密备份格式无效");
   const { open } = await import("node:fs/promises"),
     input = await open(source, "r");
   const header = Buffer.alloc(20),
@@ -145,11 +159,10 @@ export async function restoreEncrypted(source, target) {
   } finally {
     await input.close();
   }
-  if (!header.subarray(0, 8).equals(MAGIC) || size < 68)
-    throw new Error("加密备份格式无效");
+  if (!header.subarray(0, 8).equals(MAGIC)) throw new Error("加密备份格式无效");
   const cipher = createDecipheriv("aes-256-gcm", key, header.subarray(8));
   cipher.setAuthTag(tag);
-  const partial = target + ".restore.part";
+  const partial = target + `.${randomUUID()}.restore.part`;
   let mfaKey = Buffer.alloc(0);
   try {
     await pipeline(

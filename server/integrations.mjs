@@ -206,16 +206,12 @@ export function integrationRoutes(db, sec, send, captcha, mfa, options = {}) {
         "验证码格式无效",
       );
       const id = hashToken(b.id),
-        row = db.prepare("SELECT * FROM sms_codes WHERE id=?").get(id);
-      fail(
-        !row ||
-          row.binding !== hashToken(binding(req)) ||
-          row.expires < Date.now() ||
-          row.attempts >= 5,
-        400,
-        "验证已失效，请重新获取",
-      );
-      db.prepare("UPDATE sms_codes SET attempts=attempts+1 WHERE id=?").run(id);
+        row = db
+          .prepare(
+            "UPDATE sms_codes SET attempts=attempts+1 WHERE id=? AND binding=? AND expires>? AND attempts<5 RETURNING *",
+          )
+          .get(id, hashToken(binding(req)), Date.now());
+      fail(!row, 400, "验证已失效，请重新获取");
       if (row.purpose === "link") {
         const user = sec.current(req);
         fail(row.user_id !== user.id, 403, "验证码不属于当前账号，请重新获取");
@@ -264,9 +260,14 @@ export function integrationRoutes(db, sec, send, captcha, mfa, options = {}) {
         return true;
       }
       const result = tx(db, () => {
+        const proof = db.prepare("SELECT * FROM sms_codes WHERE id=?").get(id);
         fail(
-          !db.prepare("SELECT id FROM sms_codes WHERE id=?").get(id) ||
-            row.answer !== hashToken(b.id + b.code),
+          !proof ||
+            proof.expires <= Date.now() ||
+            proof.attempts > 5 ||
+            proof.binding !== hashToken(binding(req)) ||
+            proof.purpose !== "login" ||
+            proof.answer !== hashToken(b.id + b.code),
           400,
           "验证码错误或已使用",
         );
@@ -432,7 +433,7 @@ export function integrationRoutes(db, sec, send, captcha, mfa, options = {}) {
           )
           .get(provider, token.openid);
         if (saved.user_id) {
-          const user = sec.session(req);
+          const user = sec.current(req);
           fail(!user || user.id !== saved.user_id, 403, "登录状态已变化");
           fail(
             identity && identity.user_id !== user.id,

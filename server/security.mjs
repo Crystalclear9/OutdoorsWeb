@@ -1,7 +1,14 @@
 import { randomBytes, scrypt, timingSafeEqual, createHash } from "node:crypto";
 import { promisify } from "node:util";
+import { createWorkQueue } from "./work-queue.mjs";
 
-const derive = promisify(scrypt);
+const scryptAsync = promisify(scrypt);
+const passwordWork = createWorkQueue({
+  concurrency: 2,
+  maxWaiting: 16,
+  message: "账号验证繁忙，请稍后重试",
+});
+const derive = (...args) => passwordWork(() => scryptAsync(...args));
 export const hashToken = (token) =>
   createHash("sha256").update(token).digest("hex");
 export const randomToken = () => randomBytes(32).toString("hex");

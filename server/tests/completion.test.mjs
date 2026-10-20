@@ -382,7 +382,13 @@ test("加密异机备份包含MFA密钥，可恢复；错误密钥或篡改备�
   const targetDir = path.join(dir, "restored");
   await mkdir(targetDir);
   const target = path.join(targetDir, "app.sqlite");
+  const otherRestore = target + ".restore.part";
+  await writeFile(otherRestore, "another restore owns this temporary file");
   await restoreEncrypted(encrypted, target);
+  assert.equal(
+    await readFile(otherRestore, "utf8"),
+    "another restore owns this temporary file",
+  );
   const check = new DatabaseSync(target, { readOnly: true });
   assert.equal(
     check.prepare("SELECT value FROM proof").get().value,
@@ -391,6 +397,10 @@ test("加密异机备份包含MFA密钥，可恢复；错误密钥或篡改备�
   check.close();
   assert.deepEqual(await readFile(path.join(targetDir, ".mfa-key")), key);
   await assert.rejects(restoreEncrypted(encrypted, target));
+  assert.equal(
+    await readFile(otherRestore, "utf8"),
+    "another restore owns this temporary file",
+  );
   const corrupted = Buffer.from(await readFile(encrypted));
   corrupted[40] ^= 1;
   await writeFile(path.join(dir, "corrupted.enc"), corrupted);

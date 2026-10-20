@@ -11,3 +11,10 @@ test-results
 playwright-report
 tests
 server/tests
+*.sqlite
+*.sqlite-*
+*.sqlite.enc
+*.mfa-key
+.mfa-key
+*.encrypted.part
+*.restore.part

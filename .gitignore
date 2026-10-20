@@ -8,3 +8,11 @@ data/
 .env.*
 !.env.example
 backups/
+# Database copies and recovery keys can also be created outside data/.
+*.sqlite
+*.sqlite-*
+*.sqlite.enc
+*.mfa-key
+.mfa-key
+*.encrypted.part
+*.restore.part

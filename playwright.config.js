@@ -1,10 +1,15 @@
 import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: "./tests",
-  use: { baseURL: "http://127.0.0.1:5173", channel: "msedge", headless: true },
+  testMatch: "**/*.spec.js",
+  use: {
+    baseURL: "http://127.0.0.1:3101",
+    channel: process.env.PLAYWRIGHT_CHANNEL || "msedge",
+    headless: true,
+  },
   webServer: {
-    command: "npm run dev",
-    url: "http://127.0.0.1:5173",
-    reuseExistingServer: true,
+    command: "node tests/start-server.mjs",
+    url: "http://127.0.0.1:3101/api/health",
+    reuseExistingServer: false,
   },
 });

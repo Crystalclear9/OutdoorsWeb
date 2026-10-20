@@ -3,3 +3,8 @@ dist/
 tmp/
 test-results/
 playwright-report/
+data/
+.env
+.env.*
+!.env.example
+backups/

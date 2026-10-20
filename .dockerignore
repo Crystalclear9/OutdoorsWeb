@@ -1,0 +1,13 @@
+node_modules
+dist
+assets
+.git
+.env
+.env.*
+data
+backups
+tmp
+test-results
+playwright-report
+tests
+server/tests

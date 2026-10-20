@@ -1,23 +1,34 @@
 {
-  "name": "hust-outdoor-reservation-demo",
+  "name": "hust-outdoor-reservation",
   "private": true,
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
+    "dev": "concurrently -k \"node --env-file-if-exists=.env --watch server/index.mjs\" \"vite --host 127.0.0.1\"",
+    "dev:web": "vite --host 127.0.0.1",
+    "start": "node --env-file-if-exists=.env server/index.mjs",
     "build": "vite build && node scripts/sync-pages.mjs",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "playwright test"
+    "test": "node --test server/tests/*.test.mjs && playwright test",
+    "test:api": "node --test server/tests/*.test.mjs",
+    "test:e2e": "playwright test",
+    "backup": "node --env-file-if-exists=.env server/backup.mjs",
+    "admin:recover": "node --env-file-if-exists=.env server/admin.mjs"
+  },
+  "engines": {
+    "node": ">=24.0.0"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
+    "@radix-ui/react-dialog": "^1.3.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",
-    "@vitejs/plugin-react": "latest",
+    "@vitejs/plugin-react": "^6.1.2",
+    "concurrently": "^10.0.6",
     "prettier": "^3.9.10",
-    "vite": "latest"
+    "vite": "^8.3.4"
   }
 }

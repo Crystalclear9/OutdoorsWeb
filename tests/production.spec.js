@@ -42,35 +42,25 @@ test.afterAll(async () => {
   await new Promise((resolve) => server.close(resolve));
 });
 
-test("GitHub Pages 子目录中的编译产物可加载、切换身份与打开申报", async ({
+test("GitHub Pages 静态入口显示真实后端未连接状态，仍可打开登录页", async ({
   page,
 }) => {
-  const failures = [];
-  page.on("pageerror", (error) => failures.push(error.message));
-  page.on("requestfailed", (request) => failures.push(request.url()));
-  page.on("response", (response) => {
-    if (response.status() >= 400) failures.push(response.url());
-  });
   await page.goto(`${origin}/OutdoorsWeb/`);
   await expect(
-    page.getByRole("heading", { name: "让每一次校园相遇，有序发生" }),
+    page.getByRole("heading", { name: "场地有序，活动从容。" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "发起布展申报" }).click();
   await expect(
-    page.getByRole("dialog", { name: "企业布展申报" }),
+    page.getByText("后端服务尚未连接", { exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "关闭", exact: true }).click();
-  await page.getByRole("button", { name: "切换演示身份" }).click();
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: /管理员/ })
-    .click();
   await expect(
-    page.getByRole("heading", { name: "预约管理工作台" }),
-  ).toBeVisible();
-  await page.reload();
+    page.getByRole("button", { name: "发起布展申请" }),
+  ).toBeDisabled();
+  await page.getByRole("button", { name: "登录 / 注册" }).click();
   await expect(
-    page.getByRole("heading", { name: "预约管理工作台" }),
+    page.getByRole("heading", { name: "登录您的账号" }),
   ).toBeVisible();
-  expect(failures).toEqual([]);
+  await page.locator("[name=email]").fill("nobody@company.local");
+  await page.locator("[name=password]").fill("NotConnected123");
+  await page.getByRole("button", { name: "登录账号", exact: true }).click();
+  await expect(page.getByRole("alert")).toBeVisible();
 });

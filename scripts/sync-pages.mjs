@@ -1,4 +1,4 @@
-import { copyFile, cp, mkdir } from "node:fs/promises";
+import { copyFile, cp, mkdir, readdir, unlink } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -13,4 +13,10 @@ await copyFile(
   path.join(root, "dist/index.html"),
   path.join(root, "index.html"),
 );
+const current = new Set(await readdir(path.join(root, "dist/assets")));
+for (const name of await readdir(path.join(root, "assets"))) {
+  if (/^index-[\w-]+\.(js|css)$/.test(name) && !current.has(name)) {
+    await unlink(path.join(root, "assets", name));
+  }
+}
 console.log("GitHub Pages files updated: index.html and assets/");

@@ -30,6 +30,8 @@ import { UsersPage, ClosuresPage, AuditPage } from "./Admin.jsx";
 import VenueMap from "./VenueMap.jsx";
 import Records from "./Records.jsx";
 import Notices from "./Notices.jsx";
+import Dashboard from "./Dashboard.jsx";
+import { VENUE_SEGMENTS, inSegment } from "./venue-layout.js";
 
 const titles = {
   overview: [
@@ -55,7 +57,7 @@ export default function App() {
     [modal, setModal] = useState(null),
     [toast, setToast] = useState("");
   const [date, setDate] = useState(dateString()),
-    [zone, setZone] = useState("全部区域"),
+    [zone, setZone] = useState("all"),
     [selected, setSelected] = useState(1),
     [view, setView] = useState("map"),
     [venue, setVenue] = useState({ occupied: [], closed: [], total: 29 }),
@@ -65,6 +67,12 @@ export default function App() {
   const admin = user?.role === "admin";
   const refresh = () => setVersion((v) => v + 1);
   const notify = (message) => setToast(message);
+  const changeZone = (value) => {
+    setZone(value);
+    if (!inSegment(selected, value)) {
+      setSelected(VENUE_SEGMENTS.find((s) => s.id === value)?.first || 1);
+    }
+  };
   const go = (p) => {
     setPage(user?.mustChangePassword ? "account" : p);
     setMobile(false);
@@ -87,7 +95,10 @@ export default function App() {
   }, []);
   useEffect(() => {
     let active = true;
-    Promise.all([api(`/venue?date=${date}`), api("/notices")])
+    Promise.all([
+      api(`/venue?date=${page === "venue" ? date : dateString()}`),
+      api("/notices"),
+    ])
       .then(([v, n]) => {
         if (active) {
           setVenue(v);
@@ -105,7 +116,7 @@ export default function App() {
     return () => {
       active = false;
     };
-  }, [date, version]);
+  }, [date, version, page]);
   useEffect(() => {
     if (user && !user.mustChangePassword)
       api("/summary")
@@ -345,7 +356,7 @@ export default function App() {
               <h1>{titles[page]?.[0]}</h1>
               <p>{titles[page]?.[1]}</p>
             </div>
-            {["overview", "venue", "records"].includes(page) && (
+            {["venue", "records"].includes(page) && (
               <Button
                 className="primary"
                 onClick={beginBooking}
@@ -373,7 +384,20 @@ export default function App() {
               </Button>
             </div>
           )}
-          {(page === "overview" || page === "venue") && (
+          {page === "overview" && (
+            <Dashboard
+              user={user}
+              counts={counts}
+              notices={notices}
+              connected={connected}
+              version={version}
+              onNavigate={go}
+              onApply={beginBooking}
+              onRefresh={refresh}
+              notify={notify}
+            />
+          )}
+          {page === "venue" && (
             <>
               <div className="metrics">
                 <div>
@@ -386,14 +410,14 @@ export default function App() {
                       29<small>个</small>
                     </strong>
                   </div>
-                  <span className="metric-foot">A / B / C 三个区域</span>
+                  <span className="metric-foot">原图五段位置分布</span>
                 </div>
                 <div>
                   <span className="metric-icon green">
                     <CheckCircle size={25} />
                   </span>
                   <div>
-                    <p>当日可预约</p>
+                    <p>所选日期可预约</p>
                     <strong>
                       {connected ? 29 - unavailable : "—"}
                       <small>个</small>
@@ -408,7 +432,7 @@ export default function App() {
                     <Buildings size={25} />
                   </span>
                   <div>
-                    <p>当日已安排</p>
+                    <p>所选日期已安排</p>
                     <strong>
                       {connected ? venue.occupied.length : "—"}
                       <small>个</small>
@@ -425,28 +449,20 @@ export default function App() {
                     <Clock size={25} />
                   </span>
                   <div>
-                    <p>
-                      {user
-                        ? admin
-                          ? "等待审核"
-                          : "我的待审核"
-                        : "企业预约服务"}
-                    </p>
+                    <p>暂停开放</p>
                     <strong>
-                      {user ? counts["待审核"] || 0 : "3"}
-                      <small>{user ? "条" : "天以内"}</small>
+                      {connected ? venue.closed.length : "—"}
+                      <small>个</small>
                     </strong>
                   </div>
-                  <span className="metric-foot">
-                    {user ? "所有设备共享审核进度" : "登录后提交布展申请"}
-                  </span>
+                  <span className="metric-foot">所选日期的暂停安排</span>
                 </div>
               </div>
               <div className="venue-layout">
                 <section className="card venue-card">
                   <div className="card-header">
                     <div>
-                      <h2>广场桁架分布</h2>
+                      <h2>原图桁架位置</h2>
                       <p>
                         <MapPin size={15} />
                         大学生活动中心户外广场
@@ -482,10 +498,13 @@ export default function App() {
                     <select
                       aria-label="筛选区域"
                       value={zone}
-                      onChange={(e) => setZone(e.target.value)}
+                      onChange={(e) => changeZone(e.target.value)}
                     >
-                      {["全部区域", "A 区", "B 区", "C 区"].map((z) => (
-                        <option key={z}>{z}</option>
+                      <option value="all">全部位置（29）</option>
+                      {VENUE_SEGMENTS.map((z) => (
+                        <option key={z.id} value={z.id}>
+                          {z.label}（{z.last - z.first + 1}）
+                        </option>
                       ))}
                     </select>
                     <div className="legend">
@@ -516,17 +535,13 @@ export default function App() {
                         connected={connected}
                       />
                       <div className="map-caption">
-                        场地布局示意，具体摆放请以现场安排为准。
+                        底图来源：需求 PDF 第 11 页。点击蓝色桁架查看位置。
                       </div>
                     </div>
                   ) : (
                     <div className="slot-grid">
                       {Array.from({ length: 29 }, (_, i) => i + 1)
-                        .filter(
-                          (n) =>
-                            zone === "全部区域" ||
-                            zone.startsWith(slotName(n)[0]),
-                        )
+                        .filter((n) => inSegment(n, zone))
                         .map((n) => {
                           const b = venue.occupied.some((s) => s.slot === n),
                             c = venue.closed.some((s) => s.slot === n);
@@ -560,6 +575,11 @@ export default function App() {
                     </span>
                     <span>{date}</span>
                   </div>
+                  <p className="map-source-note">
+                    绿地边缘 6 个 · B 座通道 4 个 · A 座通道 4 个 · 东侧直线 7
+                    个 · 南侧直线 8 个。A 座、B 座是建筑名称；01–29
+                    为系统位置编号，原 PDF 未提供桁架编号。
+                  </p>
                 </section>
                 <div className="venue-side">
                   <section className="card position-card">
@@ -581,9 +601,7 @@ export default function App() {
                       <span>{slotName(selected)}</span>
                       <MapPin size={40} weight="light" />
                     </div>
-                    <p>
-                      {slotName(selected)[0]} 区 · {zoneName(selected)}
-                    </p>
+                    <p>{zoneName(selected)}</p>
                     <div className="position-details">
                       <div>
                         <span>选择日期</span>
@@ -646,54 +664,6 @@ export default function App() {
                   </section>
                 </div>
               </div>
-              {page === "overview" && (
-                <div className="overview-bottom">
-                  <section className="card recent-notices">
-                    <div className="card-header">
-                      <h2>通知公告</h2>
-                      <button
-                        className="text-button"
-                        onClick={() => go("notices")}
-                      >
-                        查看全部
-                        <ArrowRight size={16} />
-                      </button>
-                    </div>
-                    {notices.slice(0, 3).map((n) => (
-                      <button
-                        className="recent-notice"
-                        key={n.id}
-                        onClick={() => setModal({ type: "notice", item: n })}
-                      >
-                        <span>
-                          {!!n.pinned && <b className="pin-tag">置顶</b>}
-                          {n.title}
-                        </span>
-                        <small>
-                          {n.created.slice(0, 10)}
-                          <ArrowUpRight size={16} />
-                        </small>
-                      </button>
-                    ))}
-                    {!notices.length && (
-                      <p className="quiet-empty">
-                        {connected
-                          ? "暂无已发布通知"
-                          : "连接后端后，将显示最新通知。"}
-                      </p>
-                    )}
-                  </section>
-                  <section className="contact-panel">
-                    <Megaphone size={30} weight="light" />
-                    <h2>有序布展，共享校园。</h2>
-                    <p>
-                      爱护公共设施，保持场地整洁。
-                      <br />
-                      共同守护每一份校园美好。
-                    </p>
-                  </section>
-                </div>
-              )}
             </>
           )}
           {page === "records" && user && !user.mustChangePassword && (
@@ -782,7 +752,8 @@ export default function App() {
             </p>
             <h3>05 · 现场使用</h3>
             <p>
-              遵守现场管理要求，保持环境整洁，活动结束后及时撤除设备。图中布局为场地示意，具体位置以现场安排为准。
+              遵守现场管理要求，保持环境整洁，活动结束后及时撤除设备。场地图按需求
+              PDF 第 11 页对齐；A 座、B 座为建筑名称，位置编号为系统标识。
             </p>
           </div>
         </Modal>

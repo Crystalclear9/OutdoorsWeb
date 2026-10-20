@@ -6,12 +6,37 @@ import { formatDate } from "./utils.js";
 
 export default function Notices({ items, user, onSaved, connected }) {
   const [modal, setModal] = useState(null),
+    [publishing, setPublishing] = useState(false),
+    [publishError, setPublishError] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const open = (m) => {
     setError("");
     setModal(m);
   };
+  async function publish(e) {
+    e.preventDefault();
+    const form = e.currentTarget,
+      values = Object.fromEntries(new FormData(form));
+    setPublishing(true);
+    setPublishError("");
+    try {
+      await api("/notices", {
+        method: "POST",
+        body: {
+          title: values.title,
+          content: values.content,
+          pinned: values.pinned === "on",
+        },
+      });
+      form.reset();
+      onSaved("公告已发布，所有访客可立即查看");
+    } catch (e) {
+      setPublishError(e.message);
+    } finally {
+      setPublishing(false);
+    }
+  }
   async function save(e) {
     e.preventDefault();
     setBusy(true);
@@ -44,6 +69,68 @@ export default function Notices({ items, user, onSaved, connected }) {
   }
   return (
     <>
+      {user?.role === "admin" && (
+        <section className="card notice-composer">
+          <div className="card-header">
+            <div>
+              <h2>快捷发布公告</h2>
+              <p>填写标题与正文，直接投递到公告栏，所有访客可见。</p>
+            </div>
+            <Megaphone size={25} />
+          </div>
+          <form
+            aria-label="快捷公告投递"
+            onSubmit={publish}
+            onKeyDown={(e) => {
+              if (
+                (e.ctrlKey || e.metaKey) &&
+                e.key === "Enter" &&
+                !publishing
+              ) {
+                e.preventDefault();
+                e.currentTarget.requestSubmit();
+              }
+            }}
+          >
+            <label>
+              公告标题
+              <input
+                name="title"
+                required
+                maxLength={80}
+                placeholder="例如：本周场地开放安排"
+              />
+            </label>
+            <label>
+              公告正文
+              <textarea
+                name="content"
+                required
+                maxLength={5000}
+                rows={4}
+                placeholder="输入要发布的活动安排、场地通知或服务信息…"
+              />
+            </label>
+            <div className="notice-compose-footer">
+              <label className="check-label">
+                <input type="checkbox" name="pinned" />
+                置顶此公告
+              </label>
+              <span className="muted">发布后立即在公告栏显示</span>
+              <Button
+                type="submit"
+                className="primary"
+                loading={publishing}
+                disabled={!connected}
+              >
+                <Plus size={18} />
+                发布公告
+              </Button>
+            </div>
+            <ErrorBox>{publishError}</ErrorBox>
+          </form>
+        </section>
+      )}
       <section className="card">
         <div className="card-header">
           <div>
@@ -52,12 +139,6 @@ export default function Notices({ items, user, onSaved, connected }) {
             </h2>
             <p>场地使用说明、活动安排与服务通知。</p>
           </div>
-          {user?.role === "admin" && (
-            <Button className="primary" onClick={() => open({ type: "edit" })}>
-              <Plus size={18} />
-              发布公告
-            </Button>
-          )}
         </div>
         {items.map((n) => (
           <article className="notice-article" key={n.id}>

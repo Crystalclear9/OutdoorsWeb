@@ -5,10 +5,9 @@ export const dateString = (d = new Date()) =>
     month: "2-digit",
     day: "2-digit",
   }).format(d);
-export const slotName = (n) =>
-  `${n <= 9 ? "A" : n <= 19 ? "B" : "C"}-${String(n <= 9 ? n : n <= 19 ? n - 9 : n - 19).padStart(2, "0")}`;
-export const zoneName = (n) =>
-  n <= 9 ? "绿地周边" : n <= 19 ? "环形广场" : "东南步道";
+export const slotName = (n) => `${String(n).padStart(2, "0")}号`;
+import { segmentFor } from "./venue-layout.js";
+export const zoneName = (n) => segmentFor(n)?.label || "未知位置";
 export const formatDate = (s) =>
   s
     ? new Intl.DateTimeFormat("zh-CN", {

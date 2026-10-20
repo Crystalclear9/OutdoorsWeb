@@ -810,8 +810,16 @@ nav button b {
   line-height: 1.9;
   margin: 8px 0 14px;
 }
-.sidebar-support .text-button {
-  font-size: 11px;
+.sidebar-help-button {
+  width: 36px;
+  height: 36px;
+  margin: 0 0 10px -6px;
+  color: #6c87a4;
+  border-radius: 6px;
+}
+.sidebar-help-button:hover {
+  color: var(--accent);
+  background: #eaf0f6;
 }
 .sidebar-account {
   display: flex;

@@ -68,25 +68,25 @@ export default function Dashboard({
       : [];
   return (
     <div className="dashboard">
-      <section className="workspace-welcome">
-        <div>
+      {user && <section className="workspace-welcome">
+        <div className="welcome-lead">
           <span className="section-kicker">
             {staff ? "管理员工作空间" : user ? "企业工作空间" : "校园布展服务"}
           </span>
           <h2>
             {staff && !admin
-              ? `${user.contact}，按职责开展工作。`
+              ? "业务管理"
               : admin
-                ? "先处理待办，再安排新的活动。"
+                ? "申请审核"
                 : user
-                  ? `${user.contact}，欢迎回来。`
-                  : "从了解场地，到有序开展。"}
+                  ? `${user.company}`
+                  : "企业布展申请"}
           </h2>
           <p>
             {staff && !admin
-              ? "您的账号仅可使用已授权功能，菜单将按职责显示。"
+              ? "从导航进入公告、场地与账号管理。"
               : admin
-                ? `当前有 ${counts["待审核"] || 0} 条申请等待审核。您也可以直接发布活动通知。`
+                ? `当前有 ${counts["待审核"] || 0} 条申请等待审核。处理后将同步更新企业申请记录。`
                 : user
                   ? "在这里跟进申请进度、查看审核意见和最新通知。"
                   : "先查看开放位置与预约须知，登录企业账号后即可提交申请。"}
@@ -131,16 +131,15 @@ export default function Dashboard({
             <ArrowUpRight size={17} />
           </button>
         </div>
-      </section>
+      </section>}
       {!!metrics.length && (
         <div className="dashboard-metrics">
-          {metrics.map(([title, value, Icon]) => (
+          {metrics.map(([title, value]) => (
             <button
               key={title}
-              className="card"
+              className="metric-cell"
               onClick={() => onNavigate("records")}
             >
-              <Icon size={24} />
               <span>
                 {title}
                 <strong>
@@ -148,7 +147,6 @@ export default function Dashboard({
                   <small>条</small>
                 </strong>
               </span>
-              <ArrowUpRight size={17} />
             </button>
           ))}
         </div>
@@ -164,17 +162,17 @@ export default function Dashboard({
                     ? "已授权工作"
                     : user
                       ? "最近的申请"
-                      : "预约办理指引"}
+                      : "如何申请"}
               </h2>
               <p>
                 {admin
                   ? "优先处理待审核申请，审核结果直接同步至企业。"
                   : user
                     ? "最近 5 条申请，查看状态或进入详情。"
-                    : "提前准备材料，让申请一次更顺畅。"}
+                    : "选择场地、上传设计图并提交审核。"}
               </p>
             </div>
-            {user && (
+            {user && (!staff || admin) && (
               <button
                 className="text-button"
                 onClick={() => onNavigate("records")}
@@ -200,6 +198,7 @@ export default function Dashboard({
                   </div>
                 </div>
               ))}
+              <p className="booking-requirements">设计图支持 JPG、PNG、WebP，单张不超过 3 MB。</p>
               <Button className="secondary" onClick={() => onNavigate("venue")}>
                 进入场地查询
                 <MapTrifold size={18} />
@@ -264,7 +263,7 @@ export default function Dashboard({
             </div>
           ) : (
             <p className="quiet-empty">
-              {connected ? "暂无已发布公告。" : "公告服务尚未连接。"}
+              {connected ? "暂无已发布公告。" : "公告暂时无法加载。"}
             </p>
           )}
           <div className="dashboard-notice-footer">
@@ -278,12 +277,12 @@ export default function Dashboard({
           </div>
         </section>
       </div>
-      <div className="workspace-shortcuts">
+      {user && <div className="workspace-shortcuts">
         <button onClick={() => onNavigate("venue")}>
           <MapTrifold size={25} />
           <span>
             <strong>场地查询</strong>
-            <small>按日期查看原图位置和开放状态</small>
+            <small>按日期查看场地位置和开放状态</small>
           </span>
           <ArrowRight size={18} />
         </button>
@@ -307,7 +306,7 @@ export default function Dashboard({
             <ArrowRight size={18} />
           </button>
         )}
-      </div>
+      </div>}
       {detail && (
         <BookingDetail
           item={detail}

@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
 import {
-  SquaresFour,
   MapTrifold,
   ClipboardText,
   Megaphone,
@@ -16,12 +15,11 @@ import {
   MapPin,
   CalendarBlank,
   CheckCircle,
-  Clock,
   ArrowsClockwise,
   Question,
   WarningCircle,
-  Buildings,
 } from "@phosphor-icons/react";
+import { previewAvailable, previewRole, previewRoles } from "./preview.js";
 import { api, setCsrf } from "./api.js";
 import { dateString, slotName, zoneName } from "./utils.js";
 import { Button, Brand, Modal, AuthPage, AccountPage } from "./components.jsx";
@@ -30,24 +28,19 @@ import { UsersPage, ClosuresPage, AuditPage } from "./Admin.jsx";
 import VenueMap from "./VenueMap.jsx";
 import Records from "./Records.jsx";
 import Notices from "./Notices.jsx";
-import Dashboard from "./Dashboard.jsx";
 import Access from "./Access.jsx";
 import { can } from "./permissions.js";
 import { VENUE_SEGMENTS, inSegment } from "./venue-layout.js";
 
 const titles = {
-  overview: [
-    "场地有序，活动从容。",
-    "查询场地、提交申请，让校园里的每一次相遇都有好安排。",
-  ],
-  venue: ["找到适合您的位置。", "按日期与区域，查看户外广场的桁架开放情况。"],
-  records: ["每一步进度，都清晰可见。", "统一管理布展申请，及时查看审核意见。"],
-  notices: ["校园动态，及时知晓。", "查看场地使用说明及最新服务通知。"],
-  account: ["您的账号，安心管理。", "维护企业资料与账号安全。"],
-  users: ["每一个账号，妥善管理。", "管理企业访问权限、账号状态与密码恢复。"],
-  closures: ["让场地安排井然有序。", "统一维护桁架开放与暂停安排。"],
-  access: ["按职责授权，按权限操作。", "管理工作人员授权与账号访问范围。"],
-  audit: ["有记录，也有依据。", "查看账号及业务操作记录。"],
+  venue: ["户外广场布展预约", "选择日期与区域，查看桁架位置及开放状态。"],
+  records: ["我的申请", "查看布展申请进度与审核意见。"],
+  notices: ["通知公告", "场地使用说明、活动安排与服务通知。"],
+  account: ["账号设置", "维护企业资料、登录密码与设备。"],
+  users: ["账号管理", "管理企业账号、访问状态与密码恢复。"],
+  closures: ["场地开放安排", "设置桁架暂停时段与恢复日期。"],
+  access: ["工作人员授权", "分配业务职责与管理权限。"],
+  audit: ["操作日志", "查询账号及业务操作记录。"],
 };
 export default function App() {
   const [user, setUser] = useState(null),
@@ -55,7 +48,7 @@ export default function App() {
     [connected, setConnected] = useState(false),
     [serviceError, setServiceError] = useState(""),
     [auth, setAuth] = useState(null),
-    [page, setPage] = useState("overview"),
+    [page, setPage] = useState("venue"),
     [mobile, setMobile] = useState(false),
     [modal, setModal] = useState(null),
     [toast, setToast] = useState("");
@@ -99,7 +92,7 @@ export default function App() {
   useEffect(() => {
     let active = true;
     Promise.all([
-      api(`/venue?date=${page === "venue" ? date : dateString()}`),
+      api(`/venue?date=${date}`),
       api("/notices"),
     ])
       .then(([v, n]) => {
@@ -139,7 +132,7 @@ export default function App() {
     const fn = () => {
       setUser(null);
       setCsrf(null);
-      setPage("overview");
+      setPage("venue");
       setModal(null);
       notify("登录已失效，请重新登录");
     };
@@ -152,6 +145,7 @@ export default function App() {
     return () => clearTimeout(t);
   }, [toast]);
   async function logout() {
+    if (previewRole) { switchPreview("guest"); return; }
     try {
       await api("/auth/logout", { method: "POST" });
       setUser(null);
@@ -159,7 +153,7 @@ export default function App() {
       setModal(null);
       setCounts({});
       setAuth("login");
-      setPage("overview");
+      setPage("venue");
       refresh();
     } catch (e) {
       notify(e.message);
@@ -167,7 +161,7 @@ export default function App() {
   }
   function beginBooking() {
     if (!connected) {
-      notify("账号服务尚未连接，请使用 Docker 完整服务地址访问");
+      notify("服务暂不可用，请稍后重试");
       return;
     }
     if (!user) {
@@ -179,7 +173,7 @@ export default function App() {
       return;
     }
     if (admin) {
-      go(can(user, "bookings.review") ? "records" : "overview");
+      go(can(user, "bookings.review") ? "records" : "venue");
       return;
     }
     setModal({ type: "booking" });
@@ -187,12 +181,19 @@ export default function App() {
   function onAuth(u) {
     setUser(u);
     setAuth(null);
-    setPage(u.mustChangePassword ? "account" : "overview");
+    setPage(u.mustChangePassword ? "account" : "venue");
     refresh();
     notify("登录成功");
   }
+  function switchPreview(role) {
+    // Reloading unmounts all role-specific state and prevents stale responses
+    // from the prior identity being displayed in the next preview.
+    const url = new URL(location.href);
+    if (role) url.searchParams.set("preview", role);
+    else url.searchParams.delete("preview");
+    location.assign(url.href);
+  }
   const nav = [
-    ["overview", "服务工作台", SquaresFour],
     ["venue", "场地查询", MapTrifold],
     ...(user?.role === "enterprise" || can(user, "bookings.review")
       ? [["records", admin ? "企业申报审核" : "我的申请", ClipboardText]]
@@ -206,10 +207,7 @@ export default function App() {
     ...(user?.isSuperAdmin ? [["access", "授权管理", ShieldCheck]] : []),
   ];
   const busy = venue.occupied.find((b) => b.slot === selected),
-    closed = venue.closed.find((b) => b.slot === selected),
-    unavailable = new Set(
-      [...venue.occupied, ...venue.closed].map((b) => b.slot),
-    ).size;
+    closed = venue.closed.find((b) => b.slot === selected);
   if (auth)
     return (
       <>
@@ -228,82 +226,116 @@ export default function App() {
     );
   return (
     <div className="app">
-      <aside className={`sidebar ${mobile ? "is-open" : ""}`}>
-        <a
-          href="#"
-          onClick={(e) => {
-            e.preventDefault();
-            go("overview");
-          }}
-        >
-          <Brand />
-        </a>
-        <div className="workspace-label">户外广场布展预约</div>
-        <div className="nav-heading">工作空间</div>
-        <nav>
-          {nav.map(([id, label, Icon]) => (
+      <header className="topbar">
+        <div className="topbar-inner">
+          <div className="topbar-left">
             <button
-              key={id}
-              aria-label={label}
-              aria-current={page === id ? "page" : undefined}
-              className={page === id ? "selected" : ""}
-              onClick={() => go(id)}
+              className="mobile-toggle icon-button"
+              aria-label="打开导航"
+              aria-expanded={mobile}
+              aria-controls="workspace-navigation"
+              onClick={() => setMobile(!mobile)}
             >
-              <Icon size={21} weight={page === id ? "fill" : "regular"} />
-              <span>{label}</span>
-              {id === "records" && !!counts["待审核"] && (
-                <b aria-hidden="true">{counts["待审核"]}</b>
-              )}
+              <List size={22} />
             </button>
-          ))}
-        </nav>
-        <div className="sidebar-support">
-          <span>
-            <Question size={22} />
-          </span>
-          <h3>需要一点帮助？</h3>
-          <p>了解申报材料、预约规则与审核流程。</p>
-          <button
-            className="text-button"
-            onClick={() => setModal({ type: "help" })}
-          >
-            查看使用指南
-            <ArrowUpRight size={17} />
-          </button>
-        </div>
-        <div className="sidebar-account">
-          {user ? (
-            <>
-              <button onClick={() => go("account")}>
-                <span className="avatar">{user.company.slice(0, 1)}</span>
-                <span>
-                  <strong>{user.contact || "管理员"}</strong>
-                  <small>{admin ? "平台管理员" : "企业账号"}</small>
-                </span>
-                <CaretRight size={17} />
-              </button>
+            <a
+              href="#"
+              className="brand-link"
+              onClick={(e) => {
+                e.preventDefault();
+                go("venue");
+              }}
+            >
+              <Brand />
+            </a>
+            <span className="breadcrumb">
+              校园服务
+              <CaretRight size={13} />
+              <strong>
+                {page === "account"
+                  ? "账号设置"
+                  : nav.find((n) => n[0] === page)?.[1]}
+              </strong>
+            </span>
+          </div>
+          <aside id="workspace-navigation" className={`sidebar ${mobile ? "is-open" : ""}`}>
+            <div className="workspace-label">户外广场布展预约</div>
+            <div className="nav-heading">工作空间</div>
+            <nav>
+              {nav.map(([id, label, Icon]) => (
+                <button
+                  key={id}
+                  aria-label={label}
+                  aria-current={page === id ? "page" : undefined}
+                  className={page === id ? "selected" : ""}
+                  onClick={() => go(id)}
+                >
+                  <Icon size={18} weight={page === id ? "fill" : "regular"} />
+                  <span>{label}</span>
+                  {id === "records" && !!counts["待审核"] && (
+                    <b aria-hidden="true">{counts["待审核"]}</b>
+                  )}
+                </button>
+              ))}
+            </nav>
+            <div className="sidebar-support">
               <button
-                className="logout-button"
-                aria-label="退出登录"
-                onClick={logout}
+                className="text-button"
+                onClick={() => setModal({ type: "help" })}
               >
-                <SignOut size={19} />
+                <Question size={16} />
+                查看使用指南
               </button>
-            </>
-          ) : (
-            <button onClick={() => setAuth("login")}>
-              <span className="avatar">
-                <UserCircle size={23} />
-              </span>
-              <span>
-                <strong>登录账号</strong>
-                <small>管理您的企业申请</small>
-              </span>
-              <ArrowRight size={18} />
+            </div>
+          </aside>
+          <div className="topbar-actions">
+            <span className="today">
+              <CalendarBlank size={15} />
+              {dateString().replaceAll("-", " / ")}
+            </span>
+            <button
+              className="text-button guide-trigger"
+              onClick={() => setModal({ type: "help" })}
+            >
+              预约须知
             </button>
-          )}
+      {previewAvailable && (
+        <div className="identity-preview" title={previewRole ? "示例数据，仅供页面预览" : "切换查看各身份页面"}>
+          <label htmlFor="preview-identity">身份预览</label>
+          <select id="preview-identity" value={previewRole} onChange={(e) => switchPreview(e.target.value)}>
+            <option value="">真实账号</option>
+            {previewRoles.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+          </select>
+          {previewRole && <small className="preview-badge">示例</small>}
         </div>
-      </aside>
+      )}
+            {user ? (
+              <div className="user-bar">
+                <button className="account-link" onClick={() => go("account")}>
+                  <span className="avatar small">{user.company.slice(0, 1)}</span>
+                  <span>{user.contact || "管理员"}</span>
+                </button>
+                <button
+                  className="logout-button"
+                  aria-label="退出登录"
+                  onClick={logout}
+                >
+                  <SignOut size={18} />
+                </button>
+              </div>
+            ) : (
+              <Button
+                className="primary small"
+                onClick={() => setAuth("login")}
+                disabled={sessionLoading}
+              >
+                登录 / 注册
+                <ArrowUpRight size={15} />
+              </Button>
+            )}
+          </div>
+        </div>
+      </header>
       {mobile && (
         <button
           className="nav-scrim"
@@ -312,52 +344,11 @@ export default function App() {
         />
       )}
       <div className="main-shell">
-        <header className="topbar">
-          <div>
-            <button
-              className="mobile-toggle icon-button"
-              aria-label="打开导航"
-              onClick={() => setMobile(!mobile)}
-            >
-              <List size={25} />
-            </button>
-            <span className="breadcrumb">
-              校园服务
-              <CaretRight size={14} />
-              <strong>
-                {page === "account"
-                  ? "账号设置"
-                  : nav.find((n) => n[0] === page)?.[1]}
-              </strong>
-            </span>
-          </div>
-          <div className="topbar-actions">
-            <span className="today">
-              <CalendarBlank size={17} />
-              {dateString().replaceAll("-", " / ")}
-            </span>
-            {user ? (
-              <button className="account-link" onClick={() => go("account")}>
-                <span className="avatar small">{user.company.slice(0, 1)}</span>
-                <span>{user.contact || "管理员"}</span>
-              </button>
-            ) : (
-              <Button
-                className="primary small"
-                onClick={() => setAuth("login")}
-                disabled={sessionLoading}
-              >
-                登录 / 注册
-                <ArrowUpRight size={16} />
-              </Button>
-            )}
-          </div>
-        </header>
         <main
           className={
             page === "records" && can(user, "bookings.review")
               ? "review-page"
-              : ""
+              : page === "venue" ? "venue-page" : ""
           }
         >
           <div className="page-heading">
@@ -367,14 +358,15 @@ export default function App() {
               </span>
               <h1>
                 {page === "records" && can(user, "bookings.review")
-                  ? "集中审阅，连续处理。"
+                  ? "企业申报审核"
                   : titles[page]?.[0]}
               </h1>
               <p>
                 {page === "records" && can(user, "bookings.review")
-                  ? "先核对冲突与材料，再确认结果；处理后自动进入下一条。"
+                  ? "核对场地时段与设计材料，处理企业布展申请。"
                   : titles[page]?.[1]}
               </p>
+
             </div>
             {["venue", "records"].includes(page) &&
               !(admin && page === "records") &&
@@ -394,10 +386,9 @@ export default function App() {
             <div className="service-warning">
               <WarningCircle size={23} />
               <div>
-                <strong>后端服务尚未连接</strong>
+                <strong>服务暂未连接</strong>
                 <p>
-                  {serviceError} GitHub Pages 仅托管前端，账号与业务数据需要
-                  Docker 服务支持。
+                  暂时无法读取预约和公告数据，请重试连接。
                 </p>
               </div>
               <Button className="secondary small" onClick={refresh}>
@@ -406,85 +397,13 @@ export default function App() {
               </Button>
             </div>
           )}
-          {page === "overview" && (
-            <Dashboard
-              user={user}
-              counts={counts}
-              notices={notices}
-              connected={connected}
-              version={version}
-              onNavigate={go}
-              onApply={beginBooking}
-              onRefresh={refresh}
-              notify={notify}
-            />
-          )}
           {page === "venue" && (
             <>
-              <div className="metrics">
-                <div>
-                  <span className="metric-icon">
-                    <MapTrifold size={25} />
-                  </span>
-                  <div>
-                    <p>全部桁架位</p>
-                    <strong>
-                      29<small>个</small>
-                    </strong>
-                  </div>
-                  <span className="metric-foot">原图五段位置分布</span>
-                </div>
-                <div>
-                  <span className="metric-icon green">
-                    <CheckCircle size={25} />
-                  </span>
-                  <div>
-                    <p>所选日期可预约</p>
-                    <strong>
-                      {connected ? 29 - unavailable : "—"}
-                      <small>个</small>
-                    </strong>
-                  </div>
-                  <span className="metric-foot">
-                    {connected ? "场地数据已同步" : "等待连接服务"}
-                  </span>
-                </div>
-                <div>
-                  <span className="metric-icon amber">
-                    <Buildings size={25} />
-                  </span>
-                  <div>
-                    <p>所选日期已安排</p>
-                    <strong>
-                      {connected ? venue.occupied.length : "—"}
-                      <small>个</small>
-                    </strong>
-                  </div>
-                  <span className="metric-foot">
-                    {venue.closed.length
-                      ? `另有 ${venue.closed.length} 个暂停开放`
-                      : "以审批通过的申请为准"}
-                  </span>
-                </div>
-                <div>
-                  <span className="metric-icon">
-                    <Clock size={25} />
-                  </span>
-                  <div>
-                    <p>暂停开放</p>
-                    <strong>
-                      {connected ? venue.closed.length : "—"}
-                      <small>个</small>
-                    </strong>
-                  </div>
-                  <span className="metric-foot">所选日期的暂停安排</span>
-                </div>
-              </div>
               <div className="venue-layout">
                 <section className="card venue-card">
                   <div className="card-header">
                     <div>
-                      <h2>原图桁架位置</h2>
+                      <h2>桁架位置</h2>
                       <p>
                         <MapPin size={15} />
                         大学生活动中心户外广场
@@ -529,20 +448,6 @@ export default function App() {
                         </option>
                       ))}
                     </select>
-                    <div className="legend">
-                      <span>
-                        <i />
-                        可预约
-                      </span>
-                      <span>
-                        <i className="occupied" />
-                        已占用
-                      </span>
-                      <span>
-                        <i className="closed" />
-                        暂停
-                      </span>
-                    </div>
                   </div>
                   {view === "map" ? (
                     <div
@@ -556,9 +461,6 @@ export default function App() {
                         zone={zone}
                         connected={connected}
                       />
-                      <div className="map-caption">
-                        底图来源：需求 PDF 第 11 页。点击蓝色桁架查看位置。
-                      </div>
                     </div>
                   ) : (
                     <div className="slot-grid">
@@ -592,15 +494,14 @@ export default function App() {
                     <span>
                       <ShieldCheck size={16} />
                       {connected
-                        ? "实时查询 · 每 30 秒同步"
-                        : "等待后端连接，不显示模拟占用数据"}
+                        ? "预约状态自动更新"
+                        : "暂时无法获取预约状态"}
                     </span>
                     <span>{date}</span>
                   </div>
                   <p className="map-source-note">
                     绿地边缘 6 个 · B 座通道 4 个 · A 座通道 4 个 · 东侧直线 7
-                    个 · 南侧直线 8 个。A 座、B 座是建筑名称；01–29
-                    为系统位置编号，原 PDF 未提供桁架编号。
+                    个 · 南侧直线 8 个。
                   </p>
                 </section>
                 <div className="venue-side">
@@ -657,33 +558,7 @@ export default function App() {
                       </Button>
                     )}
                   </section>
-                  <section className="guide-card">
-                    <span className="section-kicker">BEFORE YOU APPLY</span>
-                    <h2>
-                      一次顺畅的预约，
-                      <br />
-                      从充分准备开始。
-                    </h2>
-                    <div className="guide-step">
-                      <span>01</span>
-                      <p>完善企业与联系人资料</p>
-                    </div>
-                    <div className="guide-step">
-                      <span>02</span>
-                      <p>准备清晰的桁架设计图</p>
-                    </div>
-                    <div className="guide-step">
-                      <span>03</span>
-                      <p>提交后等待管理员审核</p>
-                    </div>
-                    <button
-                      className="text-button"
-                      onClick={() => setModal({ type: "help" })}
-                    >
-                      阅读完整预约须知
-                      <ArrowUpRight size={17} />
-                    </button>
-                  </section>
+
                 </div>
               </div>
             </>
@@ -731,7 +606,7 @@ export default function App() {
           )}
           <footer className="page-footer">
             <Brand />
-            <span>校园公共空间，让每一场活动更有序。</span>
+            <span>大学生活动中心 · 户外广场布展服务</span>
           </footer>
         </main>
       </div>
@@ -782,8 +657,7 @@ export default function App() {
             </p>
             <h3>05 · 现场使用</h3>
             <p>
-              遵守现场管理要求，保持环境整洁，活动结束后及时撤除设备。场地图按需求
-              PDF 第 11 页对齐；A 座、B 座为建筑名称，位置编号为系统标识。
+              遵守现场管理要求，保持环境整洁，活动结束后及时撤除设备。
             </p>
           </div>
         </Modal>

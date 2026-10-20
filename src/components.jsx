@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import * as Dialog from "@radix-ui/react-dialog";
+import React, { useState, useEffect, useId } from "react";
+import { createPortal } from "react-dom";
 import {
   X,
   SpinnerGap,
@@ -13,6 +13,7 @@ import {
 } from "@phosphor-icons/react";
 import { api, setCsrf } from "./api.js";
 import Sessions from "./Sessions.jsx";
+import universitySignature from "./assets/hust-signature.png";
 
 export function Button({ children, loading, className = "", ...props }) {
   return (
@@ -59,28 +60,43 @@ export function Status({ value }) {
   );
 }
 export function Modal({ title, description, children, onClose, wide = false }) {
-  return (
-    <Dialog.Root open onOpenChange={(v) => !v && onClose()}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="dialog-overlay" />
-        <Dialog.Content
-          className={`dialog-content ${wide ? "dialog-wide" : ""}`}
-        >
-          <div className="dialog-heading">
-            <div>
-              <Dialog.Title>{title}</Dialog.Title>
-              <Dialog.Description>
-                {description || "请核对信息后操作。"}
-              </Dialog.Description>
-            </div>
-            <Dialog.Close className="icon-button" aria-label="关闭">
-              <X size={22} />
-            </Dialog.Close>
+  const titleId = useId(),
+    descId = useId();
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return createPortal(
+    <>
+      <div className="dialog-overlay" onClick={onClose} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descId}
+        className={`dialog-content ${wide ? "dialog-wide" : ""}`}
+      >
+        <div className="dialog-heading">
+          <div>
+            <h2 id={titleId}>{title}</h2>
+            <p id={descId}>{description || "请核对信息后操作。"}</p>
           </div>
-          {children}
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="关闭"
+            onClick={onClose}
+          >
+            <X size={22} />
+          </button>
+        </div>
+        {children}
+      </div>
+    </>,
+    document.body,
   );
 }
 export function PasswordInput({
@@ -118,13 +134,8 @@ export function PasswordInput({
 export function Brand() {
   return (
     <div className="brand">
-      <span className="brand-mark">
-        <Buildings size={27} weight="bold" />
-      </span>
-      <div>
-        <strong>华中科技大学</strong>
-        <small>大学生活动中心 · 场地服务</small>
-      </div>
+      <img className="university-signature" src={universitySignature} alt="华中科技大学" />
+      <span className="brand-service">大学生活动中心<small>户外广场布展预约</small></span>
     </div>
   );
 }
@@ -155,16 +166,16 @@ export function AuthPage({ initialMode = "login", onSuccess, onBack }) {
       <section className="auth-story">
         <Brand />
         <div className="auth-story-copy">
-          <span className="section-kicker">CAMPUS SPACE, SHARED.</span>
+          <span className="section-kicker">华中科技大学 · 公共空间预约平台</span>
           <h1>
-            好的相遇，
+            户外广场
             <br />
-            从这里开始。
+            布展预约
           </h1>
           <p>
-            连接企业与校园，
+            查询场地，提交布展申请。
             <br />
-            让每一场活动都有合适的位置。
+            登录后查看申请与审核结果。
           </p>
         </div>
         <div className="auth-architecture" aria-hidden="true">
@@ -182,7 +193,7 @@ export function AuthPage({ initialMode = "login", onSuccess, onBack }) {
         </div>
         <div className="auth-story-footer">
           <ShieldCheck size={19} />
-          账号保护 · 有序预约 · 透明审核
+          华中科技大学 · 大学生活动中心
         </div>
       </section>
       <section className="auth-form-side">
@@ -192,7 +203,7 @@ export function AuthPage({ initialMode = "login", onSuccess, onBack }) {
         </button>
         <div className="auth-form-wrap">
           <span className="section-kicker">
-            {mode === "login" ? "欢迎回来" : "开启校园布展之旅"}
+            {mode === "login" ? "欢迎回来" : "企业账号注册"}
           </span>
           <h2>{mode === "login" ? "登录您的账号" : "注册企业账号"}</h2>
           <p>

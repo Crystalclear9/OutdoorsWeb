@@ -28,6 +28,10 @@ test.beforeAll(async () => {
           ? "text/javascript"
           : relative.endsWith(".css")
             ? "text/css"
+            : relative.endsWith(".woff2")
+              ? "font/woff2"
+            : relative.endsWith(".jpg")
+              ? "image/jpeg"
             : relative.endsWith(".png")
               ? "image/png"
               : "text/html; charset=utf-8",
@@ -49,22 +53,20 @@ test("GitHub Pages 静态入口显示真实后端未连接状态，仍可打开�
 }) => {
   await page.goto(`${origin}/OutdoorsWeb/`);
   await expect(
-    page.getByRole("heading", { name: "场地有序，活动从容。" }),
+    page.getByRole("heading", { name: "户外广场布展预约" }),
   ).toBeVisible();
   await expect(
-    page.getByText("后端服务尚未连接", { exact: true }),
+    page.getByText("服务暂未连接", { exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "发起布展申请" }),
   ).toBeDisabled();
-  const imageResponse = page.waitForResponse((r) =>
-    r.url().includes("/assets/venue-plan-"),
-  );
+  await expect(page.locator(".venue-svg image")).toBeVisible();
   await page
     .getByRole("navigation")
     .getByRole("button", { name: "场地查询", exact: true })
     .click();
-  expect((await imageResponse).status()).toBe(200);
+
   await expect(page.locator(".venue-svg image")).toBeVisible();
   await page.getByRole("button", { name: "登录 / 注册" }).click();
   await expect(

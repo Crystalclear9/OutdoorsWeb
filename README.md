@@ -1,6 +1,6 @@
 # 华中科技大学户外广场布展预约 Demo
 
-根据所提供 PDF 的业务流程制作的本地响应式 Web 演示，暂不涉及部署。
+根据所提供 PDF 的业务流程制作的响应式 Web 演示，支持本地运行及 GitHub Pages 静态访问。
 
 ## 启动
 
@@ -12,6 +12,29 @@ npm run dev
 ```
 
 打开终端显示的本地地址（默认 http://127.0.0.1:5173）。
+
+## GitHub Pages
+
+访问地址：https://crystalclear9.github.io/OutdoorsWeb/
+
+当前 Pages 使用 `main` 分支的根目录发布。根目录 `index.html` 和 `assets/` 是已编译的静态文件，浏览器不需要 Node.js 或 JSX 编译器。`.nojekyll` 使 Pages 直接发布静态文件。
+
+源页面入口在 `src/index.html`，业务代码在 `src/main.jsx`。修改后执行：
+
+```powershell
+npm ci
+npm run build
+npm test
+git add src scripts index.html assets
+git commit -m "Update reservation demo"
+git push
+```
+
+`npm run build` 先构建 `dist/`，再同步发布文件到根目录。资源路径使用 `./assets/`，可在 `/OutdoorsWeb/` 子目录加载。不要直接把源入口覆盖到根目录 `index.html`。
+
+Pages 设置应为 “Deploy from a branch”，分支 `main`，目录 `/ (root)`。无需更换现有发布方式。发布更新由 GitHub 异步完成，推送后可能需要稍等并刷新。
+
+`npm test` 包括真实静态服务下 `/OutdoorsWeb/` 子路径的生产构建加载测试，以及申报、审核、公告和手机端流程测试。本机测试使用 Edge；在其他操作系统上运行需调整 `playwright.config.js` 的浏览器配置。
 
 ## 演示流程
 

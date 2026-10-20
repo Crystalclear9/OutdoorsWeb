@@ -12,8 +12,24 @@ import { can } from "./permissions.js";
 import { Empty, ErrorBox, Status, Button } from "./components.jsx";
 import { slotName } from "./utils.js";
 import { BookingDetail } from "./Booking.jsx";
+import ReviewDesk from "./ReviewDesk.jsx";
 
 export default function Records({ user, notify, onChange }) {
+  return can(user, "bookings.review") ? (
+    <ReviewDesk
+      user={user}
+      notify={notify}
+      onChange={onChange}
+      history={
+        <ApplicationHistory user={user} notify={notify} onChange={onChange} />
+      }
+    />
+  ) : (
+    <ApplicationHistory user={user} notify={notify} onChange={onChange} />
+  );
+}
+
+function ApplicationHistory({ user, notify, onChange }) {
   const [filter, setFilter] = useState(""),
     [query, setQuery] = useState(""),
     [page, setPage] = useState(1),

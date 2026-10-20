@@ -81,10 +81,14 @@ test("注册、真实跨账号审核、刷新、退出与登录", async ({ page,
   await manager
     .getByRole("row")
     .filter({ hasText: company })
-    .getByRole("button", { name: "审核申请" })
+    .getByRole("button", { name: `审核申请 ${company}`, exact: true })
     .click();
-  await expect(manager.getByRole("dialog").locator("img")).toBeVisible();
-  await manager.getByRole("button", { name: "审核通过", exact: true }).click();
+  await expect(
+    manager.getByRole("region", { name: "申请审阅区" }).locator("img"),
+  ).toBeVisible();
+  await manager
+    .getByRole("button", { name: "通过并审阅下一条", exact: true })
+    .click();
   await page.reload();
   await page
     .getByRole("button", { name: "我的申请", exact: false })
@@ -514,4 +518,197 @@ test("账号可查看登录设备，并退出其他设备", async ({ page, brows
     other.getByRole("button", { name: "登录 / 注册" }),
   ).toBeVisible();
   await context.close();
+});
+
+async function seedPending(page, company, slot, offset = 30) {
+  const session = await (await page.request.get("/api/auth/session")).json();
+  const date = new Date(Date.now() + offset * 86400000)
+    .toISOString()
+    .slice(0, 10);
+  const response = await page.request.post("/api/bookings", {
+    headers: { Origin: "http://127.0.0.1:3101", "X-CSRF-Token": session.csrf },
+    data: {
+      company,
+      contact: "张老师",
+      phone: "13800138000",
+      slot,
+      start: date,
+      end: date,
+      image: "data:image/png;base64," + design.buffer.toString("base64"),
+    },
+  });
+  expect(response.status()).toBe(201);
+  return (await response.json()).id;
+}
+
+test("连续审阅自动进入下一条，快捷原因退回，手机端无溢出", async ({
+  page,
+  browser,
+}) => {
+  const prefix = "连续审阅-" + Date.now();
+  await register(page, prefix);
+  await seedPending(page, prefix + "-A", 21);
+  await seedPending(page, prefix + "-B", 22);
+  const context = await browser.newContext({
+      viewport: { width: 1440, height: 1000 },
+    }),
+    manager = await context.newPage();
+  await adminLogin(manager);
+  await manager
+    .getByRole("navigation")
+    .getByRole("button", { name: "企业申报审核", exact: true })
+    .click();
+  await manager.getByLabel("搜索待办申请").fill(prefix);
+  const detail = manager.getByRole("region", { name: "申请审阅区" });
+  await expect(
+    detail.getByRole("heading", { name: prefix + "-A", exact: true }),
+  ).toBeVisible();
+  await expect(detail.locator("img")).toBeVisible();
+  await expect(detail).toContainText("日期与占用检查通过");
+  await manager.screenshot({
+    path: "tmp/review-desk-desktop.png",
+    fullPage: true,
+    animations: "disabled",
+  });
+  await detail
+    .getByRole("button", { name: "通过并审阅下一条", exact: true })
+    .click();
+  await expect(
+    detail.getByRole("heading", { name: prefix + "-B", exact: true }),
+  ).toBeVisible();
+  await detail
+    .getByRole("button", { name: "设计图不清晰", exact: true })
+    .click();
+  await expect(detail.getByLabel("审批意见")).toHaveValue(
+    "设计图内容不清晰，请上传清晰完整的桁架设计图。",
+  );
+  await manager.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await manager.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await manager.screenshot({
+    path: "tmp/review-desk-mobile.png",
+    fullPage: true,
+    animations: "disabled",
+  });
+  await detail
+    .getByRole("button", { name: "退回并审阅下一条", exact: true })
+    .click();
+  await expect(
+    manager.getByRole("heading", { name: "暂无待办申请" }),
+  ).toBeVisible();
+  const results = await (await page.request.get("/api/bookings")).json();
+  expect(results.items.find((b) => b.company === prefix + "-A").status).toBe(
+    "已通过",
+  );
+  expect(
+    results.items.find((b) => b.company === prefix + "-B").reason,
+  ).toContain("清晰完整");
+  await context.close();
+});
+
+test("批量操作需确认，冲突逐条返回，剩余待办可统一退回", async ({
+  page,
+  browser,
+}) => {
+  const prefix = "批量审阅-" + Date.now();
+  await register(page, prefix);
+  await seedPending(page, prefix + "-A", 25, 35);
+  await seedPending(page, prefix + "-B", 26, 35);
+  const enterpriseContext = await browser.newContext(),
+    other = await enterpriseContext.newPage();
+  await register(other, prefix + "竞争");
+  await seedPending(other, prefix + "-C", 25, 35);
+  const context = await browser.newContext({
+      viewport: { width: 1440, height: 1000 },
+    }),
+    manager = await context.newPage();
+  await adminLogin(manager);
+  await manager
+    .getByRole("navigation")
+    .getByRole("button", { name: "企业申报审核", exact: true })
+    .click();
+  await manager.getByLabel("搜索待办申请").fill(prefix);
+  await expect(manager.locator(".review-queue-item")).toHaveCount(3);
+  await manager.getByLabel("选择本页全部申请").check();
+  await manager.getByRole("button", { name: "批量通过", exact: true }).click();
+  const dialog = manager.getByRole("dialog");
+  await expect(
+    dialog.getByRole("button", { name: "确认通过 3 条" }),
+  ).toBeDisabled();
+  await dialog.getByRole("checkbox").check();
+  await manager.screenshot({
+    path: "tmp/review-batch-confirm.png",
+    fullPage: true,
+    animations: "disabled",
+  });
+  await dialog.getByRole("button", { name: "确认通过 3 条" }).click();
+  await expect(manager.locator(".review-report")).toContainText(
+    "成功 2 条，未完成 1 条",
+  );
+  await expect(manager.locator(".review-queue-item")).toHaveCount(1);
+  await expect(
+    manager.getByRole("region", { name: "申请审阅区" }),
+  ).toContainText("与已通过预约冲突");
+  await expect(
+    manager.getByRole("button", { name: "通过并审阅下一条", exact: true }),
+  ).toBeDisabled();
+  await manager.getByLabel("选择本页全部申请").check();
+  await manager.getByRole("button", { name: "批量退回", exact: true }).click();
+  await dialog.getByRole("button", { name: "时段冲突", exact: true }).click();
+  await dialog.getByRole("checkbox").check();
+  await dialog.getByRole("button", { name: "确认退回 1 条" }).click();
+  await expect(manager.locator(".review-report")).toContainText(
+    "成功 1 条，未完成 0 条",
+  );
+  await expect(
+    manager.getByRole("heading", { name: "暂无待办申请" }),
+  ).toBeVisible();
+  await enterpriseContext.close();
+  await context.close();
+});
+
+test("地图适配屏幕、比例缩放、展开与退出保持原图纵横比", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/");
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "场地查询", exact: true })
+    .click();
+  const map = page.locator(".reference-map"),
+    svg = map.locator("svg.venue-svg");
+  await expect(page.getByLabel("地图缩放比例")).toHaveText("100%");
+  const size = await svg.boundingBox();
+  expect(size.height).toBeLessThanOrEqual(600);
+  expect(Math.abs(size.width / size.height - 1350 / 1185)).toBeLessThan(0.01);
+  await page.getByRole("button", { name: "放大场地图" }).click();
+  await expect(page.getByLabel("地图缩放比例")).toHaveText("125%");
+  await page.getByRole("button", { name: "重置场地图" }).click();
+  await page.getByRole("button", { name: "展开场地图" }).click();
+  await expect(map).toHaveClass(/map-expanded/);
+  await page.screenshot({
+    path: "tmp/map-expanded.png",
+    fullPage: true,
+    animations: "disabled",
+  });
+  await page.keyboard.press("Escape");
+  await expect(map).not.toHaveClass(/map-expanded/);
+  await page.screenshot({
+    path: "tmp/map-fit-desktop.png",
+    fullPage: true,
+    animations: "disabled",
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: "tmp/map-fit-mobile.png",
+    fullPage: true,
+    animations: "disabled",
+  });
 });

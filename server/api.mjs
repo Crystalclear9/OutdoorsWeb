@@ -35,6 +35,57 @@ export async function createApi(db, options = {}) {
     "id,user_id,company,contact,phone,start,end,slot,status,reason,created,reviewed,version";
   const bookingById = (id) =>
     db.prepare(`SELECT ${bookingColumns} FROM bookings WHERE id=?`).get(id);
+  const reviewCheck = (row) => {
+    const blockers = [];
+    if (row.start < today()) blockers.push("申请日期已过期");
+    if (
+      db
+        .prepare(
+          "SELECT id FROM bookings WHERE id<>? AND slot=? AND status='已通过' AND start<=? AND end>=?",
+        )
+        .get(row.id, row.slot, row.end, row.start)
+    )
+      blockers.push("与已通过预约冲突");
+    if (
+      db
+        .prepare("SELECT id FROM closures WHERE slot=? AND start<=? AND end>=?")
+        .get(row.slot, row.end, row.start)
+    )
+      blockers.push("所选时段暂停开放");
+    const competing = db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM bookings WHERE id<>? AND slot=? AND status='待审核' AND start<=? AND end>=?",
+      )
+      .get(row.id, row.slot, row.end, row.start).n;
+    return { blockers, competing };
+  };
+  function review(req, id, result, reason, expectedVersion) {
+    return write(req, "bookings.review", (fresh) => {
+      const row = bookingById(id);
+      fail(!row, 404, "申请不存在");
+      fail(row.user_id === fresh.id, 403, "不能审核自己提交的申请");
+      if (expectedVersion !== undefined)
+        fail(
+          row.version !== expectedVersion,
+          409,
+          "记录已被其他人修改，请刷新后重试",
+        );
+      else versionCheck(req, row);
+      fail(row.status !== "待审核", 409, "该申请已处理，请刷新");
+      if (result === "已通过") {
+        const checks = reviewCheck(row);
+        fail(checks.blockers.length, 409, checks.blockers.join("；"));
+      }
+      db.prepare(
+        "UPDATE bookings SET status=?,reason=?,reviewed=?,reviewer=?,version=version+1 WHERE id=?",
+      ).run(result, reason, now(), fresh.id, id);
+      audit(
+        fresh.id,
+        result === "已通过" ? "booking.approved" : "booking.rejected",
+        id,
+      );
+    });
+  }
   const visibleBooking = (b) => {
     const { user_id, ...result } = b;
     return { ...result, hasImage: true };
@@ -335,10 +386,15 @@ export async function createApi(db, options = {}) {
       return send(res, {
         items: db
           .prepare(
-            `SELECT ${bookingColumns} FROM bookings${where} ORDER BY created DESC,id DESC LIMIT ? OFFSET ?`,
+            `SELECT ${bookingColumns} FROM bookings${where} ORDER BY created ${url.searchParams.get("order") === "oldest" ? "ASC" : "DESC"},id ${url.searchParams.get("order") === "oldest" ? "ASC" : "DESC"} LIMIT ? OFFSET ?`,
           )
           .all(...args, limit, (page - 1) * limit)
-          .map(visibleBooking),
+          .map((b) => ({
+            ...visibleBooking(b),
+            ...(can(present(u), "bookings.review") && b.status === "待审核"
+              ? { reviewCheck: reviewCheck(b) }
+              : {}),
+          })),
         total,
         page,
         pages: Math.max(1, Math.ceil(total / limit)),
@@ -423,6 +479,39 @@ export async function createApi(db, options = {}) {
       });
       return send(res, result, 201);
     }
+    if (p === "/api/bookings/review-batch" && m === "POST") {
+      current(req, "bookings.review");
+      const b = await body(req),
+        reason = clean(b.reason, 500);
+      fail(!["已通过", "未通过"].includes(b.status), 400, "审核结果无效");
+      fail(b.status === "未通过" && !reason, 400, "未通过时必须填写原因");
+      fail(
+        !Array.isArray(b.items) ||
+          !b.items.length ||
+          b.items.length > 50 ||
+          b.items.some(
+            (i) =>
+              !i ||
+              typeof i.id !== "string" ||
+              !Number.isSafeInteger(i.version) ||
+              i.version < 1,
+          ) ||
+          new Set(b.items.map((i) => i.id)).size !== b.items.length,
+        400,
+        "请选择 1–50 条不同的申请并携带版本号",
+      );
+      const results = b.items.map((item) => {
+        try {
+          review(req, item.id, b.status, reason, item.version);
+          return { id: item.id, ok: true };
+        } catch (e) {
+          // Conflicts are isolated per item. Authorization or infrastructure failures abort the request.
+          if (e.status !== 409 && e.status !== 404) throw e;
+          return { id: item.id, ok: false, error: e.message };
+        }
+      });
+      return send(res, { results });
+    }
     const imageMatch = p.match(/^\/api\/bookings\/([^/]+)\/image$/);
     if (imageMatch && m === "GET") {
       const u = current(req),
@@ -448,7 +537,15 @@ export async function createApi(db, options = {}) {
       permittedBooking(u, initial);
       if (m === "GET" && !bookingMatch[2]) {
         res.setHeader("ETag", `"${initial.version}"`);
-        return send(res, { booking: visibleBooking(initial) });
+        return send(res, {
+          booking: {
+            ...visibleBooking(initial),
+            ...(can(present(u), "bookings.review") &&
+            initial.status === "待审核"
+              ? { reviewCheck: reviewCheck(initial) }
+              : {}),
+          },
+        });
       }
       if (m === "POST" && bookingMatch[2] === "withdraw") {
         write(req, "enterprise", (fresh) => {
@@ -470,26 +567,7 @@ export async function createApi(db, options = {}) {
           reason = clean(b.reason, 500);
         fail(!["已通过", "未通过"].includes(b.status), 400, "审核结果无效");
         fail(b.status === "未通过" && !reason, 400, "未通过时必须填写原因");
-        write(req, "bookings.review", (fresh) => {
-          const row = bookingById(id);
-          fail(!row, 404, "申请不存在");
-          fail(row.user_id === fresh.id, 403, "不能审核自己提交的申请");
-          versionCheck(req, row);
-          fail(row.status !== "待审核", 409, "该申请已处理，请刷新");
-          fail(
-            b.status === "已通过" && row.start < today(),
-            409,
-            "申请日期已过期，请退回企业重新申报",
-          );
-          db.prepare(
-            "UPDATE bookings SET status=?,reason=?,reviewed=?,reviewer=?,version=version+1 WHERE id=?",
-          ).run(b.status, reason, now(), fresh.id, id);
-          audit(
-            fresh.id,
-            b.status === "已通过" ? "booking.approved" : "booking.rejected",
-            id,
-          );
-        });
+        review(req, id, b.status, reason);
         return send(res, { ok: true });
       }
     }

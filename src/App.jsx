@@ -353,16 +353,31 @@ export default function App() {
             )}
           </div>
         </header>
-        <main>
+        <main
+          className={
+            page === "records" && can(user, "bookings.review")
+              ? "review-page"
+              : ""
+          }
+        >
           <div className="page-heading">
             <div>
               <span className="section-kicker">
                 {admin ? "活动中心管理平台" : "大学生活动中心 · 户外广场"}
               </span>
-              <h1>{titles[page]?.[0]}</h1>
-              <p>{titles[page]?.[1]}</p>
+              <h1>
+                {page === "records" && can(user, "bookings.review")
+                  ? "集中审阅，连续处理。"
+                  : titles[page]?.[0]}
+              </h1>
+              <p>
+                {page === "records" && can(user, "bookings.review")
+                  ? "先核对冲突与材料，再确认结果；处理后自动进入下一条。"
+                  : titles[page]?.[1]}
+              </p>
             </div>
             {["venue", "records"].includes(page) &&
+              !(admin && page === "records") &&
               (!admin || can(user, "bookings.review")) && (
                 <Button
                   className="primary"

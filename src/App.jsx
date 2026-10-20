@@ -18,7 +18,6 @@ import {
   CheckCircle,
   Clock,
   ArrowsClockwise,
-  Question,
   WarningCircle,
   Buildings,
 } from "@phosphor-icons/react";
@@ -258,17 +257,13 @@ export default function App() {
           ))}
         </nav>
         <div className="sidebar-support">
-          <span>
-            <Question size={22} />
-          </span>
-          <h3>需要一点帮助？</h3>
+          <h3>使用帮助</h3>
           <p>了解申报材料、预约规则与审核流程。</p>
           <button
             className="text-button"
             onClick={() => setModal({ type: "help" })}
           >
             查看使用指南
-            <ArrowUpRight size={17} />
           </button>
         </div>
         <div className="sidebar-account">

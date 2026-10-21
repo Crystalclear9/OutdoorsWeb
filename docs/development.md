@@ -37,7 +37,7 @@ npm run test:visual
 
 PowerShell 使用 `$env:PLAYWRIGHT_CHANNEL="chromium"` 设置环境变量；Linux/macOS 可执行 `PLAYWRIGHT_CHANNEL=chromium npm run test:e2e`。无系统依赖的 Linux 主机可先执行 `npx playwright install --with-deps chromium`。
 
-本轮多代理复核运行了 78 项后端测试、41 项浏览器测试、桌面/手机视觉回归及隔离压测；npm 全依赖审计暂未报告已知漏洞。Docker 构建与固定 Linux 视觉回归由本轮提交的 CI 执行，结果以对应工作流为准。上轮业务提交 `20566fe` 的[成功工作流](https://github.com/Crystalclear9/OutdoorsWeb/actions/runs/39544243873)保留作历史记录。
+本轮安全、产品与运维复核运行了 85 项后端测试、45 项浏览器测试、2 项桌面/手机视觉回归，均通过；隔离压测 1000 次读取无错误，32 条同位竞争审批只有一次成功。npm 全依赖审计暂未报告已知漏洞。Docker 构建与固定 Linux 视觉回归由本轮提交的 CI 执行，结果以对应工作流为准。上轮提交 `9b70faf` 的[成功工作流](https://github.com/Crystalclear9/OutdoorsWeb/actions/runs/39588502268)保留作历史记录。
 
 新增回归覆盖游客现场状态及隐私、入口二维码、设计图异步读取竞争、非法换图清除旧图，以及现场登记冲突后重读失败的输入保留。另覆盖工作日历、电话跟进、独立财务权限、并发核款、取消退款与版本七迁移。测试数量会随代码增加，以实际输出为准。
 
@@ -49,7 +49,9 @@ PowerShell 使用 `$env:PLAYWRIGHT_CHANNEL="chromium"` 设置环境变量；Linu
 | 现场登记、改期与两步验证             | `server/tests/completion.test.mjs`、`tests/completion.spec.js` |
 | 入口二维码、换图竞争和现场冲突异常   | `tests/requirements.spec.js`                                   |
 
-本轮新增审计回归：`server/tests/backup-audit.test.mjs`、`casework-audit.test.mjs`、`http-boundary.test.mjs`；浏览器侧为 `tests/venue-loading.spec.js`、`auth-navigation.spec.js` 和 `dialog-saving.spec.js`，分别覆盖密钥恢复、角色待办/退款通知、跨源预检、慢网旧数据、认证互斥及保存弹窗。审计范围和修正见[项目复核](project-audit.md)。
+上一轮审计回归：`server/tests/backup-audit.test.mjs`、`casework-audit.test.mjs`、`http-boundary.test.mjs`；浏览器侧为 `tests/venue-loading.spec.js`、`auth-navigation.spec.js` 和 `dialog-saving.spec.js`，分别覆盖密钥恢复、角色待办/退款通知、跨源预检、慢网旧数据、认证互斥及保存弹窗。
+
+本轮新增 `server/tests/security-review.test.mjs`、`product-review.test.mjs`、`ops-review.test.mjs` 共 7 项回归，覆盖财务最少数据权限、取消后到账、电话纠错及维护锁/进程异常。新增 `tests/product-review.spec.js`、`case-draft.spec.js`、`notification-target.spec.js` 共 4 项浏览器回归；财务消息定位使用真实跨账号业务，刷新失败、翻页及日历重试使用隔离响应模拟。审计范围和修正见[项目复核](project-audit.md)，交接步骤见[全流程清单](release-checklist.md)。
 
 ## 清理本地中间文件
 
@@ -66,6 +68,8 @@ PowerShell 使用 `$env:PLAYWRIGHT_CHANNEL="chromium"` 设置环境变量；Linu
 先查看目标目录内容，再按明确路径删除；不要直接执行 `git clean -fdx` 或删除全部忽略文件。`tmp/` 未来可能包含新参考资料，需要每次核对，不能无条件整目录清空。已删除的截图和旧报告不会随文档更新自动恢复。
 
 2026-10-21 本次整理先逐项核对路径及内容，再清理 `tmp/`、`test-results/` 中共 22 个可重建截图、压测和测试诊断文件（约 2.3 MB），以及空的 `node_modules/.vite-temp/`。当时 `tmp/pdfs/` 已无提取文件，没有新的参考资料；后续不能据此直接清空新生成的 `tmp/`。
+
+同日第二轮专家复核完成后，再逐项清理本轮重建的 21 个截图、压测报告及测试状态文件（约 2.2 MB），移除其空目录和空的 Vite 临时目录；保留当前构建及正式视觉基线。后续测试会重新生成这些诊断产物。
 
 当前 `dist/` 构建、根目录 Pages 发布文件、源码、字体及授权、`tests/visual/snapshots/`、依赖和项目外的需求原 PDF 均保留。业务数据库、备份、`.env`、MFA 密钥及 Docker 持久卷不在清理范围内。后续构建或测试会按需重新生成缓存和诊断目录。
 

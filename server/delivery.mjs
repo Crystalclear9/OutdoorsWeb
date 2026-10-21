@@ -142,11 +142,14 @@ export function createDelivery(db, maintenance, options = {}) {
         );
     })()
       .catch((e) => {
-        db.prepare(
-          "INSERT INTO maintenance_state VALUES('externalAlert',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-        ).run(
-          JSON.stringify({ ok: false, at: now(), error: String(e.message) }),
-        );
+        const result = { ok: false, at: now(), error: String(e.message) };
+        try {
+          db.prepare(
+            "INSERT INTO maintenance_state VALUES('externalAlert',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+          ).run(JSON.stringify(result));
+        } catch {}
+        console.error(JSON.stringify({ event: "delivery.failed", ...result }));
+        return result;
       })
       .finally(() => {
         running = null;

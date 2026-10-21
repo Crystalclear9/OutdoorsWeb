@@ -49,6 +49,14 @@ export function caseworkRoutes(db, sec, send, notify) {
     u.role === "enterprise" ||
     can(present(u), "bookings.review") ||
     can(present(u), "payments.manage");
+  const financeOnly = (u) =>
+    u.role !== "enterprise" &&
+    !can(present(u), "bookings.review") &&
+    can(present(u), "payments.manage");
+  // Financial staff need approved bookings and every existing fee record,
+  // including cancelled/refunded history, but no unrelated application data.
+  const financialScope = (alias) =>
+    `(${alias}.status='已通过' OR EXISTS(SELECT 1 FROM booking_fees scoped_fee WHERE scoped_fee.booking_id=${alias}.id))`;
   const getBooking = (id, u) => {
     const b = db
       .prepare(
@@ -61,6 +69,16 @@ export function caseworkRoutes(db, sec, send, notify) {
       "申请不存在",
     );
     fail(!allowed(u), 403, "当前账号没有办理权限");
+    fail(
+      financeOnly(u) &&
+        !db
+          .prepare(
+            `SELECT 1 FROM bookings b WHERE b.id=? AND ${financialScope("b")}`,
+          )
+          .get(id),
+      403,
+      "当前账号没有此申请的办理权限",
+    );
     return b;
   };
   const decorate = (b, u, calendar) => {
@@ -149,6 +167,7 @@ export function caseworkRoutes(db, sec, send, notify) {
         conditions.push("b.user_id=?");
         params.push(u.id);
       }
+      if (financeOnly(u)) conditions.push(financialScope("b"));
       if (q) {
         conditions.push("(instr(b.company,?)>0 OR instr(b.id,?)>0)");
         params.push(q, q);
@@ -211,6 +230,34 @@ export function caseworkRoutes(db, sec, send, notify) {
           409,
           "请先完成审批，再登记结果电话通知",
         );
+        if (data.action === "reopen") {
+          const c = db
+            .prepare("SELECT * FROM case_contacts WHERE booking_id=?")
+            .get(id);
+          versionCheck(req, c, true);
+          fail(c.state !== "reached", 409, "仅已完成的电话登记可以重新跟进");
+          const reason = clean(data.note, 500);
+          fail(!reason, 400, "请填写重新跟进原因");
+          db.prepare(
+            "UPDATE case_contacts SET state='unreachable',note=?,updated=?,reached_at=NULL,version=version+1 WHERE booking_id=?",
+          ).run(reason, now(), id);
+          audit(u.id, "case.contact_reopened", id, {
+            previous: {
+              state: c.state,
+              note: c.note,
+              reached_at: c.reached_at,
+            },
+            reason,
+          });
+          notify(
+            b.user_id,
+            "审核结果电话需重新跟进",
+            "管理员纠正了原电话告知登记，将继续核对联系结果；审核结论不变。",
+            id,
+          );
+          return;
+        }
+        fail(data.action !== undefined, 400, "电话操作无效");
         fail(
           !["reached", "unreachable"].includes(data.state) ||
             !clean(data.note, 500),
@@ -302,7 +349,16 @@ export function caseworkRoutes(db, sec, send, notify) {
         } else {
           fail(owner, 403, "仅财务人员可以核对费用");
           fail(!note, 400, "请填写核对依据或处理原因");
-          if (data.action === "confirm") {
+          if (data.action === "late_confirm") {
+            fail(
+              !b.cancelled || old.state !== "void",
+              409,
+              "仅已取消预约的作废费用单可登记迟到到账",
+            );
+            reference = clean(data.reference, 200);
+            fail(!reference, 400, "请填写取消后到账流水");
+            state = "paid";
+          } else if (data.action === "confirm") {
             fail(
               (!active && old.state !== "reconcile") ||
                 !["due", "submitted", "reconcile"].includes(old.state),

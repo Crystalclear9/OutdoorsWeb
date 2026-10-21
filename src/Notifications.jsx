@@ -56,7 +56,7 @@ export default function Notifications({
         ((can(user, "payments.manage") && !can(user, "bookings.review")) ||
           item.title === "超时待办提醒")
       )
-        onNavigate("casework");
+        onNavigate("casework", item.target || "");
       else if (item?.target)
         setDetail(
           (await api("/bookings/" + encodeURIComponent(item.target))).booking,
@@ -100,7 +100,15 @@ export default function Notifications({
                 <small>{new Date(n.created).toLocaleString("zh-CN")}</small>
               </span>
               <p>{n.content}</p>
-              <small>{n.target ? "打开申请详情" : "进入审批待办"}</small>
+              <small>
+                {(can(user, "payments.manage") &&
+                  !can(user, "bookings.review")) ||
+                n.title === "超时待办提醒"
+                  ? "进入对应办理记录"
+                  : n.target
+                    ? "打开申请详情"
+                    : "进入审批待办"}
+              </small>
             </button>
           ))}
         </div>

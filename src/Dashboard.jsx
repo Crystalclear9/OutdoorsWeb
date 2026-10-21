@@ -335,16 +335,18 @@ export default function Dashboard({
           </button>
         )}
       </div>
-      {user && !user.mustChangePassword && (!staff || admin) && (
-        <Notifications
-          key={user.id}
-          user={user}
-          version={version}
-          onNavigate={onNavigate}
-          onRefresh={onRefresh}
-          notify={notify}
-        />
-      )}
+      {user &&
+        !user.mustChangePassword &&
+        (!staff || admin || can(user, "payments.manage")) && (
+          <Notifications
+            key={user.id}
+            user={user}
+            version={version}
+            onNavigate={onNavigate}
+            onRefresh={onRefresh}
+            notify={notify}
+          />
+        )}
       {detail && (
         <BookingDetail
           item={detail}

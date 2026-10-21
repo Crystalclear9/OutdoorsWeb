@@ -30,28 +30,42 @@ const contactLabels = {
 };
 
 export function CasePanel({ id, user, notify = () => {} }) {
-  const [item, setItem] = useState(null),
+  const [record, setItem] = useState(null),
     [error, setError] = useState(""),
+    [loading, setLoading] = useState(true),
+    [readError, setReadError] = useState(false),
     [busy, setBusy] = useState(false),
     [version, setVersion] = useState(0);
+  const item = record?.id === id ? record : null;
   const reviewer = can(user, "bookings.review"),
     finance = can(user, "payments.manage"),
     owner = user.role === "enterprise";
   useEffect(() => {
     let active = true;
-    setItem(null);
+    setLoading(true);
     setError("");
     api(`/casework/${id}`)
       .then((r) => {
-        if (active) setItem(r.item);
+        if (active) {
+          setItem(r.item);
+          setReadError(false);
+        }
       })
-      .catch((e) => active && setError(e.message));
+      .catch((e) => {
+        if (active) {
+          setReadError(true);
+          setError(
+            `无法读取最新办理记录：${e.message} 已保留当前输入，请重新读取后再提交。`,
+          );
+        }
+      })
+      .finally(() => active && setLoading(false));
     return () => {
       active = false;
     };
   }, [id, version]);
   async function act(kind, data) {
-    if (busy) return;
+    if (busy || loading || readError || !item) return;
     setBusy(true);
     setError("");
     try {
@@ -92,7 +106,7 @@ export function CasePanel({ id, user, notify = () => {} }) {
         </div>
         <Button
           className="secondary small"
-          disabled={busy}
+          disabled={busy || loading}
           onClick={() => setVersion((v) => v + 1)}
         >
           刷新办理记录
@@ -100,7 +114,10 @@ export function CasePanel({ id, user, notify = () => {} }) {
       </div>
       <ErrorBox>{error}</ErrorBox>
       {item && (
-        <>
+        <fieldset
+          disabled={busy || loading || readError}
+          style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}
+        >
           <div className={`info-box ${item.overdue ? "case-overdue" : ""}`}>
             <div>
               <strong>
@@ -158,6 +175,33 @@ export function CasePanel({ id, user, notify = () => {} }) {
                     </label>
                     <Button loading={busy} className="primary" type="submit">
                       保存电话跟进
+                    </Button>
+                  </form>
+                )}
+              {!item.cancelled &&
+                ["已通过", "未通过"].includes(item.status) &&
+                item.contactResult.state === "reached" && (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      act("contact", {
+                        action: "reopen",
+                        note: new FormData(e.currentTarget).get("note"),
+                      });
+                    }}
+                  >
+                    <label>
+                      重新跟进原因
+                      <textarea
+                        name="note"
+                        required
+                        maxLength={500}
+                        rows={2}
+                        placeholder="说明原登记需要纠正的原因；保存后将恢复电话跟进待办"
+                      />
+                    </label>
+                    <Button loading={busy} className="secondary" type="submit">
+                      纠正登记并重新跟进
                     </Button>
                   </form>
                 )}
@@ -221,6 +265,41 @@ export function CasePanel({ id, user, notify = () => {} }) {
                       </label>
                       <Button className="primary" loading={busy} type="submit">
                         提交付款流水
+                      </Button>
+                    </form>
+                  )}
+                  {finance && item.cancelled && fee.state === "void" && (
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        act("fee", {
+                          action: "late_confirm",
+                          ...Object.fromEntries(new FormData(e.currentTarget)),
+                        });
+                      }}
+                    >
+                      <p>
+                        作废不代表银行未到账。核实取消后到账后，登记收款，再办理线下全额退款。
+                      </p>
+                      <label>
+                        取消后到账流水
+                        <input name="reference" required maxLength={200} />
+                      </label>
+                      <label>
+                        迟到到账核对依据
+                        <textarea
+                          name="note"
+                          required
+                          maxLength={500}
+                          rows={2}
+                        />
+                      </label>
+                      <label className="check-label">
+                        <input type="checkbox" required />
+                        我已核对单位账户实际到账记录
+                      </label>
+                      <Button loading={busy} className="primary" type="submit">
+                        登记取消后到账
                       </Button>
                     </form>
                   )}
@@ -331,7 +410,7 @@ export function CasePanel({ id, user, notify = () => {} }) {
               )}
             </div>
           )}
-        </>
+        </fieldset>
       )}
     </section>
   );
@@ -343,7 +422,10 @@ function Calendar({ notify }) {
     [busy, setBusy] = useState(false);
   const load = () =>
     api("/casework/calendar")
-      .then(setData)
+      .then((r) => {
+        setData(r);
+        setError("");
+      })
       .catch((e) => setError(e.message));
   useEffect(() => {
     load();
@@ -377,6 +459,9 @@ function Calendar({ notify }) {
         默认周一至周五。请按本单位实际安排录入法定节假日、调休和校内停办日；系统不自动推测节假日。变更会重新计算尚未完成的反馈时限。
       </p>
       <ErrorBox>{error}</ErrorBox>
+      <Button className="secondary small" disabled={busy} onClick={load}>
+        重新读取工作日历
+      </Button>
       {data && (
         <>
           <form onSubmit={save}>
@@ -411,7 +496,7 @@ function Calendar({ notify }) {
   );
 }
 
-export default function Casework({ user, notify }) {
+export default function Casework({ user, notify, initialId = "" }) {
   const [data, setData] = useState({ items: [], pages: 1, total: 0 }),
     [page, setPage] = useState(1),
     [scope, setScope] = useState("open"),
@@ -420,6 +505,13 @@ export default function Casework({ user, notify }) {
     [error, setError] = useState(""),
     [version, setVersion] = useState(0),
     [loading, setLoading] = useState(true);
+  useEffect(() => {
+    if (!initialId) return;
+    setPage(1);
+    setScope("all");
+    setQuery(initialId);
+    setSelected(initialId);
+  }, [initialId]);
   useEffect(() => {
     let active = true;
     setLoading(true);
@@ -430,6 +522,10 @@ export default function Casework({ user, notify }) {
         )
           .then((r) => {
             if (active) {
+              if (page > r.pages) {
+                setPage(r.pages);
+                return;
+              }
               setData(r);
               setError("");
             }

@@ -79,72 +79,98 @@ export function createMaintenance(db, dbPath, options = {}) {
       return { ok: false, database: false, freeBytes: null };
     }
   }
+  function failure(error) {
+    const result = {
+      ok: false,
+      error: String(error?.message || error),
+      at: new Date().toISOString(),
+    };
+    // The database may itself be unavailable. Logging must remain independent
+    // of recording the failure, especially when another connection holds a lock.
+    try {
+      db.prepare(
+        "INSERT INTO maintenance_state(key,value) VALUES('maintenance',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+      ).run(JSON.stringify(result));
+    } catch {}
+    console.error(JSON.stringify({ event: "maintenance.failed", ...result }));
+    return result;
+  }
   function run(force = false) {
     if (memory) return Promise.resolve({ ok: true, skipped: true });
     if (running) return running;
-    const leaseId = randomUUID();
-    const acquired = tx(db, () => {
-      const lease = state("maintenanceLease");
-      if (lease?.expires > Date.now()) return false;
-      db.prepare(
-        "INSERT INTO maintenance_state VALUES('maintenanceLease',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-      ).run(JSON.stringify({ id: leaseId, expires: Date.now() + 3600000 }));
-      return true;
-    });
-    if (!acquired)
-      return Promise.resolve({
-        ok: true,
-        skipped: true,
-        reason: "另一个服务实例正在维护",
-      });
-    running = new Promise((resolve) => {
-      const child = fork(
-        new URL("./maintenance-worker.mjs", import.meta.url),
-        [JSON.stringify({ ...config, force, reserveBytes: minBytes })],
-        { stdio: ["ignore", "ignore", "pipe", "ipc"] },
-      );
-      let result,
-        diagnostic = "";
-      child.stderr.on("data", (b) => {
-        diagnostic = (diagnostic + b).slice(-2000);
-      });
-      child.on("message", (m) => {
-        result = m;
-      });
-      child.on("error", (e) => {
-        result = { ok: false, error: e.message };
-        resolve(result);
-      });
-      child.on("exit", () =>
-        resolve(
-          result || { ok: false, error: diagnostic || "维护进程异常退出" },
-        ),
-      );
-    })
-      .then((result) => {
-        if (!result.ok) {
-          try {
+    // Defer acquisition so even synchronous SQLite/fork failures belong to the
+    // returned promise and concurrent callers share the same run.
+    running = Promise.resolve()
+      .then(async () => {
+        const leaseId = randomUUID();
+        let acquired = false,
+          result;
+        try {
+          acquired = tx(db, () => {
+            const lease = state("maintenanceLease");
+            if (lease?.expires > Date.now()) return false;
             db.prepare(
-              "INSERT INTO maintenance_state(key,value) VALUES('maintenance',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-            ).run(JSON.stringify({ ...result, at: new Date().toISOString() }));
-          } catch {}
-          console.error(
-            JSON.stringify({
-              event: "maintenance.failed",
-              error: result.error,
-              at: new Date().toISOString(),
-            }),
-          );
+              "INSERT INTO maintenance_state VALUES('maintenanceLease',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            ).run(
+              JSON.stringify({ id: leaseId, expires: Date.now() + 3600000 }),
+            );
+            return true;
+          });
+          if (!acquired)
+            return {
+              ok: true,
+              skipped: true,
+              reason: "另一个服务实例正在维护",
+            };
+          result = await new Promise((resolve) => {
+            const child = fork(
+              new URL("./maintenance-worker.mjs", import.meta.url),
+              [JSON.stringify({ ...config, force, reserveBytes: minBytes })],
+              { stdio: ["ignore", "ignore", "pipe", "ipc"] },
+            );
+            let reported,
+              diagnostic = "";
+            child.stderr.on("data", (b) => {
+              diagnostic = (diagnostic + b).slice(-2000);
+            });
+            child.on("message", (m) => {
+              reported = m;
+            });
+            child.on("error", (e) => resolve({ ok: false, error: e.message }));
+            child.on("exit", (code) =>
+              resolve(
+                code === 0 && reported
+                  ? reported
+                  : {
+                      ok: false,
+                      error:
+                        reported?.error || diagnostic || "维护进程异常退出",
+                    },
+              ),
+            );
+          });
+          if (!result.ok) result = failure(result.error);
+        } catch (error) {
+          result = failure(error);
+        } finally {
+          if (acquired) {
+            try {
+              tx(db, () => {
+                if (state("maintenanceLease")?.id === leaseId)
+                  db.prepare(
+                    "DELETE FROM maintenance_state WHERE key='maintenanceLease'",
+                  ).run();
+              });
+            } catch (error) {
+              // Retain the expiring lease if release fails. Do not report success
+              // or clear a lease that could now belong to a different process.
+              result = failure(error);
+            }
+          }
         }
         return result;
       })
       .finally(() => {
-        tx(db, () => {
-          if (state("maintenanceLease")?.id === leaseId)
-            db.prepare(
-              "DELETE FROM maintenance_state WHERE key='maintenanceLease'",
-            ).run();
-        });
         running = null;
       });
     return running;

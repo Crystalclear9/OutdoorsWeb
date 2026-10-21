@@ -69,6 +69,7 @@ export default function App() {
     [oauthMfa, setOauthMfa] = useState(null),
     [externalSignup, setExternalSignup] = useState(null),
     [page, setPage] = useState("overview"),
+    [caseTarget, setCaseTarget] = useState(""),
     [mobile, setMobile] = useState(false),
     [modal, setModal] = useState(null),
     [toast, setToast] = useState("");
@@ -93,7 +94,8 @@ export default function App() {
       setSelected(VENUE_SEGMENTS.find((s) => s.id === value)?.first || 1);
     }
   };
-  const go = (p) => {
+  const go = (p, caseId = "") => {
+    if (p === "casework") setCaseTarget(caseId);
     setPage(user?.mustChangePassword || user?.mfaRequired ? "account" : p);
     setMobile(false);
   };
@@ -729,7 +731,12 @@ export default function App() {
               can(user, "bookings.review") ||
               can(user, "payments.manage")) && (
               <Suspense fallback={<p>正在加载办理界面…</p>}>
-                <Casework key={user.id} user={user} notify={notify} />
+                <Casework
+                  key={user.id}
+                  user={user}
+                  notify={notify}
+                  initialId={caseTarget}
+                />
               </Suspense>
             )}
           {page === "account" && user && (

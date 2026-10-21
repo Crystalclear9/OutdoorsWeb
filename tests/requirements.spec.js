@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./browser-fixtures.js";
 import { writeFile } from "node:fs/promises";
 import sharp from "sharp";
 

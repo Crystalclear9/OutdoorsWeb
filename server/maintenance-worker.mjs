@@ -6,8 +6,8 @@ import {
   statfs,
   rename,
   stat,
-  readFile,
   writeFile,
+  chmod,
 } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -16,6 +16,7 @@ import { archiveHistory } from "./business.mjs";
 import { overdueCases } from "./casework.mjs";
 import { offsiteConfigured, uploadOffsite } from "./offsite.mjs";
 import { alertExternal } from "./delivery.mjs";
+import { backupMfaKey } from "./backup-key.mjs";
 
 const config = JSON.parse(process.argv[2]),
   db = new DatabaseSync(config.dbPath);
@@ -145,8 +146,10 @@ try {
       target = path.resolve(config.backupDir, file);
     if (path.dirname(target) !== path.resolve(config.backupDir))
       throw new Error("备份目录无效");
+    const mfaKey = backupMfaKey(config.dbPath);
     partial = target + ".part";
     db.exec(`VACUUM INTO '${partial.replaceAll("'", "''")}'`);
+    await chmod(partial, 0o600);
     const verify = new DatabaseSync(partial, { readOnly: true });
     try {
       if (verify.prepare("PRAGMA quick_check").get().quick_check !== "ok")
@@ -156,9 +159,6 @@ try {
     }
     await rename(partial, target);
     partial = null;
-    const mfaKey = process.env.APP_ENCRYPTION_KEY
-      ? Buffer.from(process.env.APP_ENCRYPTION_KEY, "hex")
-      : await readFile(path.join(path.dirname(config.dbPath), ".mfa-key"));
     await writeFile(target + ".mfa-key", mfaKey, { flag: "wx", mode: 0o600 });
     backup = { at: new Date().toISOString(), file };
     save("backup", backup);

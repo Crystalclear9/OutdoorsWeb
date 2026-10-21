@@ -2,7 +2,12 @@ import React, { useEffect, useState } from "react";
 import { api } from "./api.js";
 import { Button, ErrorBox, PasswordInput } from "./components.jsx";
 
-export default function ExternalSignup({ proof, onSuccess, onCancel }) {
+export default function ExternalSignup({
+  proof,
+  onSuccess,
+  onCancel,
+  onBusyChange = () => {},
+}) {
   const [info, setInfo] = useState(null),
     [error, setError] = useState(""),
     [expired, setExpired] = useState(false),
@@ -31,12 +36,14 @@ export default function ExternalSignup({ proof, onSuccess, onCancel }) {
   }, [info]);
   async function submit(e) {
     e.preventDefault();
+    if (busy) return;
     const values = Object.fromEntries(new FormData(e.currentTarget));
     setError("");
     if (expired) return setError("注册凭据已过期，请重新验证登录方式");
     if (values.password !== values.confirm)
       return setError("两次输入的密码不一致");
     setBusy(true);
+    onBusyChange(true);
     try {
       onSuccess(
         await api("/auth/signup/complete", {
@@ -50,6 +57,7 @@ export default function ExternalSignup({ proof, onSuccess, onCancel }) {
         setExpired(true);
     } finally {
       setBusy(false);
+      onBusyChange(false);
     }
   }
   return (
@@ -135,7 +143,12 @@ export default function ExternalSignup({ proof, onSuccess, onCancel }) {
           </Button>
         </fieldset>
       )}
-      <Button className="secondary full" disabled={busy} onClick={onCancel}>
+      <Button
+        type="button"
+        className="secondary full"
+        disabled={busy}
+        onClick={onCancel}
+      >
         {expired || (!info && error) ? "重新验证登录方式" : "返回账号登录"}
       </Button>
     </form>

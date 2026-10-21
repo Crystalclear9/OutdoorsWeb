@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./browser-fixtures.js";
 import { totp } from "../server/mfa.mjs";
 const origin = "http://127.0.0.1:3101";
 async function login(page, email, password) {

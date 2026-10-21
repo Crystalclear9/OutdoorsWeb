@@ -77,10 +77,13 @@ export default function App() {
     [selected, setSelected] = useState(1),
     [view, setView] = useState("map"),
     [venue, setVenue] = useState({ occupied: [], closed: [], total: 29 }),
+    [venueLoading, setVenueLoading] = useState(true),
     [notices, setNotices] = useState([]),
     [counts, setCounts] = useState({}),
     [version, setVersion] = useState(0);
   const admin = user?.role === "admin";
+  const venueDate = page === "venue" ? date : dateString();
+  const venueReady = connected && !venueLoading && venue.date === venueDate;
   const sessionGeneration = useRef(0);
   const refresh = () => setVersion((v) => v + 1);
   const notify = (message) => setToast(message);
@@ -145,10 +148,8 @@ export default function App() {
   }, []);
   useEffect(() => {
     let active = true;
-    Promise.all([
-      api(`/venue?date=${page === "venue" ? date : dateString()}`),
-      api("/notices"),
-    ])
+    setVenueLoading(true);
+    Promise.all([api(`/venue?date=${venueDate}`), api("/notices")])
       .then(([v, n]) => {
         if (active) {
           setVenue(v);
@@ -162,7 +163,8 @@ export default function App() {
           setConnected(false);
           setServiceError(e.message);
         }
-      });
+      })
+      .finally(() => active && setVenueLoading(false));
     return () => {
       active = false;
     };
@@ -221,6 +223,10 @@ export default function App() {
     }
   }
   function beginBooking() {
+    if (page === "venue" && !venueReady) {
+      notify("请等待所选日期的场地状态同步后再申请");
+      return;
+    }
     if (!connected) {
       notify("账号服务尚未连接，请使用 Docker 完整服务地址访问");
       return;
@@ -267,8 +273,8 @@ export default function App() {
       ? [["operations", "运行维护", ArrowsClockwise]]
       : []),
   ];
-  const busy = venue.occupied.find((b) => b.slot === selected),
-    closed = venue.closed.find((b) => b.slot === selected),
+  const busy = venueReady && venue.occupied.find((b) => b.slot === selected),
+    closed = venueReady && venue.closed.find((b) => b.slot === selected),
     unavailable = new Set(
       [...venue.occupied, ...venue.closed].map((b) => b.slot),
     ).size;
@@ -455,7 +461,11 @@ export default function App() {
                 <Button
                   className="primary"
                   onClick={beginBooking}
-                  disabled={!connected || sessionLoading}
+                  disabled={
+                    !connected ||
+                    sessionLoading ||
+                    (page === "venue" && !venueReady)
+                  }
                 >
                   {admin ? <ShieldCheck size={19} /> : <Plus size={20} />}{" "}
                   {admin ? "查看待审核申请" : "发起布展申请"}
@@ -546,15 +556,17 @@ export default function App() {
                   </div>
                   {view === "map" ? (
                     <div
-                      className={`venue-map ${!connected ? "disconnected" : ""}`}
+                      className={`venue-map ${!venueReady ? "disconnected" : ""}`}
                     >
                       <VenueMap
-                        occupied={[...venue.occupied, ...venue.closed]}
-                        closed={venue.closed}
+                        occupied={
+                          venueReady ? [...venue.occupied, ...venue.closed] : []
+                        }
+                        closed={venueReady ? venue.closed : []}
                         selected={selected}
                         onSelect={setSelected}
                         zone={zone}
-                        connected={connected}
+                        connected={venueReady}
                       />
                     </div>
                   ) : (
@@ -562,8 +574,12 @@ export default function App() {
                       {Array.from({ length: 29 }, (_, i) => i + 1)
                         .filter((n) => inSegment(n, zone))
                         .map((n) => {
-                          const b = venue.occupied.some((s) => s.slot === n),
-                            c = venue.closed.some((s) => s.slot === n);
+                          const b =
+                              venueReady &&
+                              venue.occupied.some((s) => s.slot === n),
+                            c =
+                              venueReady &&
+                              venue.closed.some((s) => s.slot === n);
                           return (
                             <button
                               key={n}
@@ -572,7 +588,7 @@ export default function App() {
                             >
                               <strong>{slotName(n)}</strong>
                               <small>
-                                {!connected
+                                {!venueReady
                                   ? "待同步"
                                   : c
                                     ? "暂停开放"
@@ -588,7 +604,11 @@ export default function App() {
                   <div className="venue-bottom">
                     <span>
                       <ShieldCheck size={16} />
-                      {connected ? "预约状态自动更新" : "暂时无法获取预约状态"}
+                      {venueLoading
+                        ? "正在同步所选日期的场地状态…"
+                        : venueReady
+                          ? "预约状态自动更新"
+                          : "暂时无法获取预约状态"}
                     </span>
                     <span>{date}</span>
                   </div>
@@ -600,11 +620,13 @@ export default function App() {
                     className="map-source-note venue-onsite-summary"
                     role="status"
                   >
-                    {!connected
-                      ? "现场登记数据待同步。"
-                      : venue.onsite?.length
-                        ? `${date} 现场登记：已摆放 ${venue.actualPlaced} / 29，已登记 ${venue.onsite.length} 个位置。未登记位置不计入；实际摆放不等于批准占位。`
-                        : `${date} 尚无现场登记，不能据此判断实际摆放数量。`}
+                    {venueLoading
+                      ? `${date} 现场登记数据正在同步，请稍候。`
+                      : !venueReady
+                        ? "现场登记数据待同步。"
+                        : venue.onsite?.length
+                          ? `${date} 现场登记：已摆放 ${venue.actualPlaced} / 29，已登记 ${venue.onsite.length} 个位置。未登记位置不计入；实际摆放不等于批准占位。`
+                          : `${date} 尚无现场登记，不能据此判断实际摆放数量。`}
                   </p>
                 </section>
                 <div className="venue-side">
@@ -614,7 +636,7 @@ export default function App() {
                       <span
                         className={`subtle-tag ${busy || closed ? "tag-amber" : ""}`}
                       >
-                        {!connected
+                        {!venueReady
                           ? "状态待同步"
                           : closed
                             ? "暂停开放"
@@ -644,7 +666,7 @@ export default function App() {
                       <div>
                         <span>现场登记</span>
                         <strong>
-                          {!connected
+                          {!venueReady
                             ? "待同步"
                             : venue.onsite?.some((row) => row.slot === selected)
                               ? venue.onsite.find(
@@ -667,7 +689,7 @@ export default function App() {
                     ) : (
                       <Button
                         className="primary full"
-                        disabled={!connected || sessionLoading}
+                        disabled={!venueReady || sessionLoading}
                         onClick={beginBooking}
                       >
                         {user ? "申请此位置" : "登录后预约"}

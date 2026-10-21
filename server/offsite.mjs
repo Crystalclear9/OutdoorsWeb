@@ -24,6 +24,7 @@ import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { backupMfaKey, backupKeyFile } from "./backup-key.mjs";
 
 const MAGIC = Buffer.from("HUSTBK01");
 function encryptionKey() {
@@ -74,9 +75,12 @@ export async function uploadOffsite(source, dbPath, clientOverride) {
       Number(process.env.MIN_FREE_DISK_MB || 256) * 1048576
   )
     throw new Error("异机备份加密临时空间不足，请扩容后重试");
-  const mfaKey = process.env.APP_ENCRYPTION_KEY
-    ? Buffer.from(process.env.APP_ENCRYPTION_KEY, "hex")
-    : await readFile(path.join(path.dirname(dbPath), ".mfa-key"));
+  // A snapshot must travel with its own key, even after the live key changes.
+  // Direct exports of the current database retain the current-key API contract.
+  const mfaKey =
+    path.resolve(source) === path.resolve(dbPath)
+      ? backupMfaKey(dbPath)
+      : backupKeyFile(source + ".mfa-key");
   try {
     await encryptBackup(source, target, mfaKey);
     const sha256 = await digest(createReadStream(target)),

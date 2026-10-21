@@ -45,6 +45,7 @@ docker compose logs --tail=100 app
 | 本地开发、测试与 Pages 发布    | [开发与测试](docs/development.md)                |
 | 查源码、生成文件与目录职责     | [项目结构](docs/architecture.md)                 |
 | 对照原 PDF 与后续要求          | [需求核对与验收边界](docs/requirements-audit.md) |
+| 查多代理审计与修复范围         | [项目复核记录](docs/project-audit.md)            |
 | 查近期修正                     | [变更记录](CHANGELOG.md)                         |
 
 [全部文档](docs/README.md)
@@ -58,4 +59,4 @@ docker compose logs --tail=100 app
 - SQLite 适用于单机，或多个进程共享同一个本地数据库文件。多台服务器需改用集中式数据库，不能靠复制数据卷保证全局互斥。
 - [GitHub Pages 入口](https://crystalclear9.github.io/OutdoorsWeb/)仅提供静态页面，无法独立运行账号和业务 API。完整功能使用 Docker 服务地址。
 
-数据库结构版本为 **7**。升级前先备份，回滚必须匹配数据库与程序版本。最近业务代码验证包括 66 项后端测试、32 项浏览器测试、桌面/手机视觉回归及隔离压测，远程 Docker 构建与 Linux 视觉回归也已通过；对应提交和执行方法见[开发与测试](docs/development.md#验证)。工作日历、电话跟进和线下费用流程已实现；真实电话送达与收费标准仍需配置及运营验收，见[需求核对](docs/requirements-audit.md)。
+数据库结构版本为 **7**。升级前先备份，回滚必须匹配数据库与程序版本。本轮多代理复核包括 78 项后端测试、41 项浏览器测试、桌面/手机视觉回归及隔离压测，远程 Docker 构建与 Linux 视觉回归由本轮提交的 CI 验证；检查范围和执行方法见[开发与测试](docs/development.md#验证)。工作日历、电话跟进和线下费用流程已实现；真实电话送达与收费标准仍需配置及运营验收，见[需求核对](docs/requirements-audit.md)。

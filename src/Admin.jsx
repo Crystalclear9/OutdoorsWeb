@@ -52,6 +52,7 @@ export function UsersPage({ notify }) {
     };
   }, [query, page]);
   async function act() {
+    if (busy) return;
     setBusy(true);
     setError("");
     try {
@@ -201,7 +202,7 @@ export function UsersPage({ notify }) {
                   ? "启用账号"
                   : "停用账号"
           }
-          onClose={() => setModal(null)}
+          onClose={() => !busy && setModal(null)}
         >
           {modal.type === "password" ? (
             <>
@@ -211,7 +212,11 @@ export function UsersPage({ notify }) {
               </p>
               <code className="temporary-password">{modal.password}</code>
               <div className="dialog-actions">
-                <Button className="primary" onClick={() => setModal(null)}>
+                <Button
+                  className="primary"
+                  disabled={busy}
+                  onClick={() => setModal(null)}
+                >
                   已妥善记录
                 </Button>
               </div>
@@ -225,7 +230,11 @@ export function UsersPage({ notify }) {
               </p>
               <ErrorBox>{error}</ErrorBox>
               <div className="dialog-actions">
-                <Button className="secondary" onClick={() => setModal(null)}>
+                <Button
+                  className="secondary"
+                  disabled={busy}
+                  onClick={() => setModal(null)}
+                >
                   取消
                 </Button>
                 <Button loading={busy} className="primary" onClick={act}>
@@ -257,6 +266,7 @@ export function ClosuresPage({ notify, onChange }) {
   }, []);
   async function save(e) {
     e.preventDefault();
+    if (busy) return;
     setBusy(true);
     setError("");
     try {
@@ -275,6 +285,7 @@ export function ClosuresPage({ notify, onChange }) {
     }
   }
   async function remove() {
+    if (busy) return;
     setBusy(true);
     setError("");
     try {
@@ -356,7 +367,7 @@ export function ClosuresPage({ notify, onChange }) {
       {modal && (
         <Modal
           title={modal.type === "create" ? "新增暂停开放安排" : "恢复开放"}
-          onClose={() => setModal(null)}
+          onClose={() => !busy && setModal(null)}
         >
           {modal.type === "create" ? (
             <form onSubmit={save}>
@@ -413,7 +424,11 @@ export function ClosuresPage({ notify, onChange }) {
               <p>确认移除此安排，恢复该时段的预约开放？</p>
               <ErrorBox>{error}</ErrorBox>
               <div className="dialog-actions">
-                <Button className="secondary" onClick={() => setModal(null)}>
+                <Button
+                  className="secondary"
+                  disabled={busy}
+                  onClick={() => setModal(null)}
+                >
                   取消
                 </Button>
                 <Button className="primary" loading={busy} onClick={remove}>

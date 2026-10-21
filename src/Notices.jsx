@@ -12,6 +12,7 @@ export default function Notices({ items, user, onSaved, connected }) {
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const open = (m) => {
+    if (busy) return;
     setError("");
     setModal(m);
   };
@@ -40,6 +41,7 @@ export default function Notices({ items, user, onSaved, connected }) {
   }
   async function save(e) {
     e.preventDefault();
+    if (busy) return;
     setBusy(true);
     setError("");
     try {
@@ -58,6 +60,7 @@ export default function Notices({ items, user, onSaved, connected }) {
     }
   }
   async function remove() {
+    if (busy) return;
     setBusy(true);
     try {
       await api(`/notices/${modal.item.id}`, {
@@ -220,7 +223,7 @@ export default function Notices({ items, user, onSaved, connected }) {
               ? `大学生活动中心 · ${formatDate(modal.item.created)}`
               : undefined
           }
-          onClose={() => setModal(null)}
+          onClose={() => !busy && setModal(null)}
         >
           {modal.type === "read" ? (
             <div className="notice-full">{modal.item.content}</div>
@@ -229,7 +232,11 @@ export default function Notices({ items, user, onSaved, connected }) {
               <p>确认删除《{modal.item.title}》？</p>
               <ErrorBox>{error}</ErrorBox>
               <div className="dialog-actions">
-                <Button className="secondary" onClick={() => setModal(null)}>
+                <Button
+                  className="secondary"
+                  disabled={busy}
+                  onClick={() => setModal(null)}
+                >
                   取消
                 </Button>
                 <Button
@@ -275,6 +282,7 @@ export default function Notices({ items, user, onSaved, connected }) {
                 <Button
                   className="secondary"
                   type="button"
+                  disabled={busy}
                   onClick={() => setModal(null)}
                 >
                   取消

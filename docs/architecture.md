@@ -34,20 +34,20 @@
 
 ## 后端模块
 
-| 文件                                                  | 职责                                               |
-| ----------------------------------------------------- | -------------------------------------------------- |
-| `index.mjs`、`app.mjs`                                | 启动关闭、HTTP 边界、静态文件、来源校验和异常响应  |
-| `api.mjs`、`business.mjs`                             | 预约审批、账号管理、公告、现场登记、查询和操作记录 |
-| `casework.mjs`                                        | 工作日历、反馈时限、电话跟进与线下费用状态流转     |
-| `core.mjs`                                            | 身份与权限检查、事务、参数校验、图片解码           |
-| `security.mjs`、`work-queue.mjs`                      | 密码散列、令牌摘要及受限密码任务队列               |
-| `captcha.mjs`、`mfa.mjs`、`external-registration.mjs` | 图片验证码、两步验证、首次快捷注册                 |
-| `integrations.mjs`、`delivery.mjs`、`readiness.mjs`   | 第三方登录、手机号验证、通知队列及配置诊断         |
-| `store.mjs`                                           | 数据表、索引、约束与保留数据的增量迁移             |
-| `maintenance.mjs`、`maintenance-worker.mjs`           | 维护调度、租约、健康检查、清理、归档和自动备份     |
-| `backup.mjs`、`offsite.mjs`、`restore.mjs`            | 一致性快照、加密异机备份和恢复                     |
-| `compact.mjs`、`compaction.mjs`                       | 离线空间回收及压缩前安全快照                       |
-| `admin.mjs`、`monitor.mjs`、`proxy.mjs`               | 管理员恢复、独立监控和可信代理来源识别             |
+| 文件                                                         | 职责                                               |
+| ------------------------------------------------------------ | -------------------------------------------------- |
+| `index.mjs`、`app.mjs`                                       | 启动关闭、HTTP 边界、静态文件、来源校验和异常响应  |
+| `api.mjs`、`business.mjs`                                    | 预约审批、账号管理、公告、现场登记、查询和操作记录 |
+| `casework.mjs`                                               | 工作日历、反馈时限、电话跟进与线下费用状态流转     |
+| `core.mjs`                                                   | 身份与权限检查、事务、参数校验、图片解码           |
+| `security.mjs`、`work-queue.mjs`                             | 密码散列、令牌摘要及受限密码任务队列               |
+| `captcha.mjs`、`mfa.mjs`、`external-registration.mjs`        | 图片验证码、两步验证、首次快捷注册                 |
+| `integrations.mjs`、`delivery.mjs`、`readiness.mjs`          | 第三方登录、手机号验证、通知队列及配置诊断         |
+| `store.mjs`                                                  | 数据表、索引、约束与保留数据的增量迁移             |
+| `maintenance.mjs`、`maintenance-worker.mjs`                  | 维护调度、租约、健康检查、清理、归档和自动备份     |
+| `backup.mjs`、`backup-key.mjs`、`offsite.mjs`、`restore.mjs` | 一致性快照、加密异机备份和恢复                     |
+| `compact.mjs`、`compaction.mjs`                              | 离线空间回收及压缩前安全快照                       |
+| `admin.mjs`、`monitor.mjs`、`proxy.mjs`                      | 管理员恢复、独立监控和可信代理来源识别             |
 
 后端源文件保持现有入口路径，供 npm 脚本、Docker 和维护命令使用。数据库结构版本为 7，迁移不自动重置业务记录或已有密码。
 

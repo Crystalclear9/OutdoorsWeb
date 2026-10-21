@@ -153,10 +153,18 @@ export function caseworkRoutes(db, sec, send, notify) {
         conditions.push("(instr(b.company,?)>0 OR instr(b.id,?)>0)");
         params.push(q, q);
       }
-      if (scope === "open")
-        conditions.push(
-          "((b.cancelled=0 AND b.status IN ('待审核','已通过','未通过') AND (c.state<>'reached' OR (b.status='已通过' AND (f.state IS NULL OR f.state IN ('due','submitted'))))) OR (b.cancelled=1 AND f.state IN ('paid','reconcile')))",
-        );
+      if (scope === "open") {
+        const tasks = [];
+        if (u.role === "enterprise" || can(present(u), "bookings.review"))
+          tasks.push(
+            "(b.cancelled=0 AND b.status IN ('待审核','已通过','未通过') AND c.state<>'reached')",
+          );
+        if (u.role === "enterprise" || can(present(u), "payments.manage"))
+          tasks.push(
+            "((b.cancelled=0 AND b.status='已通过' AND (f.state IS NULL OR f.state IN ('due','submitted'))) OR (b.cancelled=1 AND f.state IN ('paid','reconcile')))",
+          );
+        conditions.push("(" + tasks.join(" OR ") + ")");
+      }
       const from =
         " FROM bookings b JOIN case_contacts c ON c.booking_id=b.id LEFT JOIN booking_fees f ON f.booking_id=b.id";
       const where = conditions.length

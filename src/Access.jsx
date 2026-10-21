@@ -22,12 +22,14 @@ export default function Access({ notify }) {
     load();
   }, []);
   function open(type, user) {
+    if (busy) return;
     setError("");
     setGrants(user?.permissions || []);
     setModal({ type, user });
   }
   async function save(e) {
     e.preventDefault();
+    if (busy) return;
     const data = Object.fromEntries(new FormData(e.currentTarget));
     setBusy(true);
     setError("");
@@ -55,6 +57,7 @@ export default function Access({ notify }) {
     }
   }
   async function accountAction() {
+    if (busy) return;
     setBusy(true);
     setError("");
     try {
@@ -186,7 +189,7 @@ export default function Access({ notify }) {
                       ? "启用管理员"
                       : "停用管理员"
           }
-          onClose={() => setModal(null)}
+          onClose={() => !busy && setModal(null)}
         >
           {modal.type === "password" ? (
             <>
@@ -196,7 +199,11 @@ export default function Access({ notify }) {
               </p>
               <code className="temporary-password">{modal.password}</code>
               <div className="dialog-actions">
-                <Button className="primary" onClick={() => setModal(null)}>
+                <Button
+                  className="primary"
+                  disabled={busy}
+                  onClick={() => setModal(null)}
+                >
                   已妥善记录
                 </Button>
               </div>
@@ -252,6 +259,7 @@ export default function Access({ notify }) {
                 <Button
                   type="button"
                   className="secondary"
+                  disabled={busy}
                   onClick={() => setModal(null)}
                 >
                   取消
@@ -271,7 +279,11 @@ export default function Access({ notify }) {
               </p>
               <ErrorBox>{error}</ErrorBox>
               <div className="dialog-actions">
-                <Button className="secondary" onClick={() => setModal(null)}>
+                <Button
+                  className="secondary"
+                  disabled={busy}
+                  onClick={() => setModal(null)}
+                >
                   取消
                 </Button>
                 <Button

@@ -1,7 +1,15 @@
 import { DatabaseSync } from "node:sqlite";
-import { stat, statfs, mkdir, readFile, writeFile } from "node:fs/promises";
+import {
+  stat,
+  statfs,
+  mkdir,
+  writeFile,
+  chmod,
+  unlink,
+} from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { backupMfaKey } from "./backup-key.mjs";
 
 export async function compactDatabase(filename) {
   const source = path.resolve(filename);
@@ -25,19 +33,27 @@ export async function compactDatabase(filename) {
     const backup = path.join(directory, `precompact-${randomUUID()}.sqlite`);
     // Copy the key before touching the database. A missing key must not yield a
     // supposedly restorable safety backup with unusable encrypted MFA records.
-    const key = process.env.APP_ENCRYPTION_KEY
-      ? Buffer.from(process.env.APP_ENCRYPTION_KEY, "hex")
-      : await readFile(path.join(path.dirname(source), ".mfa-key"));
-    if (key.length !== 32) throw new Error("MFA密钥无效，未压缩");
-    db.exec(`VACUUM INTO '${backup.replaceAll("'", "''")}'`);
-    const verify = new DatabaseSync(backup, { readOnly: true });
+    const key = backupMfaKey(source);
     try {
-      if (verify.prepare("PRAGMA quick_check").get().quick_check !== "ok")
-        throw new Error("安全快照校验失败，未压缩");
-    } finally {
-      verify.close();
+      db.exec(`VACUUM INTO '${backup.replaceAll("'", "''")}'`);
+      await chmod(backup, 0o600);
+      const verify = new DatabaseSync(backup, { readOnly: true });
+      try {
+        if (verify.prepare("PRAGMA quick_check").get().quick_check !== "ok")
+          throw new Error("安全快照校验失败，未压缩");
+      } finally {
+        verify.close();
+      }
+      await writeFile(backup + ".mfa-key", key, { flag: "wx", mode: 0o600 });
+    } catch (error) {
+      // No compaction has started yet. An incomplete safety snapshot must not
+      // remain available as though it could restore encrypted MFA records.
+      for (const file of [backup, backup + ".mfa-key"])
+        await unlink(file).catch((cleanupError) => {
+          if (cleanupError.code !== "ENOENT") throw cleanupError;
+        });
+      throw error;
     }
-    await writeFile(backup + ".mfa-key", key, { flag: "wx", mode: 0o600 });
     db.exec(
       "PRAGMA auto_vacuum=INCREMENTAL; VACUUM; PRAGMA wal_checkpoint(TRUNCATE);",
     );

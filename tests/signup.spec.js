@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./browser-fixtures.js";
 
 async function signupCookie(context) {
   await context.addCookies([

@@ -207,6 +207,7 @@ export function AuthPage({
   }, []);
   async function submit(e) {
     e.preventDefault();
+    if (busy) return;
     const b = Object.fromEntries(new FormData(e.currentTarget));
     setError("");
     if (mode === "register" && b.password !== b.confirm)
@@ -232,6 +233,7 @@ export function AuthPage({
   }
   async function verifyMfa(e) {
     e.preventDefault();
+    if (busy) return;
     setBusy(true);
     setError("");
     try {
@@ -288,7 +290,11 @@ export function AuthPage({
         </div>
       </section>
       <section className="auth-form-side">
-        <button className="text-button back-link" onClick={onBack}>
+        <button
+          className="text-button back-link"
+          disabled={busy}
+          onClick={onBack}
+        >
           <ArrowLeft size={17} />
           返回场地浏览
         </button>
@@ -312,6 +318,7 @@ export function AuthPage({
             <div className="auth-switch">
               <button
                 className={mode === "login" ? "selected" : ""}
+                disabled={busy}
                 onClick={() => {
                   setMode("login");
                   setError("");
@@ -321,6 +328,7 @@ export function AuthPage({
               </button>
               <button
                 className={mode === "register" ? "selected" : ""}
+                disabled={busy}
                 onClick={() => {
                   setMode("register");
                   setError("");
@@ -334,6 +342,7 @@ export function AuthPage({
             <ExternalSignup
               key={signup}
               proof={signup}
+              onBusyChange={setBusy}
               onCancel={clearSignup}
               onSuccess={(r) => {
                 clearSignup();
@@ -361,6 +370,8 @@ export function AuthPage({
               </Button>
               <Button
                 className="secondary full"
+                type="button"
+                disabled={busy}
                 onClick={() => {
                   setMfa(null);
                   refreshCaptcha();
@@ -490,6 +501,8 @@ export function AuthPage({
           )}
           {mode === "login" && !mfa && !signup && (
             <LoginExtras
+              disabled={busy}
+              onBusyChange={setBusy}
               onResult={(r) => {
                 if (r.registrationRequired) {
                   setSignup(r.proof);

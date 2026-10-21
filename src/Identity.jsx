@@ -2,7 +2,12 @@ import React, { useEffect, useState } from "react";
 import { api, apiUrl } from "./api.js";
 import { Button, ErrorBox, PasswordInput } from "./components.jsx";
 
-function SmsForm({ purpose, onSuccess }) {
+function SmsForm({
+  purpose,
+  onSuccess,
+  disabled = false,
+  onBusyChange = () => {},
+}) {
   const [captcha, setCaptcha] = useState(null),
     [sent, setSent] = useState(null),
     [error, setError] = useState(""),
@@ -16,9 +21,11 @@ function SmsForm({ purpose, onSuccess }) {
   }, []);
   async function submit(e) {
     e.preventDefault();
+    if (busy || disabled) return;
     const form = e.currentTarget,
       values = Object.fromEntries(new FormData(form));
     setBusy(true);
+    onBusyChange(true);
     setError("");
     try {
       if (!sent)
@@ -49,6 +56,7 @@ function SmsForm({ purpose, onSuccess }) {
       if (!sent) refresh();
     } finally {
       setBusy(false);
+      onBusyChange(false);
     }
   }
   return (
@@ -103,6 +111,7 @@ function SmsForm({ purpose, onSuccess }) {
             className="captcha-image"
             type="button"
             aria-label="刷新短信图片验证码"
+            disabled={busy || disabled}
             onClick={refresh}
           >
             {captcha && (
@@ -116,7 +125,7 @@ function SmsForm({ purpose, onSuccess }) {
         className="primary"
         type="submit"
         loading={busy}
-        disabled={!captcha}
+        disabled={!captcha || disabled}
       >
         {sent
           ? purpose === "link"
@@ -127,7 +136,8 @@ function SmsForm({ purpose, onSuccess }) {
       {sent && (
         <Button
           className="secondary"
-          disabled={busy}
+          type="button"
+          disabled={busy || disabled}
           onClick={() => {
             setSent(null);
             refresh();
@@ -140,7 +150,7 @@ function SmsForm({ purpose, onSuccess }) {
   );
 }
 
-export function LoginExtras({ onResult }) {
+export function LoginExtras({ onResult, disabled = false, onBusyChange }) {
   const [providers, setProviders] = useState(null),
     [sms, setSms] = useState(false);
   useEffect(() => {
@@ -154,7 +164,11 @@ export function LoginExtras({ onResult }) {
       <p>其他登录方式</p>
       <div className="identity-actions">
         {providers.sms && (
-          <Button className="secondary" onClick={() => setSms(!sms)}>
+          <Button
+            className="secondary"
+            disabled={disabled}
+            onClick={() => setSms(!sms)}
+          >
             {sms ? "收起短信登录" : "手机号登录"}
           </Button>
         )}
@@ -165,12 +179,22 @@ export function LoginExtras({ onResult }) {
               className="button secondary"
               key={p}
               href={apiUrl(`/auth/oauth/${p}/start`)}
+              aria-disabled={disabled || undefined}
+              tabIndex={disabled ? -1 : undefined}
+              onClick={(e) => disabled && e.preventDefault()}
             >
               {p === "qq" ? "QQ 登录" : "微信登录"}
             </a>
           ))}
       </div>
-      {sms && <SmsForm purpose="login" onSuccess={onResult} />}
+      {sms && (
+        <SmsForm
+          purpose="login"
+          onSuccess={onResult}
+          disabled={disabled}
+          onBusyChange={onBusyChange}
+        />
+      )}
       <p className="field-note">
         首次验证后补齐企业资料即可创建账号；已有邮箱账号请先登录并绑定。
       </p>

@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./browser-fixtures.js";
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import path from "node:path";

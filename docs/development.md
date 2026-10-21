@@ -33,9 +33,11 @@ npm run test:visual
 
 浏览器测试使用独立临时数据库，不写入正式数据库。默认使用本机 Edge。其他系统可设置 `PLAYWRIGHT_CHANNEL=chromium` 并先执行 `npx playwright install chromium`。
 
+`tests/browser-fixtures.js` 为默认测试浏览器上下文分配独立来源标识；仅隔离入口 `tests/start-server.mjs` 信任本机测试代理，避免整套回归共同耗尽单个来源的验证码额度。正式服务的限流和可信代理设置不变，接口测试仍检查限流与伪造转发头边界。不要并行启动多个使用同一 `test-results/` 的 Playwright 进程；需要分批时等待前一批完整退出。
+
 PowerShell 使用 `$env:PLAYWRIGHT_CHANNEL="chromium"` 设置环境变量；Linux/macOS 可执行 `PLAYWRIGHT_CHANNEL=chromium npm run test:e2e`。无系统依赖的 Linux 主机可先执行 `npx playwright install --with-deps chromium`。
 
-最近业务代码提交为 `20566fe`：66 项后端测试、32 项浏览器测试、桌面/手机视觉回归及隔离压测通过；[远程工作流](https://github.com/Crystalclear9/OutdoorsWeb/actions/runs/39544243873)也已通过，包括 Docker 构建和固定 Linux 环境视觉回归。该记录对应业务提交；本次文件整理的验证为文档格式、链接和发布资源一致性检查。
+本轮多代理复核运行了 78 项后端测试、41 项浏览器测试、桌面/手机视觉回归及隔离压测；npm 全依赖审计暂未报告已知漏洞。Docker 构建与固定 Linux 视觉回归由本轮提交的 CI 执行，结果以对应工作流为准。上轮业务提交 `20566fe` 的[成功工作流](https://github.com/Crystalclear9/OutdoorsWeb/actions/runs/39544243873)保留作历史记录。
 
 新增回归覆盖游客现场状态及隐私、入口二维码、设计图异步读取竞争、非法换图清除旧图，以及现场登记冲突后重读失败的输入保留。另覆盖工作日历、电话跟进、独立财务权限、并发核款、取消退款与版本七迁移。测试数量会随代码增加，以实际输出为准。
 
@@ -46,6 +48,8 @@ PowerShell 使用 `$env:PLAYWRIGHT_CHANNEL="chromium"` 设置环境变量；Linu
 | 企业—财务—管理员完整办理与取消退款   | `tests/casework.spec.js`                                       |
 | 现场登记、改期与两步验证             | `server/tests/completion.test.mjs`、`tests/completion.spec.js` |
 | 入口二维码、换图竞争和现场冲突异常   | `tests/requirements.spec.js`                                   |
+
+本轮新增审计回归：`server/tests/backup-audit.test.mjs`、`casework-audit.test.mjs`、`http-boundary.test.mjs`；浏览器侧为 `tests/venue-loading.spec.js`、`auth-navigation.spec.js` 和 `dialog-saving.spec.js`，分别覆盖密钥恢复、角色待办/退款通知、跨源预检、慢网旧数据、认证互斥及保存弹窗。审计范围和修正见[项目复核](project-audit.md)。
 
 ## 清理本地中间文件
 

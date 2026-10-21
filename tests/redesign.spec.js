@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./browser-fixtures.js";
 
 test("校园界面使用真实会话，预览参数不能切换身份，字体由完整服务提供", async ({
   page,

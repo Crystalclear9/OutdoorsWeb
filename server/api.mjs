@@ -50,6 +50,23 @@ export async function createApi(db, options = {}) {
       .all();
     for (const u of users) notify(u.id, title, content, target);
   };
+  const notifyCancelledFee = (booking, replacement) => {
+    const fee = db
+      .prepare("SELECT state FROM booking_fees WHERE booking_id=?")
+      .get(booking.id);
+    if (!fee || !["paid", "reconcile"].includes(fee.state)) return;
+    for (const u of db
+      .prepare(
+        "SELECT id FROM users WHERE role='admin' AND disabled=0 AND (is_super=1 OR EXISTS(SELECT 1 FROM user_permissions p WHERE p.user_id=users.id AND permission='payments.manage'))",
+      )
+      .all())
+      notify(
+        u.id,
+        "预约取消，费用需核对",
+        `${booking.company} 的预约${replacement ? "已批准改期" : "已取消"}，请核实原费用${fee.state === "paid" ? "的线下退款" : "流水是否到账"}。费用不会自动转移到其他申请。`,
+        booking.id,
+      );
+  };
   const email = (v) => (typeof v === "string" ? v.trim().toLowerCase() : "");
   const validEmail = (v) =>
     v.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
@@ -119,6 +136,7 @@ export async function createApi(db, options = {}) {
           audit(fresh.id, "booking.rescheduled", original.id, {
             replacement: row.id,
           });
+          notifyCancelledFee(original, row.id);
         }
       }
       db.prepare(
@@ -738,6 +756,7 @@ export async function createApi(db, options = {}) {
             "UPDATE bookings SET status='已撤回',reason='原预约已取消，改期申请自动撤回',version=version+1 WHERE reschedule_of=? AND status='待审核'",
           ).run(id);
           audit(fresh.id, "booking.cancelled", id, { reason });
+          notifyCancelledFee(row);
           notify(row.user_id, "布展预约已取消", reason, id);
           notifyReviewers(
             "预约取消，位置已释放",

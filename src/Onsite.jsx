@@ -56,8 +56,14 @@ export default function Onsite({ notify, onChange }) {
     } catch (e) {
       setError(e.message);
       if (e.status === 409) {
-        setData(await api(`/onsite?date=${date}`));
-        setDraft({});
+        try {
+          setData(await api(`/onsite?date=${date}`));
+          setDraft({});
+        } catch (refreshError) {
+          setError(
+            `${e.message}；重新读取失败：${refreshError.message}。请刷新页面后重新核对。`,
+          );
+        }
       }
     } finally {
       setBusy(false);

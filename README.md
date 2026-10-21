@@ -33,16 +33,17 @@ docker compose logs --tail=100 app
 
 ## 文档
 
-| 需要做什么                     | 文档                                   |
-| ------------------------------ | -------------------------------------- |
-| 注册、申报、审批与现场管理     | [使用指南](docs/user-guide.md)         |
-| 查配置变量与 Docker / 本地差异 | [配置说明](docs/configuration.md)      |
-| 查防护措施、权限和安全边界     | [防御措施与安全规则](docs/security.md) |
-| 备份、恢复、升级与故障排查     | [运行维护](docs/operations.md)         |
-| 接入短信、QQ/微信、S3 与告警   | [外部服务接入](docs/integrations.md)   |
-| 本地开发、测试与 Pages 发布    | [开发与测试](docs/development.md)      |
-| 查源码、生成文件与目录职责     | [项目结构](docs/architecture.md)       |
-| 查近期修正                     | [变更记录](CHANGELOG.md)               |
+| 需要做什么                     | 文档                                             |
+| ------------------------------ | ------------------------------------------------ |
+| 注册、申报、审批与现场管理     | [使用指南](docs/user-guide.md)                   |
+| 查配置变量与 Docker / 本地差异 | [配置说明](docs/configuration.md)                |
+| 查防护措施、权限和安全边界     | [防御措施与安全规则](docs/security.md)           |
+| 备份、恢复、升级与故障排查     | [运行维护](docs/operations.md)                   |
+| 接入短信、QQ/微信、S3 与告警   | [外部服务接入](docs/integrations.md)             |
+| 本地开发、测试与 Pages 发布    | [开发与测试](docs/development.md)                |
+| 查源码、生成文件与目录职责     | [项目结构](docs/architecture.md)                 |
+| 对照原 PDF 与后续要求          | [需求核对与验收边界](docs/requirements-audit.md) |
+| 查近期修正                     | [变更记录](CHANGELOG.md)                         |
 
 [全部文档](docs/README.md)
 
@@ -55,4 +56,4 @@ docker compose logs --tail=100 app
 - SQLite 适用于单机，或多个进程共享同一个本地数据库文件。多台服务器需改用集中式数据库，不能靠复制数据卷保证全局互斥。
 - [GitHub Pages 入口](https://crystalclear9.github.io/OutdoorsWeb/)仅提供静态页面，无法独立运行账号和业务 API。完整功能使用 Docker 服务地址。
 
-数据库结构版本为 **6**。升级前先备份，回滚必须匹配数据库与程序版本。最近一轮代码验证包括 57 项后端测试、27 项浏览器测试、桌面/手机视觉回归和 Docker 构建；具体覆盖范围及执行方法见[开发与测试](docs/development.md)。
+数据库结构版本为 **6**。升级前先备份，回滚必须匹配数据库与程序版本。本轮本地验证包括 58 项后端测试、30 项浏览器测试、桌面/手机视觉回归及隔离压测。CI 另执行 Docker 构建与 Linux 视觉回归；具体覆盖范围及执行方法见[开发与测试](docs/development.md)。原始需求中的真实电话送达、办理时限与缴费流程尚有待验收或明确的业务条件，见[需求核对](docs/requirements-audit.md)。

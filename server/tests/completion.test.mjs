@@ -26,6 +26,44 @@ const future = (n) => {
   return d.toISOString().slice(0, 10);
 };
 
+test("游客场地数据区分未登记、未摆放与已摆放，且不公开现场备注或操作者", async (t) => {
+  const f = await fixture(t),
+    root = f.client(),
+    guest = f.client();
+  await manager(root);
+  assert.deepEqual((await guest.request("/venue")).data.onsite, []);
+  const saved = await root.request("/onsite", "POST", {
+    date: TODAY(),
+    items: [
+      { slot: 1, present: false, version: 0, note: "内部现场记录13900139000" },
+      { slot: 2, present: true, version: 0, note: "内部现场备注" },
+    ],
+  });
+  assert.equal(saved.status, 200);
+  const result = (await guest.request("/venue")).data;
+  assert.equal(result.actualPlaced, 1);
+  assert.equal(result.occupied.length, 0);
+  assert.deepEqual(
+    result.onsite.map(({ slot, present }) => ({ slot, present })),
+    [
+      { slot: 1, present: false },
+      { slot: 2, present: true },
+    ],
+  );
+  assert.deepEqual(Object.keys(result.onsite[0]).sort(), [
+    "present",
+    "slot",
+    "updated",
+  ]);
+  assert.equal(JSON.stringify(result).includes("内部"), false);
+  assert.equal(JSON.stringify(result).includes("13900139000"), false);
+  assert.equal((await guest.request("/onsite")).status, 401);
+  assert.deepEqual(
+    (await guest.request(`/venue?date=${future(1)}`)).data.onsite,
+    [],
+  );
+});
+
 test("现场登记与批准数独立，权限隔离、批量原子更新和并发版本保护", async (t) => {
   const f = await fixture(t),
     root = f.client(),

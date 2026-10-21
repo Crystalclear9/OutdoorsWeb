@@ -36,6 +36,7 @@ import Operations from "./Operations.jsx";
 import Onsite from "./Onsite.jsx";
 import Archives from "./Archives.jsx";
 import Deliveries from "./Deliveries.jsx";
+import AccessCode from "./AccessCode.jsx";
 import { can } from "./permissions.js";
 import { VENUE_SEGMENTS, inSegment } from "./venue-layout.js";
 
@@ -590,6 +591,16 @@ export default function App() {
                     绿地边缘 6 个 · B 座通道 4 个 · A 座通道 4 个 · 东侧直线 7
                     个 · 南侧直线 8 个。
                   </p>
+                  <p
+                    className="map-source-note venue-onsite-summary"
+                    role="status"
+                  >
+                    {!connected
+                      ? "现场登记数据待同步。"
+                      : venue.onsite?.length
+                        ? `${date} 现场登记：已摆放 ${venue.actualPlaced} / 29，已登记 ${venue.onsite.length} 个位置。未登记位置不计入；实际摆放不等于批准占位。`
+                        : `${date} 尚无现场登记，不能据此判断实际摆放数量。`}
+                  </p>
                 </section>
                 <div className="venue-side">
                   <section className="card position-card">
@@ -624,6 +635,20 @@ export default function App() {
                       <div>
                         <span>最长申报</span>
                         <strong>3 天（含起止日期）</strong>
+                      </div>
+                      <div>
+                        <span>现场登记</span>
+                        <strong>
+                          {!connected
+                            ? "待同步"
+                            : venue.onsite?.some((row) => row.slot === selected)
+                              ? venue.onsite.find(
+                                  (row) => row.slot === selected,
+                                ).present
+                                ? "已摆放"
+                                : "已登记未摆放"
+                              : "尚未登记"}
+                        </strong>
                       </div>
                     </div>
                     {closed ? (
@@ -760,6 +785,7 @@ export default function App() {
               遵守现场管理要求，保持环境整洁，活动结束后及时撤除设备。场地图按需求
               PDF 第 11 页对齐；A 座、B 座为建筑名称，位置编号为系统标识。
             </p>
+            <AccessCode connected={connected} />
           </div>
         </Modal>
       )}

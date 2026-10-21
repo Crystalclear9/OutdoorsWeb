@@ -35,7 +35,7 @@ npm run test:visual
 
 PowerShell 使用 `$env:PLAYWRIGHT_CHANNEL="chromium"` 设置环境变量；Linux/macOS 可执行 `PLAYWRIGHT_CHANNEL=chromium npm run test:e2e`。无系统依赖的 Linux 主机可先执行 `npx playwright install --with-deps chromium`。
 
-最近一轮为 57 项后端测试、27 项浏览器测试。新增回归覆盖畸形请求后服务继续运行、密码计算排队上限、跨进程验证次数、注册过期及旧响应覆盖新登录等情况。测试数量会随代码增加，以实际输出为准。
+最近一轮为 58 项后端测试、30 项浏览器测试，桌面/手机视觉回归及隔离压测通过。新增回归覆盖游客现场状态及隐私、入口二维码、设计图异步读取竞争、非法换图清除旧图，以及现场登记冲突后重读失败的输入保留。测试数量会随代码增加，以实际输出为准。
 
 ## 清理本地中间文件
 
@@ -51,7 +51,7 @@ PowerShell 使用 `$env:PLAYWRIGHT_CHANNEL="chromium"` 设置环境变量；Linu
 
 先查看目标目录内容，再按明确路径删除；不要直接执行 `git clean -fdx` 或删除全部忽略文件。`tmp/` 未来可能包含新参考资料，需要每次核对，不能无条件整目录清空。已删除的截图和旧报告不会随文档更新自动恢复。
 
-本次已清理上述本地构建、测试和诊断中间文件。需求原 PDF、源码、字体及授权、`tests/visual/snapshots/`、根目录 Pages 发布文件和已安装依赖均保留。业务数据库、备份、`.env`、MFA 密钥及 Docker 持久卷不在清理范围内。
+前次整理已清理旧构建、测试和诊断中间文件；后续验证会重新生成这些目录。需求原 PDF、源码、字体及授权、`tests/visual/snapshots/`、根目录 Pages 发布文件和已安装依赖均保留。业务数据库、备份、`.env`、MFA 密钥及 Docker 持久卷不在清理范围内。
 
 ```powershell
 # 清理构建结果后，重新运行完整服务

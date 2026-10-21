@@ -456,12 +456,17 @@ export async function createApi(db, options = {}) {
     if (p === "/api/venue" && m === "GET") {
       const date = url.searchParams.get("date") || today();
       fail(!dateValid(date), 400, "日期无效");
+      const onsite = db
+        .prepare(
+          "SELECT slot,present,updated FROM onsite WHERE date=? ORDER BY slot",
+        )
+        .all(date)
+        .map((row) => ({ ...row, present: !!row.present }));
       return send(res, {
         date,
         total: 29,
-        actualPlaced: db
-          .prepare("SELECT COUNT(*) n FROM onsite WHERE date=? AND present=1")
-          .get(date).n,
+        actualPlaced: onsite.filter((row) => row.present).length,
+        onsite,
         occupied: db
           .prepare(
             "SELECT slot,start,end FROM bookings WHERE status='已通过' AND cancelled=0 AND start<=? AND end>=?",

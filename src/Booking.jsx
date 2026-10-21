@@ -15,32 +15,62 @@ import { dateString, slotName, zoneName, formatDate } from "./utils.js";
 
 export function BookingForm({ user, slot, date, onClose, onSaved }) {
   const request = useRef(null);
+  const currentReader = useRef(null);
   const [image, setImage] = useState(null),
     [name, setName] = useState(""),
     [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [imageLoading, setImageLoading] = useState(false);
+  useEffect(
+    () => () => {
+      const reader = currentReader.current;
+      currentReader.current = null;
+      reader?.abort();
+    },
+    [],
+  );
   function upload(e) {
+    if (busy) return;
     const f = e.target.files[0];
     if (!f) return;
+    const previous = currentReader.current;
+    currentReader.current = null;
+    previous?.abort();
+    setImage(null);
+    setName("");
+    setImageLoading(false);
     if (
       !["image/jpeg", "image/png", "image/webp"].includes(f.type) ||
       f.size > 3 * 1024 * 1024
     ) {
       setError("请选择 3 MB 以内的 JPG、PNG 或 WebP 图片");
+      e.target.value = "";
       return;
     }
     const reader = new FileReader();
+    currentReader.current = reader;
+    setImageLoading(true);
+    setError("");
     reader.onload = () => {
+      if (currentReader.current !== reader) return;
+      currentReader.current = null;
       setImage(reader.result);
       setName(f.name);
       setError("");
+      setImageLoading(false);
     };
-    reader.onerror = () => setError("无法读取图片，请重试");
+    reader.onerror = () => {
+      if (currentReader.current !== reader) return;
+      currentReader.current = null;
+      setImageLoading(false);
+      setError("无法读取图片，请重试");
+    };
     reader.readAsDataURL(f);
   }
   async function submit(e) {
     e.preventDefault();
     setError("");
+    if (imageLoading) return setError("设计图仍在读取，请稍后提交");
     if (!image) return setError("请上传桁架设计图");
     setBusy(true);
     try {
@@ -72,7 +102,7 @@ export function BookingForm({ user, slot, date, onClose, onSaved }) {
     <Modal
       title="提交布展申请"
       description="信息将提交至大学生活动中心审核，您可在申请记录中查看结果。"
-      onClose={onClose}
+      onClose={() => !busy && onClose()}
       wide
     >
       <form onSubmit={submit}>
@@ -160,6 +190,7 @@ export function BookingForm({ user, slot, date, onClose, onSaved }) {
                 aria-label="上传桁架设计图"
                 type="file"
                 accept="image/png,image/jpeg,image/webp"
+                disabled={busy}
                 onChange={upload}
               />
               {image ? (
@@ -173,7 +204,9 @@ export function BookingForm({ user, slot, date, onClose, onSaved }) {
                   <span className="upload-icon">
                     <UploadSimple size={31} />
                   </span>
-                  <strong>上传您的设计方案</strong>
+                  <strong>
+                    {imageLoading ? "正在读取设计图…" : "上传您的设计方案"}
+                  </strong>
                   <span>点击选择图片</span>
                   <small>JPG、PNG、WebP · 最大 3 MB</small>
                 </>
@@ -197,10 +230,20 @@ export function BookingForm({ user, slot, date, onClose, onSaved }) {
             <CheckCircle size={16} />
             提交后可在审核前撤回
           </span>
-          <Button className="secondary" type="button" onClick={onClose}>
+          <Button
+            className="secondary"
+            type="button"
+            disabled={busy}
+            onClick={onClose}
+          >
             取消
           </Button>
-          <Button loading={busy} className="primary" type="submit">
+          <Button
+            loading={busy}
+            disabled={imageLoading || !image}
+            className="primary"
+            type="submit"
+          >
             提交申请
             <ArrowRight size={17} />
           </Button>

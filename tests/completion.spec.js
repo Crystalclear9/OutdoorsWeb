@@ -108,6 +108,33 @@ test("改期界面保留原预约并由审批台原子替换；现场登记单�
     .getByRole("button", { name: "场地开放安排", exact: true })
     .click();
   await expect(admin.getByLabel("28号现场备注")).toHaveValue("现场核对已摆放");
+  const guestContext = await browser.newContext();
+  try {
+    const guest = await guestContext.newPage();
+    await guest.goto("/");
+    await guest
+      .getByRole("navigation")
+      .getByRole("button", { name: "场地查询", exact: true })
+      .click();
+    await expect(guest.locator(".venue-onsite-summary")).toContainText(
+      "已摆放 1 / 29",
+    );
+    await guest
+      .getByRole("button", { name: "28号 可预约", exact: true })
+      .click();
+    await expect(
+      guest.locator(".position-details > div").filter({ hasText: "现场登记" }),
+    ).toContainText("已摆放");
+    const publicData = await (await guest.request.get("/api/venue")).json();
+    expect(JSON.stringify(publicData)).not.toContain("现场核对已摆放");
+    expect(publicData.onsite.find((row) => row.slot === 28).present).toBe(true);
+    await guest.getByLabel("查询日期").fill(start);
+    await expect(guest.locator(".venue-onsite-summary")).toContainText(
+      "尚无现场登记",
+    );
+  } finally {
+    await guestContext.close();
+  }
   await admin.setViewportSize({ width: 390, height: 844 });
   expect(
     await admin.evaluate(

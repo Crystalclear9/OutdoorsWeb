@@ -38,6 +38,7 @@
 | ----------------------------------------------------- | -------------------------------------------------- |
 | `index.mjs`、`app.mjs`                                | 启动关闭、HTTP 边界、静态文件、来源校验和异常响应  |
 | `api.mjs`、`business.mjs`                             | 预约审批、账号管理、公告、现场登记、查询和操作记录 |
+| `casework.mjs`                                        | 工作日历、反馈时限、电话跟进与线下费用状态流转     |
 | `core.mjs`                                            | 身份与权限检查、事务、参数校验、图片解码           |
 | `security.mjs`、`work-queue.mjs`                      | 密码散列、令牌摘要及受限密码任务队列               |
 | `captcha.mjs`、`mfa.mjs`、`external-registration.mjs` | 图片验证码、两步验证、首次快捷注册                 |
@@ -50,11 +51,13 @@
 
 后端源文件保持现有入口路径，供 npm 脚本、Docker 和维护命令使用。数据库结构版本为 7，迁移不自动重置业务记录或已有密码。
 
-`server/casework.mjs` 提供反馈时限、工作日历、结果电话登记和费用状态机；`src/Casework.jsx` 提供独立办理界面及申请详情中的记录面板，按需加载。费用核对使用独立 `payments.manage` 权限。
-
 ## 前端入口
 
 `src/main.jsx` 挂载应用，`App.jsx` 管理登录状态、导航与公共场地数据。`components.jsx` 提供通用组件及账号页面；申请、审批台、现场登记、公告、授权和维护使用各自页面模块。`api.js` 封装请求与会话失效处理，`shared/permissions.js` 供两端统一判断业务权限。
+
+`src/Casework.jsx` 按需加载，提供独立办理页和申请详情中的记录面板；与 `server/casework.mjs` 对接。审核权限负责电话结果，独立 `payments.manage` 权限负责核款，超级管理员负责日历。`src/AccessCode.jsx` 在使用指南内生成公开入口二维码。
+
+构建会生成主入口与办理模块等哈希分包。`scripts/sync-pages.mjs` 同步当前产物并清理过期的哈希 JS/CSS；根目录 `assets/` 与 `dist/assets/` 中当前资源应一致。正式字体、底图和授权随构建发布，不属于诊断截图。
 
 `src/assets/venue-plan.png` 保存需求 PDF 的场地原图，`src/venue-layout.js` 定义五段共 29 个交互位置。来源和编号规则见[使用指南](user-guide.md#场地底图与编号)。
 

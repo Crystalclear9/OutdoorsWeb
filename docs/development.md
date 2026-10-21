@@ -35,7 +35,17 @@ npm run test:visual
 
 PowerShell 使用 `$env:PLAYWRIGHT_CHANNEL="chromium"` 设置环境变量；Linux/macOS 可执行 `PLAYWRIGHT_CHANNEL=chromium npm run test:e2e`。无系统依赖的 Linux 主机可先执行 `npx playwright install --with-deps chromium`。
 
-最近一轮为 66 项后端测试、32 项浏览器测试，桌面/手机视觉回归及隔离压测通过。新增回归覆盖游客现场状态及隐私、入口二维码、设计图异步读取竞争、非法换图清除旧图，以及现场登记冲突后重读失败的输入保留。本轮另覆盖工作日历、电话跟进、独立财务权限、并发核款、取消退款与版本七迁移。测试数量会随代码增加，以实际输出为准。
+最近业务代码提交为 `20566fe`：66 项后端测试、32 项浏览器测试、桌面/手机视觉回归及隔离压测通过；[远程工作流](https://github.com/Crystalclear9/OutdoorsWeb/actions/runs/39544243873)也已通过，包括 Docker 构建和固定 Linux 环境视觉回归。该记录对应业务提交；本次文件整理的验证为文档格式、链接和发布资源一致性检查。
+
+新增回归覆盖游客现场状态及隐私、入口二维码、设计图异步读取竞争、非法换图清除旧图，以及现场登记冲突后重读失败的输入保留。另覆盖工作日历、电话跟进、独立财务权限、并发核款、取消退款与版本七迁移。测试数量会随代码增加，以实际输出为准。
+
+| 重点流程                             | 验证位置                                                       |
+| ------------------------------------ | -------------------------------------------------------------- |
+| 真实账号、申请、审批、公告和授权界面 | `tests/accounts.spec.js`                                       |
+| 电话与财务权限、并发核款、日历和迁移 | `server/tests/casework.test.mjs`                               |
+| 企业—财务—管理员完整办理与取消退款   | `tests/casework.spec.js`                                       |
+| 现场登记、改期与两步验证             | `server/tests/completion.test.mjs`、`tests/completion.spec.js` |
+| 入口二维码、换图竞争和现场冲突异常   | `tests/requirements.spec.js`                                   |
 
 ## 清理本地中间文件
 
@@ -51,7 +61,9 @@ PowerShell 使用 `$env:PLAYWRIGHT_CHANNEL="chromium"` 设置环境变量；Linu
 
 先查看目标目录内容，再按明确路径删除；不要直接执行 `git clean -fdx` 或删除全部忽略文件。`tmp/` 未来可能包含新参考资料，需要每次核对，不能无条件整目录清空。已删除的截图和旧报告不会随文档更新自动恢复。
 
-前次整理已清理旧构建、测试和诊断中间文件；后续验证会重新生成这些目录。需求原 PDF、源码、字体及授权、`tests/visual/snapshots/`、根目录 Pages 发布文件和已安装依赖均保留。业务数据库、备份、`.env`、MFA 密钥及 Docker 持久卷不在清理范围内。
+2026-10-21 本次整理先逐项核对路径及内容，再清理 `tmp/`、`test-results/` 中共 22 个可重建截图、压测和测试诊断文件（约 2.3 MB），以及空的 `node_modules/.vite-temp/`。当时 `tmp/pdfs/` 已无提取文件，没有新的参考资料；后续不能据此直接清空新生成的 `tmp/`。
+
+当前 `dist/` 构建、根目录 Pages 发布文件、源码、字体及授权、`tests/visual/snapshots/`、依赖和项目外的需求原 PDF 均保留。业务数据库、备份、`.env`、MFA 密钥及 Docker 持久卷不在清理范围内。后续构建或测试会按需重新生成缓存和诊断目录。
 
 ```powershell
 # 清理构建结果后，重新运行完整服务

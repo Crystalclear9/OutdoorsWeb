@@ -78,8 +78,8 @@ export default function Operations({ notify }) {
             </div>
             <div>
               <span>超时待办</span>
-              <strong>{data.pendingOver24} 条</strong>
-              <small>提交超过 24 小时仍待审核</small>
+              <strong>{data.pendingWorkdayOverdue} 条</strong>
+              <small>超过一个工作日且未登记结果电话告知</small>
             </div>
             <div>
               <span>异机加密备份</span>

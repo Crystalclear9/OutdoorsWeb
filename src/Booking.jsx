@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { lazy, Suspense, useState, useEffect, useRef } from "react";
 import {
   UploadSimple,
   FileImage,
@@ -12,6 +12,9 @@ import { Button, ErrorBox, Modal, Status } from "./components.jsx";
 import { api, getDesign } from "./api.js";
 import { can } from "./permissions.js";
 import { dateString, slotName, zoneName, formatDate } from "./utils.js";
+const CasePanel = lazy(() =>
+  import("./Casework.jsx").then((module) => ({ default: module.CasePanel })),
+);
 
 export function BookingForm({ user, slot, date, onClose, onSaved }) {
   const request = useRef(null);
@@ -254,6 +257,7 @@ export function BookingForm({ user, slot, date, onClose, onSaved }) {
 }
 
 export function BookingDetail({ item: initial, user, onClose, onSaved }) {
+  const [caseOpen, setCaseOpen] = useState(false);
   const [rescheduling, setRescheduling] = useState(false);
   const [item, setItem] = useState(initial);
   const [cancelling, setCancelling] = useState(false),
@@ -486,6 +490,17 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
           />
         </label>
       )}
+      <details
+        className="case-details"
+        onToggle={(e) => setCaseOpen(e.currentTarget.open)}
+      >
+        <summary>查看办理时限、电话跟进与费用记录</summary>
+        {caseOpen && (
+          <Suspense fallback={<p>正在加载办理记录…</p>}>
+            <CasePanel id={item.id} user={user} />
+          </Suspense>
+        )}
+      </details>
       <ErrorBox>{error}</ErrorBox>
       {item.cancel_reason && (
         <div className="info-box">

@@ -17,6 +17,16 @@ app.db
   )
   .run(await hashPassword("CompletionAccount123!"), new Date().toISOString());
 // Verified-provider proofs are seeded only in this isolated test entry point.
+app.db
+  .prepare(
+    "INSERT INTO users(id,email,password_hash,role,company,contact,phone,created) SELECT 'finance-ui','finance-ui@test.local',password_hash,'admin','活动中心','财务老师','13900139000',created FROM users WHERE is_super=1",
+  )
+  .run();
+app.db
+  .prepare(
+    "INSERT INTO user_permissions(user_id,permission) VALUES('finance-ui','payments.manage')",
+  )
+  .run();
 for (const [proof, provider, subject] of [
   ["c".repeat(64), "wechat", "browser-new-company"],
   ["d".repeat(64), "sms", "13600136000"],

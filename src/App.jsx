@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { lazy, Suspense, useState, useEffect, useRef } from "react";
 import {
   SquaresFour,
   MapTrifold,
@@ -37,10 +37,15 @@ import Onsite from "./Onsite.jsx";
 import Archives from "./Archives.jsx";
 import Deliveries from "./Deliveries.jsx";
 import AccessCode from "./AccessCode.jsx";
+const Casework = lazy(() => import("./Casework.jsx"));
 import { can } from "./permissions.js";
 import { VENUE_SEGMENTS, inSegment } from "./venue-layout.js";
 
 const titles = {
+  casework: [
+    "办理有跟进，费用可核对。",
+    "查看反馈时限、结果电话和线下缴费办理进度。",
+  ],
   overview: [
     "场地有序，活动从容。",
     "查询场地、提交申请，让校园里的每一次相遇都有好安排。",
@@ -696,6 +701,15 @@ export default function App() {
               }}
             />
           )}
+          {page === "casework" &&
+            user &&
+            (user.role === "enterprise" ||
+              can(user, "bookings.review") ||
+              can(user, "payments.manage")) && (
+              <Suspense fallback={<p>正在加载办理界面…</p>}>
+                <Casework key={user.id} user={user} notify={notify} />
+              </Suspense>
+            )}
           {page === "account" && user && (
             <AccountPage
               key={user.id}

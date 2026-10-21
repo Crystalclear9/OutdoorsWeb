@@ -48,7 +48,9 @@
 | `compact.mjs`、`compaction.mjs`                       | 离线空间回收及压缩前安全快照                       |
 | `admin.mjs`、`monitor.mjs`、`proxy.mjs`               | 管理员恢复、独立监控和可信代理来源识别             |
 
-后端源文件保持现有入口路径，供 npm 脚本、Docker 和维护命令使用。数据库结构版本为 6，迁移不自动重置业务记录或已有密码。
+后端源文件保持现有入口路径，供 npm 脚本、Docker 和维护命令使用。数据库结构版本为 7，迁移不自动重置业务记录或已有密码。
+
+`server/casework.mjs` 提供反馈时限、工作日历、结果电话登记和费用状态机；`src/Casework.jsx` 提供独立办理界面及申请详情中的记录面板，按需加载。费用核对使用独立 `payments.manage` 权限。
 
 ## 前端入口
 

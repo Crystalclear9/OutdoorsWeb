@@ -9,7 +9,7 @@ export function openStore(filename) {
       mode: 0o700,
     });
   const db = new DatabaseSync(filename);
-  if (db.prepare("PRAGMA user_version").get().user_version > 6) {
+  if (db.prepare("PRAGMA user_version").get().user_version > 7) {
     db.close();
     throw new Error("数据库版本高于当前程序，请使用匹配版本，禁止直接降级");
   }
@@ -182,7 +182,29 @@ export function openStore(filename) {
       CREATE TRIGGER IF NOT EXISTS booking_cancel_insert BEFORE INSERT ON bookings
       WHEN NEW.cancelled NOT IN (0,1) OR (NEW.cancelled=1 AND NEW.status<>'已通过')
       BEGIN SELECT RAISE(ABORT,'INVALID_BOOKING_STATE'); END;
-      PRAGMA user_version=6;
+      CREATE TABLE IF NOT EXISTS work_calendar(date TEXT PRIMARY KEY,working INTEGER NOT NULL CHECK(working IN (0,1)));
+      CREATE TABLE IF NOT EXISTS calendar_version(id INTEGER PRIMARY KEY CHECK(id=1),version INTEGER NOT NULL);
+      INSERT OR IGNORE INTO calendar_version VALUES(1,1);
+      CREATE TABLE IF NOT EXISTS case_contacts(
+        booking_id TEXT PRIMARY KEY REFERENCES bookings(id),state TEXT NOT NULL DEFAULT 'pending' CHECK(state IN ('pending','unreachable','reached')),
+        attempts INTEGER NOT NULL DEFAULT 0,note TEXT NOT NULL DEFAULT '',updated TEXT,reached_at TEXT,version INTEGER NOT NULL DEFAULT 1
+      );
+      INSERT OR IGNORE INTO case_contacts(booking_id) SELECT id FROM bookings;
+      CREATE TRIGGER IF NOT EXISTS case_contact_insert AFTER INSERT ON bookings BEGIN
+        INSERT INTO case_contacts(booking_id) VALUES(NEW.id);
+      END;
+      CREATE TABLE IF NOT EXISTS booking_fees(
+        booking_id TEXT PRIMARY KEY REFERENCES bookings(id),amount_fen INTEGER NOT NULL CHECK(typeof(amount_fen)='integer' AND amount_fen BETWEEN 0 AND 100000000),
+        state TEXT NOT NULL CHECK(state IN ('due','submitted','paid','waived','void','reconcile','refunded')),
+        instructions TEXT NOT NULL,reference TEXT NOT NULL DEFAULT '',note TEXT NOT NULL DEFAULT '',
+        updated TEXT NOT NULL,version INTEGER NOT NULL DEFAULT 1
+      );
+      CREATE TRIGGER IF NOT EXISTS case_fee_cancel AFTER UPDATE OF cancelled ON bookings
+      WHEN OLD.cancelled=0 AND NEW.cancelled=1 BEGIN
+        UPDATE booking_fees SET state=CASE WHEN state='submitted' THEN 'reconcile' ELSE 'void' END,note='原预约已取消，请停止付款；已提交流水的款项须由财务核实后处理',version=version+1,updated=NEW.cancelled_at
+        WHERE booking_id=NEW.id AND state IN ('due','submitted');
+      END;
+      PRAGMA user_version=7;
     `);
     if (!columns("delivery_jobs").includes("version"))
       db.exec(

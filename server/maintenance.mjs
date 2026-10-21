@@ -6,6 +6,7 @@ import { offsiteConfigured } from "./offsite.mjs";
 import { transportConfigured } from "./integrations.mjs";
 import { randomUUID } from "node:crypto";
 import { integrationReadiness } from "./readiness.mjs";
+import { overdueCases } from "./casework.mjs";
 
 const integer = (v, f, min, max) => {
   const n = Number(v ?? f);
@@ -216,6 +217,7 @@ export function createMaintenance(db, dbPath, options = {}) {
             db.prepare("PRAGMA auto_vacuum").get().auto_vacuum === 2,
         },
         warnings,
+        pendingWorkdayOverdue: overdueCases(db),
         pendingOver24: db
           .prepare(
             "SELECT COUNT(*) AS n FROM bookings WHERE status='待审核' AND created<?",

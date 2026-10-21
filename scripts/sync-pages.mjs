@@ -15,7 +15,7 @@ await copyFile(
 );
 const current = new Set(await readdir(path.join(root, "dist/assets")));
 for (const name of await readdir(path.join(root, "assets"))) {
-  if (/^index-[\w-]+\.(js|css)$/.test(name) && !current.has(name)) {
+  if (/^[\w-]+-[\w-]{8}\.(js|css)$/.test(name) && !current.has(name)) {
     await unlink(path.join(root, "assets", name));
   }
 }

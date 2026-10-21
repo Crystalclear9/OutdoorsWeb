@@ -1,0 +1,546 @@
+import React, { useEffect, useState } from "react";
+import { api } from "./api.js";
+import { can } from "./permissions.js";
+import { Button, Empty, ErrorBox, Pagination } from "./components.jsx";
+import { slotName } from "./utils.js";
+const formatDate = (value) =>
+  new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(value));
+
+const feeLabels = {
+  due: "待缴费",
+  submitted: "流水待核对",
+  paid: "已核实收款",
+  waived: "免缴",
+  void: "已作废",
+  reconcile: "取消后待核款",
+  refunded: "已登记全额退款",
+};
+const contactLabels = {
+  pending: "尚未登记结果电话",
+  unreachable: "电话未接通，需继续跟进",
+  reached: "已登记电话告知",
+};
+
+export function CasePanel({ id, user, notify = () => {} }) {
+  const [item, setItem] = useState(null),
+    [error, setError] = useState(""),
+    [busy, setBusy] = useState(false),
+    [version, setVersion] = useState(0);
+  const reviewer = can(user, "bookings.review"),
+    finance = can(user, "payments.manage"),
+    owner = user.role === "enterprise";
+  useEffect(() => {
+    let active = true;
+    setItem(null);
+    setError("");
+    api(`/casework/${id}`)
+      .then((r) => {
+        if (active) setItem(r.item);
+      })
+      .catch((e) => active && setError(e.message));
+    return () => {
+      active = false;
+    };
+  }, [id, version]);
+  async function act(kind, data) {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const v =
+        kind === "contact" ? item.contactResult.version : item.fee?.version;
+      await api(`/casework/${id}/${kind}`, {
+        method: "POST",
+        headers: v ? { "If-Match": `"${v}"` } : {},
+        body: data,
+      });
+      notify("办理记录已保存");
+      setVersion((v) => v + 1);
+    } catch (e) {
+      setError(`${e.message}。请刷新办理记录后核对，勿重复确认收款。`);
+    } finally {
+      setBusy(false);
+    }
+  }
+  function issue(e) {
+    e.preventDefault();
+    const data = Object.fromEntries(new FormData(e.currentTarget));
+    if (data.action !== "waive" && !/^\d{1,7}(\.\d{1,2})?$/.test(data.amount))
+      return setError("金额须为人民币数字，最多两位小数");
+    act("fee", { ...data, amountFen: Math.round(Number(data.amount) * 100) });
+  }
+  const fee = item?.fee,
+    active = item?.status === "已通过" && !item?.cancelled;
+  return (
+    <section className="card case-panel" aria-label="办理与缴费记录">
+      <div className="card-header">
+        <div>
+          <h2>办理与缴费记录</h2>
+          <p>
+            {item
+              ? `${item.company} · ${slotName(item.slot)} · ${item.status}${item.cancelled ? "（已取消）" : ""}`
+              : "正在读取办理记录…"}
+          </p>
+        </div>
+        <Button
+          className="secondary small"
+          disabled={busy}
+          onClick={() => setVersion((v) => v + 1)}
+        >
+          刷新办理记录
+        </Button>
+      </div>
+      <ErrorBox>{error}</ErrorBox>
+      {item && (
+        <>
+          <div className={`info-box ${item.overdue ? "case-overdue" : ""}`}>
+            <div>
+              <strong>
+                {item.overdue ? "已超过反馈时限" : "反馈时限"}：
+                {formatDate(item.due)}
+              </strong>
+              <p>
+                {contactLabels[item.contactResult.state]}
+                {item.contactResult.reached_at
+                  ? ` · ${formatDate(item.contactResult.reached_at)}`
+                  : ""}
+              </p>
+              <p>
+                按提交后的下一个工作日同一北京时间计算；默认周一至周五，以管理员维护的节假日和调休为准。审批通过不等于已经电话告知。
+              </p>
+            </div>
+          </div>
+          {reviewer && (
+            <div className="case-contact">
+              <p>
+                联系电话：<a href={`tel:${item.phone}`}>{item.phone}</a> ·
+                已登记 {item.contactResult.attempts} 次
+              </p>
+              {item.contactResult.note && (
+                <p>最近联系说明：{item.contactResult.note}</p>
+              )}
+              {!item.cancelled &&
+                ["已通过", "未通过"].includes(item.status) &&
+                item.contactResult.state !== "reached" && (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      act(
+                        "contact",
+                        Object.fromEntries(new FormData(e.currentTarget)),
+                      );
+                    }}
+                  >
+                    <label>
+                      结果电话状态
+                      <select name="state">
+                        <option value="unreachable">未接通，继续跟进</option>
+                        <option value="reached">已接通并告知审核结果</option>
+                      </select>
+                    </label>
+                    <label>
+                      联系核对说明
+                      <textarea
+                        name="note"
+                        required
+                        maxLength={500}
+                        rows={2}
+                        placeholder="记录实际通话结果，不以自动电话受理代替接通"
+                      />
+                    </label>
+                    <Button loading={busy} className="primary" type="submit">
+                      保存电话跟进
+                    </Button>
+                  </form>
+                )}
+              {item.status === "待审核" && (
+                <p className="field-note">
+                  请先在企业申报审核中完成审批，再登记结果告知。
+                </p>
+              )}
+            </div>
+          )}
+          {(owner || finance) && (
+            <div className="case-fee">
+              <h3>线下费用办理</h3>
+              <p className="field-note">
+                系统记录通知、流水与人工核对，不直接扣款。请按单位批准的收费依据和收款说明办理。
+              </p>
+              {fee ? (
+                <>
+                  <div className="case-fee-facts">
+                    <strong>{feeLabels[fee.state]}</strong>
+                    <strong>
+                      人民币 {(fee.amount_fen / 100).toFixed(2)} 元
+                    </strong>
+                  </div>
+                  {fee.instructions && (
+                    <p className="case-preserve">
+                      收款说明：{fee.instructions}
+                    </p>
+                  )}
+                  {fee.reference && (
+                    <p className="case-preserve">
+                      企业付款流水：{fee.reference}
+                    </p>
+                  )}
+                  <p className="case-preserve">办理说明：{fee.note}</p>
+                  {item.cancelled && (
+                    <div className="error-box">
+                      预约已取消，请停止付款。已付款项由财务核实后线下退回；系统不会自动退款或转移到改期申请。
+                    </div>
+                  )}
+                  {owner && active && fee.state === "due" && (
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        act("fee", {
+                          action: "submit",
+                          reference: new FormData(e.currentTarget).get(
+                            "reference",
+                          ),
+                        });
+                      }}
+                    >
+                      <label>
+                        线下付款时间及流水号
+                        <input
+                          name="reference"
+                          maxLength={200}
+                          required
+                          placeholder="填写实际付款时间、交易流水号，等待财务核对"
+                        />
+                      </label>
+                      <Button className="primary" loading={busy} type="submit">
+                        提交付款流水
+                      </Button>
+                    </form>
+                  )}
+                  {finance &&
+                    ["due", "submitted", "reconcile", "paid"].includes(
+                      fee.state,
+                    ) && (
+                      <form
+                        key={fee.version}
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          act(
+                            "fee",
+                            Object.fromEntries(new FormData(e.currentTarget)),
+                          );
+                        }}
+                      >
+                        <label>
+                          费用核对操作
+                          <select name="action">
+                            {((active &&
+                              ["due", "submitted"].includes(fee.state)) ||
+                              fee.state === "reconcile") && (
+                              <option value="confirm">
+                                核实单位账户实际到账，确认收款
+                              </option>
+                            )}
+                            {active && fee.state === "submitted" && (
+                              <option value="return">
+                                流水未核实，退回企业补充
+                              </option>
+                            )}
+                            {["due", "submitted", "reconcile"].includes(
+                              fee.state,
+                            ) && (
+                              <option value="void">
+                                核实未收款，作废费用单
+                              </option>
+                            )}
+                            {fee.state === "paid" && (
+                              <option value="refund">
+                                核实已线下全额退回，登记退款
+                              </option>
+                            )}
+                          </select>
+                        </label>
+                        <label>
+                          财务核对依据
+                          <textarea
+                            name="note"
+                            required
+                            maxLength={500}
+                            rows={2}
+                            placeholder="填写银行核对/退款流水或作废原因，不能仅凭企业声明确认到账"
+                          />
+                        </label>
+                        <label className="check-label">
+                          <input type="checkbox" required />
+                          我已核对实际资金记录，确认保存此操作
+                        </label>
+                        <Button
+                          loading={busy}
+                          className="primary"
+                          type="submit"
+                        >
+                          保存费用核对
+                        </Button>
+                      </form>
+                    )}
+                </>
+              ) : (
+                <p>尚未发出缴费或免缴通知，请勿自行向未知账户付款。</p>
+              )}
+              {finance && active && (!fee || fee.state === "void") && (
+                <form onSubmit={issue} key={fee?.version || 0}>
+                  <label>
+                    费用安排
+                    <select name="action">
+                      <option value="issue">通知线下缴费</option>
+                      <option value="waive">免缴</option>
+                    </select>
+                  </label>
+                  <label>
+                    应缴金额（元）
+                    <input
+                      name="amount"
+                      inputMode="decimal"
+                      placeholder="按已批准的收费标准填写，免缴可留空"
+                    />
+                  </label>
+                  <label>
+                    收款单位与办理说明
+                    <textarea
+                      name="instructions"
+                      maxLength={1500}
+                      rows={3}
+                      placeholder="填写正式收款单位、办理地点/渠道及缴费要求，勿填个人收款信息"
+                    />
+                  </label>
+                  <label>
+                    收费依据或免缴说明
+                    <textarea name="note" required maxLength={500} rows={2} />
+                  </label>
+                  <Button loading={busy} className="primary" type="submit">
+                    发送费用办理通知
+                  </Button>
+                </form>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+function Calendar({ notify }) {
+  const [data, setData] = useState(null),
+    [error, setError] = useState(""),
+    [busy, setBusy] = useState(false);
+  const load = () =>
+    api("/casework/calendar")
+      .then(setData)
+      .catch((e) => setError(e.message));
+  useEffect(() => {
+    load();
+  }, []);
+  async function save(e) {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    const f = Object.fromEntries(new FormData(e.currentTarget));
+    try {
+      await api(`/casework/calendar/${f.date}`, {
+        method: "PUT",
+        headers: { "If-Match": `"${data.version}"` },
+        body: {
+          working: f.working === "default" ? null : f.working === "true",
+        },
+      });
+      await load();
+      notify("工作日历已更新，办理时限将重新计算");
+    } catch (e) {
+      setError(e.message);
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <details className="card case-calendar">
+      <summary>维护工作日历（超级管理员）</summary>
+      <p>
+        默认周一至周五。请按本单位实际安排录入法定节假日、调休和校内停办日；系统不自动推测节假日。变更会重新计算尚未完成的反馈时限。
+      </p>
+      <ErrorBox>{error}</ErrorBox>
+      {data && (
+        <>
+          <form onSubmit={save}>
+            <div className="form-columns">
+              <label>
+                调整日期
+                <input name="date" type="date" required />
+              </label>
+              <label>
+                当日安排
+                <select name="working">
+                  <option value="false">休息日</option>
+                  <option value="true">工作日</option>
+                  <option value="default">恢复默认</option>
+                </select>
+              </label>
+            </div>
+            <Button className="secondary" loading={busy} type="submit">
+              保存日历调整
+            </Button>
+          </form>
+          <ul>
+            {data.items.map((r) => (
+              <li key={r.date}>
+                {r.date} · {r.working ? "工作日" : "休息日"}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </details>
+  );
+}
+
+export default function Casework({ user, notify }) {
+  const [data, setData] = useState({ items: [], pages: 1, total: 0 }),
+    [page, setPage] = useState(1),
+    [scope, setScope] = useState("open"),
+    [query, setQuery] = useState(""),
+    [selected, setSelected] = useState(null),
+    [error, setError] = useState(""),
+    [version, setVersion] = useState(0),
+    [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    const t = setTimeout(
+      () =>
+        api(
+          `/casework?scope=${scope}&q=${encodeURIComponent(query)}&page=${page}`,
+        )
+          .then((r) => {
+            if (active) {
+              setData(r);
+              setError("");
+            }
+          })
+          .catch((e) => active && setError(e.message))
+          .finally(() => active && setLoading(false)),
+      150,
+    );
+    return () => {
+      active = false;
+      clearTimeout(t);
+    };
+  }, [scope, query, page, version]);
+  const refresh = (message) => {
+    notify(message);
+    setVersion((v) => v + 1);
+  };
+  return (
+    <>
+      <section className="card">
+        <div className="card-header">
+          <div>
+            <h2>通知与缴费办理</h2>
+            <p>
+              按提交时间处理。超期表示尚未登记结果电话告知，费用状态独立核对。
+            </p>
+          </div>
+          <Button
+            className="secondary"
+            onClick={() => setVersion((v) => v + 1)}
+          >
+            刷新办理队列
+          </Button>
+        </div>
+        <div className="form-columns">
+          <label>
+            办理范围
+            <select
+              value={scope}
+              onChange={(e) => {
+                setScope(e.target.value);
+                setPage(1);
+              }}
+            >
+              <option value="open">待跟进事项</option>
+              <option value="all">全部办理记录</option>
+            </select>
+          </label>
+          <label>
+            搜索办理记录
+            <input
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setPage(1);
+              }}
+              placeholder="企业名称或申请编号"
+            />
+          </label>
+        </div>
+        <ErrorBox>{error}</ErrorBox>
+        {loading ? (
+          <p>正在读取办理队列…</p>
+        ) : data.items.length ? (
+          <div className="case-list">
+            {data.items.map((r) => (
+              <button
+                type="button"
+                key={r.id}
+                className={`case-row ${selected === r.id ? "selected" : ""}`}
+                onClick={() => setSelected(r.id)}
+              >
+                <span>
+                  <strong>{r.company}</strong>
+                  <small>
+                    {r.id} · {slotName(r.slot)} · {r.status}
+                    {r.cancelled ? "（已取消）" : ""}
+                  </small>
+                </span>
+                <span>
+                  {r.overdue ? (
+                    <b className="error-text">超过反馈时限</b>
+                  ) : (
+                    <span>{contactLabels[r.contactResult.state]}</span>
+                  )}
+                  <small>反馈时限 {formatDate(r.due)}</small>
+                  <small>
+                    {r.fee
+                      ? feeLabels[r.fee.state]
+                      : r.fee === undefined
+                        ? "费用由财务核对"
+                        : "尚无费用通知"}
+                  </small>
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <Empty title="暂无符合条件的办理事项" />
+        )}
+        <Pagination
+          page={page}
+          pages={data.pages}
+          total={data.total}
+          onPage={setPage}
+        />
+      </section>
+      {selected && (
+        <CasePanel key={selected} id={selected} user={user} notify={refresh} />
+      )}
+      {user.isSuperAdmin && <Calendar notify={refresh} />}
+    </>
+  );
+}

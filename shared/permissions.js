@@ -1,5 +1,10 @@
 export const PERMISSIONS = [
   {
+    key: "payments.manage",
+    label: "缴费核对",
+    description: "发出缴费或免缴通知，核对线下付款及登记退款",
+  },
+  {
     key: "bookings.review",
     label: "企业申请审核",
     description: "查看企业申请与设计图，审批或退回申请",

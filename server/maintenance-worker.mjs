@@ -13,6 +13,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { today as businessDay } from "./core.mjs";
 import { archiveHistory } from "./business.mjs";
+import { overdueCases } from "./casework.mjs";
 import { offsiteConfigured, uploadOffsite } from "./offsite.mjs";
 import { alertExternal } from "./delivery.mjs";
 
@@ -56,11 +57,7 @@ try {
           .get()?.value || "null",
       );
     if (reminder !== today) {
-      const count = db
-        .prepare(
-          "SELECT COUNT(*) AS n FROM bookings WHERE status='待审核' AND created<?",
-        )
-        .get(new Date(at - day).toISOString()).n;
+      const count = overdueCases(db, at);
       if (count) {
         const reviewers = db
           .prepare(
@@ -74,12 +71,12 @@ try {
             randomUUID(),
             user.id,
             "超时待办提醒",
-            `${count} 条申请已等待超过 24 小时，请进入审批台处理。`,
+            `${count} 条申请已超过一个工作日且未登记结果电话告知，请进入工作台的办理跟进处理。`,
             "",
             new Date(at).toISOString(),
           );
       }
-      save("reminder", today);
+      if (count) save("reminder", today);
     }
     db.exec("COMMIT");
   } catch (e) {

@@ -9,6 +9,7 @@ import {
 import { PERMISSION_KEYS, can } from "../shared/permissions.js";
 import { createCaptcha } from "./captcha.mjs";
 import { businessRoutes, archivedImage } from "./business.mjs";
+import { caseworkRoutes } from "./casework.mjs";
 import { createMfa } from "./mfa.mjs";
 import { integrationRoutes, enqueueResult } from "./integrations.mjs";
 import {
@@ -182,6 +183,7 @@ export async function createApi(db, options = {}) {
     res.end(JSON.stringify(data));
   };
   const business = businessRoutes(db, sec, send, notifyReviewers);
+  const casework = caseworkRoutes(db, sec, send, notify);
   const mfa = createMfa(db, options.dbPath, sec, send, {
     secure: options.secureCookies,
   });
@@ -206,6 +208,7 @@ export async function createApi(db, options = {}) {
       m = req.method;
     if (await mfa.route(req, res, url)) return;
     if (await integrations(req, res, url)) return;
+    if (await casework(req, res, url)) return;
     if (await business(req, res, url)) return;
     if (p === "/api/health" && m === "GET") {
       const h = options.maintenance.health();

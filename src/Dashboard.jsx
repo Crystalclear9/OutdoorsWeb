@@ -110,7 +110,9 @@ export default function Dashboard({
                             ? "users"
                             : can(user, "audit.read")
                               ? "audit"
-                              : "account",
+                              : can(user, "payments.manage")
+                                ? "casework"
+                                : "account",
                     )
                   : onApply()
             }
@@ -131,6 +133,18 @@ export default function Dashboard({
             {publishing ? "发布活动通知" : "查看可预约场地"}
             <ArrowUpRight size={17} />
           </button>
+          {user &&
+            (user.role === "enterprise" ||
+              admin ||
+              can(user, "payments.manage")) && (
+              <Button
+                className="secondary"
+                onClick={() => onNavigate("casework")}
+              >
+                通知与缴费办理
+                <ArrowRight size={18} />
+              </Button>
+            )}
         </div>
       </section>
       {!!metrics.length && (
@@ -178,9 +192,21 @@ export default function Dashboard({
             {user && (
               <button
                 className="text-button"
-                onClick={() => onNavigate("records")}
+                onClick={() =>
+                  onNavigate(
+                    !staff || admin
+                      ? "records"
+                      : can(user, "payments.manage")
+                        ? "casework"
+                        : "venue",
+                  )
+                }
               >
-                全部申请
+                {!staff || admin
+                  ? "全部申请"
+                  : can(user, "payments.manage")
+                    ? "全部办理"
+                    : "查询场地"}
                 <ArrowRight size={16} />
               </button>
             )}

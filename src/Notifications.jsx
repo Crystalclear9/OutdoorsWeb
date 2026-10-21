@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from "react";
 import { api } from "./api.js";
 import { Button, Empty, ErrorBox } from "./components.jsx";
 import { BookingDetail } from "./Booking.jsx";
+import { can } from "./permissions.js";
 export default function Notifications({
   user,
   version,
@@ -50,7 +51,13 @@ export default function Notifications({
         body: item ? { id: item.id } : {},
       });
       await load();
-      if (item?.target)
+      if (
+        item &&
+        ((can(user, "payments.manage") && !can(user, "bookings.review")) ||
+          item.title === "超时待办提醒")
+      )
+        onNavigate("casework");
+      else if (item?.target)
         setDetail(
           (await api("/bookings/" + encodeURIComponent(item.target))).booking,
         );

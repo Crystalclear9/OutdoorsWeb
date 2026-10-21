@@ -3032,6 +3032,103 @@ tr:hover td {
   animation: rotate 1s linear infinite;
 }
 
+.case-panel,
+.case-calendar {
+  margin-top: 24px;
+}
+.case-panel form,
+.case-calendar form {
+  display: grid;
+  gap: 16px;
+  margin: 20px 0;
+}
+.case-panel label,
+.case-calendar label {
+  display: grid;
+  gap: 8px;
+}
+.case-panel .check-label {
+  display: flex;
+  align-items: flex-start;
+}
+.case-panel .check-label input {
+  width: auto;
+  flex: 0 0 auto;
+  margin-top: 4px;
+}
+.case-panel p,
+.case-calendar p,
+.case-row small {
+  overflow-wrap: anywhere;
+}
+.case-preserve {
+  white-space: pre-wrap;
+}
+.case-contact,
+.case-fee {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border, #e4e0db);
+}
+.case-fee-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 18px 0;
+}
+.case-overdue {
+  border-left: 3px solid #a33939;
+}
+.case-list {
+  display: grid;
+  margin-top: 16px;
+}
+.case-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  width: 100%;
+  padding: 20px 12px;
+  text-align: left;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid #e4e0db;
+  cursor: pointer;
+}
+.case-row > span {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.case-row > span:last-child {
+  text-align: right;
+}
+.case-row.selected {
+  background: #f6efee;
+  box-shadow: inset 3px 0 #78303e;
+}
+.case-calendar summary,
+.case-details summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.case-details {
+  margin: 20px 0;
+}
+@media (max-width: 600px) {
+  .case-row {
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px 8px;
+  }
+  .case-row > span:last-child {
+    text-align: left;
+  }
+  .case-panel .card-header {
+    flex-wrap: wrap;
+  }
+}
 @keyframes rotate {
   to {
     transform: rotate(360deg);

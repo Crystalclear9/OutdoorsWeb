@@ -30,9 +30,14 @@ test("审批提示区分暂停、已占用、竞争待办；企业不获取管�
     .data;
   const pending = (await d.request("/bookings", "POST", booking({ slot: 2 })))
     .data;
-  await a.request("/bookings/" + other.id + "/review", "POST", {
-    status: "已通过",
-  });
+  await a.request(
+    "/bookings/" + other.id + "/review",
+    "POST",
+    {
+      status: "已通过",
+    },
+    { "If-Match": '"1"' },
+  );
   assert.deepEqual(
     (await a.request("/bookings/" + pending.id)).data.booking.reviewCheck
       .blockers,
@@ -57,7 +62,9 @@ test("批量审批逐条鉴别版本与冲突，成功记录仅写一次审计",
   ids.push(
     (await c.request("/bookings", "POST", booking({ slot: 3 }))).data.id,
   );
-  await c.request("/bookings/" + ids[3] + "/withdraw", "POST");
+  await c.request("/bookings/" + ids[3] + "/withdraw", "POST", undefined, {
+    "If-Match": '"1"',
+  });
   const payload = {
     status: "已通过",
     items: ids.map((id) => ({ id, version: 1 })),

@@ -777,6 +777,7 @@ test("已通过预约可从界面确认取消并释放位置，工作台收到�
       headers: {
         Origin: "http://127.0.0.1:3101",
         "X-CSRF-Token": session.csrf,
+        "If-Match": '"1"',
       },
       data: { status: "已通过" },
     },

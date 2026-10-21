@@ -92,7 +92,7 @@ export function archivedImage(db, id) {
   return bytes;
 }
 
-export function businessRoutes(db, sec, send, notifyReviewers) {
+export function businessRoutes(db, sec, send, notifyReviewers, maintenance) {
   const { current, write, audit } = sec;
   return async (req, res, url) => {
     const p = url.pathname,
@@ -282,6 +282,11 @@ export function businessRoutes(db, sec, send, notifyReviewers) {
           "新时段已占用或暂停开放",
         );
         const id = `HUST-${Date.now()}-${randomUUID().slice(0, 12)}`;
+        fail(
+          !maintenance.health(false).ok,
+          503,
+          "存储服务异常或空间不足，请联系管理员",
+        );
         // A copy keeps both applications independently reviewable and auditable.
         const image = old.image.length ? old.image : archivedImage(db, old.id);
         fail(

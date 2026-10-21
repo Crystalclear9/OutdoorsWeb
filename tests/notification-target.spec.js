@@ -44,7 +44,7 @@ test("独立财务点击付款消息直接定位对应申请，无需手工翻�
     expect(
       (
         await page.request.post(`/api/bookings/${id}/review`, {
-          headers: await headers(page),
+          headers: { ...(await headers(page)), "If-Match": '"1"' },
           data: { status: "已通过" },
         })
       ).ok(),

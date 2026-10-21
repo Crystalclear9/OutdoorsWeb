@@ -37,7 +37,7 @@ npm run test:visual
 
 PowerShell 使用 `$env:PLAYWRIGHT_CHANNEL="chromium"` 设置环境变量；Linux/macOS 可执行 `PLAYWRIGHT_CHANNEL=chromium npm run test:e2e`。无系统依赖的 Linux 主机可先执行 `npx playwright install --with-deps chromium`。
 
-本轮安全、产品与运维复核运行了 85 项后端测试、45 项浏览器测试、2 项桌面/手机视觉回归，均通过；隔离压测 1000 次读取无错误，32 条同位竞争审批只有一次成功。npm 全依赖审计暂未报告已知漏洞。Docker 构建与固定 Linux 视觉回归由本轮提交的 CI 执行，结果以对应工作流为准。上轮提交 `9b70faf` 的[成功工作流](https://github.com/Crystalclear9/OutdoorsWeb/actions/runs/39588502268)保留作历史记录。
+本轮后端复核运行了 90 项后端测试、45 项浏览器测试，均通过；隔离压测 1000 次读取无错误，32 条同位竞争审批只有一次成功。本轮未改前端产品代码或视觉基线。前轮 `51ae649` 已通过 2 项本地桌面/手机视觉回归及 npm 全依赖审计（无已知漏洞），其[远程工作流](https://github.com/Crystalclear9/OutdoorsWeb/actions/runs/39591177541)的 Docker 构建和固定 Linux 视觉回归也通过。本轮远程结果以对应提交的 CI 为准。
 
 新增回归覆盖游客现场状态及隐私、入口二维码、设计图异步读取竞争、非法换图清除旧图，以及现场登记冲突后重读失败的输入保留。另覆盖工作日历、电话跟进、独立财务权限、并发核款、取消退款与版本七迁移。测试数量会随代码增加，以实际输出为准。
 
@@ -51,7 +51,13 @@ PowerShell 使用 `$env:PLAYWRIGHT_CHANNEL="chromium"` 设置环境变量；Linu
 
 上一轮审计回归：`server/tests/backup-audit.test.mjs`、`casework-audit.test.mjs`、`http-boundary.test.mjs`；浏览器侧为 `tests/venue-loading.spec.js`、`auth-navigation.spec.js` 和 `dialog-saving.spec.js`，分别覆盖密钥恢复、角色待办/退款通知、跨源预检、慢网旧数据、认证互斥及保存弹窗。
 
-本轮新增 `server/tests/security-review.test.mjs`、`product-review.test.mjs`、`ops-review.test.mjs` 共 7 项回归，覆盖财务最少数据权限、取消后到账、电话纠错及维护锁/进程异常。新增 `tests/product-review.spec.js`、`case-draft.spec.js`、`notification-target.spec.js` 共 4 项浏览器回归；财务消息定位使用真实跨账号业务，刷新失败、翻页及日历重试使用隔离响应模拟。审计范围和修正见[项目复核](project-audit.md)，交接步骤见[全流程清单](release-checklist.md)。
+第二轮新增 `server/tests/security-review.test.mjs`、`product-review.test.mjs`、`ops-review.test.mjs` 共 7 项回归，覆盖财务最少数据权限、取消后到账、电话纠错及维护锁/进程异常。新增 `tests/product-review.spec.js`、`case-draft.spec.js`、`notification-target.spec.js` 共 4 项浏览器回归；财务消息定位使用真实跨账号业务，刷新失败、翻页及日历重试使用隔离响应模拟。
+
+第三轮新增 `server/tests/version-guard.test.mjs`、`business-recheck.test.mjs`、`delivery-validity.test.mjs` 共 5 项后端回归，覆盖强制版本、改期磁盘保护、无效队列关闭和收件人隐私。旧测试明确传入实际版本，不在助手中自动猜版本；通信测试使用真实预约关系和隔离发送器，未向真实手机发送。审计范围和修正见[项目复核](project-audit.md)，交接步骤见[全流程清单](release-checklist.md)。
+
+## 直接调用写接口
+
+先读取申请或账号的 `version`，使用带双引号的 `If-Match: "1"`（以实际版本替换 1）。审核、撤回、停启用和重置密码现在都强制要求；缺失 428、格式错误 400、过期 409。遇到冲突先重读并由操作者核对，不要自动获取新版本后重放旧决定。批量审核使用每条 `items[].version`，不能省略。会话、来源和 CSRF 校验仍须同时通过。
 
 ## 清理本地中间文件
 

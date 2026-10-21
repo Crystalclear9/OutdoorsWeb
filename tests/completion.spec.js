@@ -49,7 +49,7 @@ test("改期界面保留原预约并由审批台原子替换；现场登记单�
   expect(
     (
       await admin.request.post(`/api/bookings/${id}/review`, {
-        headers: await headers(admin),
+        headers: { ...(await headers(admin)), "If-Match": '"1"' },
         data: { status: "已通过" },
       })
     ).ok(),

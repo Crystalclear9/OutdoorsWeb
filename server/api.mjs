@@ -115,7 +115,7 @@ export async function createApi(db, options = {}) {
           409,
           "记录已被其他人修改，请刷新后重试",
         );
-      else versionCheck(req, row);
+      else versionCheck(req, row, true);
       fail(row.status !== "待审核", 409, "该申请已处理，请刷新");
       if (result === "已通过") {
         const checks = reviewCheck(row);
@@ -200,7 +200,13 @@ export async function createApi(db, options = {}) {
     });
     res.end(JSON.stringify(data));
   };
-  const business = businessRoutes(db, sec, send, notifyReviewers);
+  const business = businessRoutes(
+    db,
+    sec,
+    send,
+    notifyReviewers,
+    options.maintenance,
+  );
   const casework = caseworkRoutes(db, sec, send, notify);
   const mfa = createMfa(db, options.dbPath, sec, send, {
     secure: options.secureCookies,
@@ -783,7 +789,7 @@ export async function createApi(db, options = {}) {
           const b = bookingById(id);
           permittedBooking(fresh, b);
           fail(b.user_id !== fresh.id, 403, "只能撤回本企业的申请");
-          versionCheck(req, b);
+          versionCheck(req, b, true);
           fail(b.status !== "待审核", 409, "只有待审核申请可以撤回");
           db.prepare(
             "UPDATE bookings SET status='已撤回',reviewed=?,version=version+1 WHERE id=? AND status='待审核'",
@@ -937,7 +943,7 @@ export async function createApi(db, options = {}) {
             403,
             "无权管理此账号",
           );
-          versionCheck(req, fresh);
+          versionCheck(req, fresh, true);
           db.prepare(
             "UPDATE users SET disabled=?,version=version+1 WHERE id=?",
           ).run(b.disabled ? 1 : 0, id);
@@ -958,7 +964,7 @@ export async function createApi(db, options = {}) {
           403,
           "无权管理此账号",
         );
-        versionCheck(req, fresh);
+        versionCheck(req, fresh, true);
         db.prepare(
           "UPDATE users SET password_hash=?,must_change=1,version=version+1 WHERE id=?",
         ).run(hashed, id);

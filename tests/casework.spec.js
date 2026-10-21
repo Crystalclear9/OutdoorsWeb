@@ -56,7 +56,7 @@ test("真实企业、管理员和独立财务完成费用通知、流水核对�
     expect(
       (
         await page.request.post(`/api/bookings/${id}/review`, {
-          headers: await headers(page),
+          headers: { ...(await headers(page)), "If-Match": '"1"' },
           data: { status: "已通过" },
         })
       ).ok(),

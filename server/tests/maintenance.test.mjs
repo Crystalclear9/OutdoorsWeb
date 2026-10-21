@@ -158,9 +158,14 @@ test("取消预约需要归属、权限和版本，释放位置并保留审计�
   await register(other, "other@test.local");
   await staff(root, limited, ["notices.manage"]);
   const id = (await c.request("/bookings", "POST", booking())).data.id;
-  await root.request("/bookings/" + id + "/review", "POST", {
-    status: "已通过",
-  });
+  await root.request(
+    "/bookings/" + id + "/review",
+    "POST",
+    {
+      status: "已通过",
+    },
+    { "If-Match": '"1"' },
+  );
   const route = "/bookings/" + id + "/cancel",
     body = { reason: "活动取消" };
   assert.equal((await c.request(route, "POST", body)).status, 428);
@@ -208,6 +213,7 @@ test("取消预约需要归属、权限和版本，释放位置并保留审计�
         "/bookings/" + replacement.data.id + "/review",
         "POST",
         { status: "已通过" },
+        { "If-Match": '"1"' },
       )
     ).status,
     200,

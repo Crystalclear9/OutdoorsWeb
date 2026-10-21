@@ -80,7 +80,12 @@ test("绕过接口直接写数据库仍不能造成预约与暂停安排重叠",
   await register(c);
   await manager(m);
   const id = (await c.request("/bookings", "POST", booking())).data.id;
-  await m.request(`/bookings/${id}/review`, "POST", { status: "已通过" });
+  await m.request(
+    `/bookings/${id}/review`,
+    "POST",
+    { status: "已通过" },
+    { "If-Match": '"1"' },
+  );
   assert.throws(
     () =>
       db
@@ -182,9 +187,14 @@ test("工作人员只能执行明确授予的权限，不能自行授权或查�
     assert.equal((await limited.request(route)).status, 403, route);
   assert.equal(
     (
-      await limited.request(`/bookings/${id}/review`, "POST", {
-        status: "已通过",
-      })
+      await limited.request(
+        `/bookings/${id}/review`,
+        "POST",
+        {
+          status: "已通过",
+        },
+        { "If-Match": '"1"' },
+      )
     ).status,
     403,
   );
@@ -308,7 +318,12 @@ test("上传过程中停用账号，上传完成后不能继续写入", async (t
   await manager(root);
   const u = await register(c);
   const delayed = delayedRequest(c, "/bookings", booking());
-  await root.request(`/users/${u.id}/status`, "POST", { disabled: true });
+  await root.request(
+    `/users/${u.id}/status`,
+    "POST",
+    { disabled: true },
+    { "If-Match": '"1"' },
+  );
   delayed.finish();
   assert.equal((await delayed.done).status, 401);
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM bookings").get().n, 0);

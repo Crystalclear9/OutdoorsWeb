@@ -229,7 +229,12 @@ test("停用即时撤销会话，管理员重置密码并强制修改", async (t
     c = client();
   const u = await register(c);
   await a.request("/auth/login", "POST", admin);
-  await a.request(`/users/${u.id}/status`, "POST", { disabled: true });
+  await a.request(
+    `/users/${u.id}/status`,
+    "POST",
+    { disabled: true },
+    { "If-Match": '"1"' },
+  );
   assert.equal((await c.request("/bookings")).status, 401);
   assert.equal(
     (
@@ -240,8 +245,18 @@ test("停用即时撤销会话，管理员重置密码并强制修改", async (t
     ).status,
     403,
   );
-  await a.request(`/users/${u.id}/status`, "POST", { disabled: false });
-  const reset = await a.request(`/users/${u.id}/reset-password`, "POST");
+  await a.request(
+    `/users/${u.id}/status`,
+    "POST",
+    { disabled: false },
+    { "If-Match": '"2"' },
+  );
+  const reset = await a.request(
+    `/users/${u.id}/reset-password`,
+    "POST",
+    undefined,
+    { "If-Match": '"3"' },
+  );
   assert.ok(reset.data.temporaryPassword);
   const login = await c.request("/auth/login", "POST", {
     email: u.email,
@@ -319,13 +334,29 @@ test("并发审核同一位置只有一条能够通过", async (t) => {
   const x = (await a.request("/bookings", "POST", booking())).data.id,
     y = (await b.request("/bookings", "POST", booking())).data.id;
   assert.equal(
-    (await a.request(`/bookings/${x}/review`, "POST", { status: "已通过" }))
-      .status,
+    (
+      await a.request(
+        `/bookings/${x}/review`,
+        "POST",
+        { status: "已通过" },
+        { "If-Match": '"1"' },
+      )
+    ).status,
     403,
   );
   const results = await Promise.all([
-    m.request(`/bookings/${x}/review`, "POST", { status: "已通过" }),
-    m.request(`/bookings/${y}/review`, "POST", { status: "已通过" }),
+    m.request(
+      `/bookings/${x}/review`,
+      "POST",
+      { status: "已通过" },
+      { "If-Match": '"1"' },
+    ),
+    m.request(
+      `/bookings/${y}/review`,
+      "POST",
+      { status: "已通过" },
+      { "If-Match": '"1"' },
+    ),
   ]);
   assert.deepEqual(results.map((r) => r.status).sort(), [200, 409]);
   assert.equal((await client().request("/venue")).data.occupied.length, 1);
@@ -338,31 +369,56 @@ test("退回原因必填，撤回与状态流转受保护", async (t) => {
   await m.request("/auth/login", "POST", admin);
   const id = (await a.request("/bookings", "POST", booking())).data.id;
   assert.equal(
-    (await m.request(`/bookings/${id}/review`, "POST", { status: "未通过" }))
-      .status,
+    (
+      await m.request(
+        `/bookings/${id}/review`,
+        "POST",
+        { status: "未通过" },
+        { "If-Match": '"1"' },
+      )
+    ).status,
     400,
   );
-  await m.request(`/bookings/${id}/review`, "POST", {
-    status: "未通过",
-    reason: "请修改设计图",
-  });
+  await m.request(
+    `/bookings/${id}/review`,
+    "POST",
+    {
+      status: "未通过",
+      reason: "请修改设计图",
+    },
+    { "If-Match": '"1"' },
+  );
   assert.equal(
     (await a.request(`/bookings/${id}`)).data.booking.reason,
     "请修改设计图",
   );
   assert.equal(
-    (await a.request(`/bookings/${id}/withdraw`, "POST")).status,
+    (
+      await a.request(`/bookings/${id}/withdraw`, "POST", undefined, {
+        "If-Match": '"2"',
+      })
+    ).status,
     409,
   );
   const other = (await a.request("/bookings", "POST", booking({ slot: 2 })))
     .data.id;
   assert.equal(
-    (await a.request(`/bookings/${other}/withdraw`, "POST")).status,
+    (
+      await a.request(`/bookings/${other}/withdraw`, "POST", undefined, {
+        "If-Match": '"1"',
+      })
+    ).status,
     200,
   );
   assert.equal(
-    (await m.request(`/bookings/${other}/review`, "POST", { status: "已通过" }))
-      .status,
+    (
+      await m.request(
+        `/bookings/${other}/review`,
+        "POST",
+        { status: "已通过" },
+        { "If-Match": '"2"' },
+      )
+    ).status,
     409,
   );
 });

@@ -36,9 +36,9 @@
 - 补上可下载的公开入口二维码，过滤查询参数和片段，并提示访问条件。
 - 修复设计图异步读取竞争、非法换图残留及读取中提交的问题。
 - 修复现场登记并发冲突后的重读异常，保留尚未保存的输入。
-- 后端 78 项、浏览器 41 项、桌面/手机视觉回归通过。32 并发、1000 次公共读取无错误；32 条同位竞争审批仅 1 条通过。以上为隔离环境验证，不代表真实部署容量或第三方送达。
+- 历经后续复核，当前后端 90 项、浏览器 45 项通过。32 并发、1000 次公共读取无错误；32 条同位竞争审批仅 1 条通过。前轮桌面/手机及 Linux 视觉回归已通过，本轮前端产品与基线未变；本轮远程结果以对应 CI 为准。以上为隔离环境验证，不代表真实部署容量或第三方送达。
 
-上一轮业务提交为 `20566fe`。当时新增回归位于 `server/tests/casework.test.mjs`、`tests/casework.spec.js`、`server/tests/completion.test.mjs`、`tests/completion.spec.js` 和 `tests/requirements.spec.js`。[远程工作流](https://github.com/Crystalclear9/OutdoorsWeb/actions/runs/39544243873)已通过，包括 Docker 构建和固定 Linux 浏览器视觉回归；随后本轮多代理复核修正了备份密钥、角色待办、退款提醒、跨源预检与前端异步流程，详见[项目复核](project-audit.md)；本轮远程结果以对应提交的 CI 为准。
+办理功能提交为 `20566fe`。当时新增回归位于 `server/tests/casework.test.mjs`、`tests/casework.spec.js`、`server/tests/completion.test.mjs`、`tests/completion.spec.js` 和 `tests/requirements.spec.js`。[当时的远程工作流](https://github.com/Crystalclear9/OutdoorsWeb/actions/runs/39544243873)已通过。后续复核修正了备份密钥、角色待办、退款提醒、跨源预检与异步交互；第二轮提交 `51ae649` 的[工作流](https://github.com/Crystalclear9/OutdoorsWeb/actions/runs/39591177541)已通过。本轮进一步补上接口强制版本、改期磁盘保护和过期通知拦截，详见[项目复核](project-audit.md)。
 
 ## 尚需的上线验收
 

@@ -73,9 +73,14 @@ test("两个独立服务进程共享数据库：竞争审批、重复提交、�
   assert.ok(bookings.every((r) => r.status === 201));
   const approvals = await Promise.all(
     bookings.map((r, i) =>
-      (i % 2 ? a : b).request(`/bookings/${r.data.id}/review`, "POST", {
-        status: "已通过",
-      }),
+      (i % 2 ? a : b).request(
+        `/bookings/${r.data.id}/review`,
+        "POST",
+        {
+          status: "已通过",
+        },
+        { "If-Match": '"1"' },
+      ),
     ),
   );
   assert.equal(approvals.filter((r) => r.status === 200).length, 1);
@@ -94,14 +99,26 @@ test("两个独立服务进程共享数据库：竞争审批、重复提交、�
   assert.deepEqual(duplicate.map((r) => r.status).sort(), [201, 409]);
   const pending = duplicate.find((r) => r.status === 201).data.id;
   const race = await Promise.all([
-    a.request(`/bookings/${pending}/review`, "POST", { status: "已通过" }),
-    second.request(`/bookings/${pending}/withdraw`, "POST"),
+    a.request(
+      `/bookings/${pending}/review`,
+      "POST",
+      { status: "已通过" },
+      { "If-Match": '"1"' },
+    ),
+    second.request(`/bookings/${pending}/withdraw`, "POST", undefined, {
+      "If-Match": '"1"',
+    }),
   ]);
   assert.deepEqual(race.map((r) => r.status).sort(), [200, 409]);
   const last = (await c.request("/bookings", "POST", booking({ slot: 3 }))).data
     .id;
   const closureRace = await Promise.all([
-    a.request(`/bookings/${last}/review`, "POST", { status: "已通过" }),
+    a.request(
+      `/bookings/${last}/review`,
+      "POST",
+      { status: "已通过" },
+      { "If-Match": '"1"' },
+    ),
     b.request("/closures", "POST", {
       slot: 3,
       start: booking().start,

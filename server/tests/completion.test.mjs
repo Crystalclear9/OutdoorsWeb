@@ -682,6 +682,19 @@ test("通知队列持久化受理结果，网络不确定不重复呼叫，管�
     root = f.client();
   const user = await register(owner);
   await manager(root);
+  const queuedBooking = (await owner.request("/bookings", "POST", booking()))
+    .data.id;
+  assert.equal(
+    (
+      await root.request(
+        `/bookings/${queuedBooking}/review`,
+        "POST",
+        { status: "已通过", reason: "" },
+        version(1),
+      )
+    ).status,
+    200,
+  );
   f.db
     .prepare("INSERT INTO verified_phones VALUES('13800138000',?)")
     .run(user.id);
@@ -697,7 +710,7 @@ test("通知队列持久化受理结果，网络不确定不重复呼叫，管�
           userId: user.id,
           phone: "13800138000",
           message: "审批结果",
-          bookingId: "sample",
+          bookingId: queuedBooking,
         }),
         nowString(),
       );

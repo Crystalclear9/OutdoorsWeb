@@ -1,5 +1,5 @@
 import { createHmac } from "node:crypto";
-import { tx, now } from "./core.mjs";
+import { tx, now, today } from "./core.mjs";
 import { deliverPhone } from "./integrations.mjs";
 
 export async function alertExternal(db, event, detail, sender = fetch) {
@@ -95,13 +95,42 @@ export function createDelivery(db, maintenance, options = {}) {
           const p = JSON.parse(job.payload),
             pref = db
               .prepare(
-                "SELECT p.*,v.phone FROM contact_preferences p JOIN verified_phones v ON p.user_id=v.user_id WHERE p.user_id=?",
+                "SELECT p.*,v.phone,u.disabled FROM contact_preferences p JOIN verified_phones v ON p.user_id=v.user_id JOIN users u ON u.id=p.user_id WHERE p.user_id=?",
               )
-              .get(p.userId);
-          if (!pref || !pref[job.kind] || pref.phone !== p.phone) {
-            db.prepare(
-              "UPDATE delivery_jobs SET version=version+1,state='cancelled',last_error='用户已关闭通知或变更绑定号码' WHERE id=?",
-            ).run(job.id);
+              .get(p.userId),
+            booking = db
+              .prepare(
+                "SELECT user_id,status,cancelled,end FROM bookings WHERE id=?",
+              )
+              .get(p.bookingId),
+            reason =
+              !pref || !pref[job.kind] || pref.phone !== p.phone
+                ? "用户已关闭通知或变更绑定号码"
+                : pref.disabled
+                  ? "账号已停用，结果通知已停止"
+                  : !booking || booking.user_id !== p.userId
+                    ? "预约不存在或不属于通知接收账号"
+                    : booking.cancelled ||
+                        !["已通过", "未通过"].includes(booking.status)
+                      ? "预约已取消、改期或审核结果已失效"
+                      : booking.status === "已通过" && booking.end < today()
+                        ? "预约已结束，布展指令不再发送"
+                        : "";
+          if (reason) {
+            // A result can become obsolete while queued or awaiting a manual
+            // retry. Preserve its history, without sending stale instructions.
+            tx(db, () => {
+              db.prepare(
+                "UPDATE delivery_jobs SET version=version+1,state='cancelled',last_error=? WHERE id=?",
+              ).run(reason, job.id);
+              db.prepare(
+                "INSERT INTO audit(actor,action,target,created,details) VALUES(NULL,'delivery.cancelled',?,?,?)",
+              ).run(
+                job.id,
+                now(),
+                JSON.stringify({ reason, bookingId: p.bookingId }),
+              );
+            });
             continue;
           }
           const providerId = await (options.sendPhone || deliverPhone)(

@@ -9,6 +9,7 @@
 - 在账号设置验证并绑定手机号。短信发送前要求图片验证码；同号码最多每分钟一次、每天 10 次，同来源每小时 10 次。短信码 5 分钟有效、最多 5 次尝试、绑定浏览器且只能使用一次。绑定另需当前账号密码；同号码只能绑定一个账号。
 - 用户在账号设置主动勾选审批结果短信或电话通知；只向已验证号码发送。管理员使用短信登录时也必须完成 TOTP。管理员 QQ/微信登录被禁用，保留密码和两步验证。
 - 审批事务只写入发送任务，网络发送每 15 秒在后台处理，不阻塞审批。明确失败指数退避，最多 5 次；网络超时或进程中断的结果标记“需核实”，不自动重复拨打。运行维护页可查看最近 50 条任务并核实、关闭或重试明确失败的任务。受理编号表示服务商受理，不能当作用户实际收到的证明。
+- 实际发送前再次核对账号、预约归属和当前审核/取消状态；预约取消、原单已改期、账号停用或任务关联失效时关闭排队任务并记录审计。已结束的批准预约不再发送旧布展指令，退回结果仍可告知。手机号换绑或退订也会阻止发送；人工重试仍须通过这些检查。已经发往服务商的请求无法通过本地取消召回，结果不确定时仍须到服务商核实。
 - QQ/微信配置 `PUBLIC_URL`、`QQ_CLIENT_ID/QQ_CLIENT_SECRET`、`WECHAT_CLIENT_ID/WECHAT_CLIENT_SECRET`。公共地址通常须为 HTTPS 根地址，例如 `https://venue.example.edu.cn`。在开放平台登记精确回调：`https://venue.example.edu.cn/api/auth/oauth/qq/callback`、`https://venue.example.edu.cn/api/auth/oauth/wechat/callback`。微信使用网站应用扫码登录资质。首次授权后进入企业资料补全页，完成后创建并绑定企业账号；已有账号请先在账号设置中绑定。授权 state 单次消费、10 分钟有效且绑定浏览器。令牌只用于服务端换取 OpenID，不保存到浏览器。
 
 QQ 实现遵循[官方服务端授权流程](https://wiki.connect.qq.com/使用authorization_code获取access_token)，微信入口与回调采用[网站应用登录协议](https://developers.weixin.qq.com/doc/oplatform/Website_App/WeChat_Login/Wechat_Login.html)。第三方拒绝授权、超时或未绑定会显示明确错误，重新登录后可重试。

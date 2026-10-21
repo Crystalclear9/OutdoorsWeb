@@ -35,10 +35,15 @@ test("审核、场地、账号、日志权限各自生效，不能互相替代",
   );
   assert.equal(
     (
-      await reviewer.request(`/bookings/${id}/review`, "POST", {
-        status: "未通过",
-        reason: "补充材料",
-      })
+      await reviewer.request(
+        `/bookings/${id}/review`,
+        "POST",
+        {
+          status: "未通过",
+          reason: "补充材料",
+        },
+        { "If-Match": '"1"' },
+      )
     ).status,
     200,
   );
@@ -63,15 +68,26 @@ test("审核、场地、账号、日志权限各自生效，不能互相替代",
   assert.ok(users.length > 0 && users.every((u) => u.role === "enterprise"));
   assert.equal(
     (
-      await accounts.request(`/users/${owner.id}/status`, "POST", {
-        disabled: true,
-      })
+      await accounts.request(
+        `/users/${owner.id}/status`,
+        "POST",
+        {
+          disabled: true,
+        },
+        { "If-Match": '"1"' },
+      )
     ).status,
     200,
   );
   assert.equal(
-    (await accounts.request(`/users/${rootUser.id}/reset-password`, "POST"))
-      .status,
+    (
+      await accounts.request(
+        `/users/${rootUser.id}/reset-password`,
+        "POST",
+        undefined,
+        { "If-Match": '"1"' },
+      )
+    ).status,
     403,
   );
   const auditor = client();
@@ -106,9 +122,14 @@ test("管理员不能审核自己拥有的申请，拒绝操作保留审计记�
   );
   assert.equal(
     (
-      await root.request("/bookings/legacy-own/review", "POST", {
-        status: "已通过",
-      })
+      await root.request(
+        "/bookings/legacy-own/review",
+        "POST",
+        {
+          status: "已通过",
+        },
+        { "If-Match": '"1"' },
+      )
     ).status,
     403,
   );

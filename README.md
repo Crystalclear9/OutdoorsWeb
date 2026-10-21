@@ -33,16 +33,16 @@ docker compose logs --tail=100 app
 
 ## 文档
 
-| 需要做什么                     | 文档                                 |
-| ------------------------------ | ------------------------------------ |
-| 注册、申报、审批与现场管理     | [使用指南](docs/user-guide.md)       |
-| 查配置变量与 Docker / 本地差异 | [配置说明](docs/configuration.md)    |
-| 了解权限、并发、验证码与密钥   | [账号与安全规则](docs/security.md)   |
-| 备份、恢复、升级与故障排查     | [运行维护](docs/operations.md)       |
-| 接入短信、QQ/微信、S3 与告警   | [外部服务接入](docs/integrations.md) |
-| 本地开发、测试与 Pages 发布    | [开发与测试](docs/development.md)    |
-| 查源码、生成文件与目录职责     | [项目结构](docs/architecture.md)     |
-| 查近期修正                     | [变更记录](CHANGELOG.md)             |
+| 需要做什么                     | 文档                                   |
+| ------------------------------ | -------------------------------------- |
+| 注册、申报、审批与现场管理     | [使用指南](docs/user-guide.md)         |
+| 查配置变量与 Docker / 本地差异 | [配置说明](docs/configuration.md)      |
+| 查防护措施、权限和安全边界     | [防御措施与安全规则](docs/security.md) |
+| 备份、恢复、升级与故障排查     | [运行维护](docs/operations.md)         |
+| 接入短信、QQ/微信、S3 与告警   | [外部服务接入](docs/integrations.md)   |
+| 本地开发、测试与 Pages 发布    | [开发与测试](docs/development.md)      |
+| 查源码、生成文件与目录职责     | [项目结构](docs/architecture.md)       |
+| 查近期修正                     | [变更记录](CHANGELOG.md)               |
 
 [全部文档](docs/README.md)
 

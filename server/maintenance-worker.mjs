@@ -4,7 +4,8 @@ import {
   readdir,
   unlink,
   statfs,
-  rename,
+  link,
+  lstat,
   stat,
   writeFile,
   chmod,
@@ -27,7 +28,7 @@ const save = (key, value) =>
       "INSERT INTO maintenance_state(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
     )
     .run(key, JSON.stringify(value));
-let partial;
+let partial, partialKey, publishedKey;
 try {
   const at = Date.now(),
     day = 86400000,
@@ -142,7 +143,9 @@ try {
     if (available < estimated * 1.1 + 1048576 + (config.reserveBytes || 0))
       throw new Error("备份目录空间不足，已停止复制，请先扩容或转移备份");
     const file =
-        "auto-" + new Date().toISOString().replace(/[:.]/g, "-") + ".sqlite",
+        "auto-" +
+        new Date().toISOString().replace(/[:.]/g, "-") +
+        `-${randomUUID()}.sqlite`,
       target = path.resolve(config.backupDir, file);
     if (path.dirname(target) !== path.resolve(config.backupDir))
       throw new Error("备份目录无效");
@@ -157,23 +160,88 @@ try {
     } finally {
       verify.close();
     }
-    await rename(partial, target);
+    // Prepare both parts before publishing either. Hard links never overwrite
+    // targets created by another process while VACUUM was running.
+    partialKey = partial + ".mfa-key";
+    await writeFile(partialKey, mfaKey, { flag: "wx", mode: 0o600 });
+    const keyIdentity = await lstat(partialKey);
+    await link(partialKey, target + ".mfa-key");
+    publishedKey = { file: target + ".mfa-key", identity: keyIdentity };
+    await link(partial, target);
+    // A complete pair is useful even if a later status/rotation write fails.
+    publishedKey = null;
+    await unlink(partialKey);
+    partialKey = null;
+    await unlink(partial);
     partial = null;
-    await writeFile(target + ".mfa-key", mfaKey, { flag: "wx", mode: 0o600 });
     backup = { at: new Date().toISOString(), file };
     save("backup", backup);
-    const files = (await readdir(config.backupDir, { withFileTypes: true }))
+    const candidates = (
+      await readdir(config.backupDir, { withFileTypes: true })
+    )
       .filter((f) => f.isFile() && /^auto-\d{4}-.*\.sqlite$/.test(f.name))
       .map((f) => f.name)
       .sort()
       .reverse();
-    for (const name of files.slice(config.keep)) {
+    const files = [];
+    for (const name of candidates) {
+      try {
+        const target = path.resolve(config.backupDir, name),
+          database = await lstat(target),
+          key = await lstat(target + ".mfa-key");
+        if (
+          database.isFile() &&
+          database.size >= 100 &&
+          key.isFile() &&
+          key.size === 32
+        )
+          files.push({ name, database, key });
+      } catch (e) {
+        if (e.code !== "ENOENT") throw e;
+      }
+    }
+    // Verify enough newest pairs before deleting anything. Known corrupt or
+    // orphaned snapshots remain available for an operator to investigate.
+    let verified = 0,
+      keepThrough = -1;
+    for (let i = 0; i < files.length && verified < config.keep; i++) {
+      keepThrough = i;
+      let check;
+      try {
+        check = new DatabaseSync(
+          path.resolve(config.backupDir, files[i].name),
+          { readOnly: true },
+        );
+        if (check.prepare("PRAGMA quick_check").get().quick_check === "ok")
+          verified++;
+      } catch {
+        console.error(
+          JSON.stringify({ event: "backup.invalid", file: files[i].name }),
+        );
+      } finally {
+        check?.close();
+      }
+    }
+    for (const { name, database, key } of verified >= config.keep
+      ? files.slice(keepThrough + 1)
+      : []) {
       const target = path.resolve(config.backupDir, name);
       if (path.dirname(target) === path.resolve(config.backupDir)) {
+        const current = await lstat(target),
+          currentKey = await lstat(target + ".mfa-key");
+        if (
+          current.dev !== database.dev ||
+          current.ino !== database.ino ||
+          currentKey.dev !== key.dev ||
+          currentKey.ino !== key.ino
+        )
+          continue;
         await unlink(target);
-        await unlink(target + ".mfa-key").catch((e) => {
+        const remainingKey = await lstat(target + ".mfa-key").catch((e) => {
           if (e.code !== "ENOENT") throw e;
         });
+        if (remainingKey?.dev === key.dev && remainingKey.ino === key.ino)
+          await unlink(target + ".mfa-key");
       }
     }
     for (const entry of await readdir(config.backupDir, {
@@ -181,7 +249,7 @@ try {
     }))
       if (
         entry.isFile() &&
-        /^auto-\d{4}-.*\.sqlite(?:\.[a-f0-9-]+\.encrypted)?\.part$/.test(
+        /^auto-\d{4}-.*\.sqlite(?:\.[a-f0-9-]+\.encrypted)?\.part(?:\.mfa-key)?$/.test(
           entry.name,
         )
       ) {
@@ -233,6 +301,17 @@ try {
   process.send?.(result);
 } catch (e) {
   if (partial) await unlink(partial).catch(() => {});
+  if (partialKey) await unlink(partialKey).catch(() => {});
+  if (publishedKey) {
+    try {
+      const current = await lstat(publishedKey.file);
+      if (
+        current.dev === publishedKey.identity.dev &&
+        current.ino === publishedKey.identity.ino
+      )
+        await unlink(publishedKey.file);
+    } catch {}
+  }
   const result = {
     ok: false,
     at: new Date().toISOString(),

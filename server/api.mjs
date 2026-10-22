@@ -363,11 +363,6 @@ export async function createApi(db, options = {}) {
         db.prepare("DELETE FROM rate_limits WHERE key=?").run(
           `login-account:${e}`,
         );
-        const old = session(req);
-        if (old)
-          db.prepare("DELETE FROM sessions WHERE token_hash=?").run(
-            old.token_hash,
-          );
         if (mfa.enabled(fresh.id)) {
           audit(fresh.id, "account.mfa_requested", fresh.id);
           return mfa.challenge(req, res, fresh);

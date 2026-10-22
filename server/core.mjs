@@ -191,6 +191,13 @@ export function createSecurity(db, secure) {
     );
   }
   function start(req, res, user) {
+    // All successful authentication paths replace only this browser's previous
+    // session. Keep other devices, and do not revoke anything before MFA succeeds.
+    const previous = session(req);
+    if (previous)
+      db.prepare("DELETE FROM sessions WHERE token_hash=?").run(
+        previous.token_hash,
+      );
     const token = randomToken(),
       csrf = randomToken();
     db.prepare("DELETE FROM sessions WHERE expires<?").run(Date.now());

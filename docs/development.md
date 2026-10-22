@@ -37,7 +37,7 @@ npm run test:visual
 
 PowerShell 使用 `$env:PLAYWRIGHT_CHANNEL="chromium"` 设置环境变量；Linux/macOS 可执行 `PLAYWRIGHT_CHANNEL=chromium npm run test:e2e`。无系统依赖的 Linux 主机可先执行 `npx playwright install --with-deps chromium`。
 
-本轮后端复核运行了 90 项后端测试、45 项浏览器测试，均通过；隔离压测 1000 次读取无错误，32 条同位竞争审批只有一次成功。本轮未改前端产品代码或视觉基线。前轮 `51ae649` 已通过 2 项本地桌面/手机视觉回归及 npm 全依赖审计（无已知漏洞），其[远程工作流](https://github.com/Crystalclear9/OutdoorsWeb/actions/runs/39591177541)的 Docker 构建和固定 Linux 视觉回归也通过。本轮远程结果以对应提交的 CI 为准。
+2026-10-22 独立复核运行了 98 项后端测试、45 项浏览器测试，均通过；构建通过，隔离压测 1000 次读取无错误，32 条同位竞争审批只有一次成功。本轮未改前端产品代码或视觉基线。浏览器测试在 Windows 沙箱收尾时需核对并结束本次隔离服务，最终退出码为 0。前轮 `57a56c5` 的[远程工作流](https://github.com/Crystalclear9/OutdoorsWeb/actions/runs/39593055304)已通过 Docker 构建和固定 Linux 视觉回归；本轮远程结果以对应提交的 CI 为准。此前依赖审计记录见变更及复核文档，不能当作持续有效的漏洞承诺。
 
 新增回归覆盖游客现场状态及隐私、入口二维码、设计图异步读取竞争、非法换图清除旧图，以及现场登记冲突后重读失败的输入保留。另覆盖工作日历、电话跟进、独立财务权限、并发核款、取消退款与版本七迁移。测试数量会随代码增加，以实际输出为准。
 
@@ -54,6 +54,8 @@ PowerShell 使用 `$env:PLAYWRIGHT_CHANNEL="chromium"` 设置环境变量；Linu
 第二轮新增 `server/tests/security-review.test.mjs`、`product-review.test.mjs`、`ops-review.test.mjs` 共 7 项回归，覆盖财务最少数据权限、取消后到账、电话纠错及维护锁/进程异常。新增 `tests/product-review.spec.js`、`case-draft.spec.js`、`notification-target.spec.js` 共 4 项浏览器回归；财务消息定位使用真实跨账号业务，刷新失败、翻页及日历重试使用隔离响应模拟。
 
 第三轮新增 `server/tests/version-guard.test.mjs`、`business-recheck.test.mjs`、`delivery-validity.test.mjs` 共 5 项后端回归，覆盖强制版本、改期磁盘保护、无效队列关闭和收件人隐私。旧测试明确传入实际版本，不在助手中自动猜版本；通信测试使用真实预约关系和隔离发送器，未向真实手机发送。审计范围和修正见[项目复核](project-audit.md)，交接步骤见[全流程清单](release-checklist.md)。
+
+第四轮新增 `server/tests/automatic-backup.test.mjs`（3 项）、`delivery-concurrency.test.mjs`（2 项）、`session-rotation.test.mjs`（3 项）：分别验证自动备份发布故障和有效轮换、人工核实后的迟到通知响应，以及密码/短信/OAuth/注册/MFA 的当前浏览器会话替换。故障注入与发送器只在隔离测试中使用。
 
 ## 直接调用写接口
 

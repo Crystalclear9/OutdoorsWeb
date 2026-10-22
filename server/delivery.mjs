@@ -69,6 +69,34 @@ export async function alertExternal(db, event, detail, sender = fetch) {
 
 export function createDelivery(db, maintenance, options = {}) {
   let timer, running;
+  function settle(job, state, detail, nextAt = null, delivered = null) {
+    tx(db, () => {
+      const saved = db
+        .prepare(
+          "UPDATE delivery_jobs SET version=version+1,state=?,last_error=?,next_at=COALESCE(?,next_at),delivered=COALESCE(?,delivered) WHERE id=? AND state='sending' AND version=?",
+        )
+        .run(state, detail, nextAt, delivered, job.id, job.version + 1);
+      if (!saved.changes)
+        db.prepare(
+          "INSERT INTO audit(actor,action,target,created,details) VALUES(NULL,'delivery.late_result',?,?,?)",
+        ).run(
+          job.id,
+          now(),
+          JSON.stringify({ state, detail, expectedVersion: job.version + 1 }),
+        );
+      else if (state === "cancelled")
+        db.prepare(
+          "INSERT INTO audit(actor,action,target,created,details) VALUES(NULL,'delivery.cancelled',?,?,?)",
+        ).run(
+          job.id,
+          now(),
+          JSON.stringify({
+            reason: detail,
+            bookingId: JSON.parse(job.payload).bookingId,
+          }),
+        );
+    });
+  }
   async function run() {
     if (running) return running;
     running = (async () => {
@@ -119,18 +147,7 @@ export function createDelivery(db, maintenance, options = {}) {
           if (reason) {
             // A result can become obsolete while queued or awaiting a manual
             // retry. Preserve its history, without sending stale instructions.
-            tx(db, () => {
-              db.prepare(
-                "UPDATE delivery_jobs SET version=version+1,state='cancelled',last_error=? WHERE id=?",
-              ).run(reason, job.id);
-              db.prepare(
-                "INSERT INTO audit(actor,action,target,created,details) VALUES(NULL,'delivery.cancelled',?,?,?)",
-              ).run(
-                job.id,
-                now(),
-                JSON.stringify({ reason, bookingId: p.bookingId }),
-              );
-            });
+            settle(job, "cancelled", reason);
             continue;
           }
           const providerId = await (options.sendPhone || deliverPhone)(
@@ -138,20 +155,16 @@ export function createDelivery(db, maintenance, options = {}) {
             p.phone,
             p.message,
           );
-          db.prepare(
-            "UPDATE delivery_jobs SET version=version+1,state='accepted',delivered=?,last_error=? WHERE id=?",
-          ).run(now(), `服务商受理编号 ${providerId}`, job.id);
+          settle(job, "accepted", `服务商受理编号 ${providerId}`, null, now());
         } catch (e) {
           const uncertain = !e.status || /timeout|abort|fetch/i.test(String(e));
-          db.prepare(
-            "UPDATE delivery_jobs SET version=version+1,state=?,next_at=?,last_error=? WHERE id=?",
-          ).run(
+          settle(
+            job,
             uncertain ? "uncertain" : job.attempts >= 4 ? "failed" : "pending",
-            Date.now() + Math.min(3600000, 60000 * 2 ** job.attempts),
             uncertain
               ? "网络结果不确定，需在服务商后台核实，系统未自动重复发送"
               : e.message,
-            job.id,
+            Date.now() + Math.min(3600000, 60000 * 2 ** job.attempts),
           );
         }
       }

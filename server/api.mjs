@@ -50,6 +50,14 @@ export async function createApi(db, options = {}) {
       .all();
     for (const u of users) notify(u.id, title, content, target);
   };
+  const notifyFinance = (title, content, target) => {
+    for (const u of db
+      .prepare(
+        "SELECT id FROM users WHERE role='admin' AND disabled=0 AND (is_super=1 OR EXISTS(SELECT 1 FROM user_permissions p WHERE p.user_id=users.id AND permission='payments.manage'))",
+      )
+      .all())
+      notify(u.id, title, content, target);
+  };
   const notifyCancelledFee = (booking, replacement) => {
     const fee = db
       .prepare("SELECT state FROM booking_fees WHERE booking_id=?")
@@ -147,6 +155,12 @@ export async function createApi(db, options = {}) {
         result === "已通过" ? "booking.approved" : "booking.rejected",
         id,
       );
+      if (result === "已通过")
+        notifyFinance(
+          "新预约待财务办理",
+          `${row.company} 的预约已通过，请核对收费依据并发出缴费或免缴通知；审批通过不代表已经通知缴费或实际收款。`,
+          id,
+        );
       notify(
         row.user_id,
         result === "已通过" ? "布展申请已通过" : "布展申请需调整",
@@ -514,8 +528,19 @@ export async function createApi(db, options = {}) {
         counts: Object.fromEntries(rows.map((r) => [r.status, r.count])),
       });
     }
+    if (p === "/api/bookings/reviewers" && m === "GET") {
+      current(req, "bookings.review");
+      return send(res, {
+        items: db
+          .prepare(
+            "SELECT u.id,u.contact AS name FROM users u WHERE EXISTS(SELECT 1 FROM bookings b WHERE b.reviewer=u.id) ORDER BY u.contact,u.id",
+          )
+          .all(),
+      });
+    }
     if (p === "/api/bookings" && m === "GET") {
       const u = current(req),
+        reviewerAccess = can(present(u), "bookings.review"),
         conditions = [],
         args = [];
       fail(
@@ -528,7 +553,31 @@ export async function createApi(db, options = {}) {
         args.push(u.id);
       }
       const status = url.searchParams.get("status"),
-        q = clean(url.searchParams.get("q"), 80);
+        q = clean(url.searchParams.get("q"), 80),
+        from = url.searchParams.get("from") || "",
+        to = url.searchParams.get("to") || "",
+        reviewer = url.searchParams.get("reviewer") || "";
+      fail(
+        (from && !dateValid(from)) ||
+          (to && !dateValid(to)) ||
+          (from && to && from > to),
+        400,
+        "提交日期范围无效",
+      );
+      fail(reviewer && !reviewerAccess, 403, "仅审核人员可以按操作人筛选申请");
+      fail(reviewer.length > 80, 400, "操作人筛选无效");
+      if (from) {
+        conditions.push("created>=?");
+        args.push(new Date(from + "T00:00:00+08:00").toISOString());
+      }
+      if (to) {
+        conditions.push("created<=?");
+        args.push(new Date(to + "T23:59:59.999+08:00").toISOString());
+      }
+      if (reviewer) {
+        conditions.push("reviewer=?");
+        args.push(reviewer);
+      }
       if (status) {
         if (status === "已取消") conditions.push("cancelled=1");
         else {
@@ -554,7 +603,7 @@ export async function createApi(db, options = {}) {
       return send(res, {
         items: db
           .prepare(
-            `SELECT ${bookingColumns} FROM bookings${where} ORDER BY created ${url.searchParams.get("order") === "oldest" ? "ASC" : "DESC"},id ${url.searchParams.get("order") === "oldest" ? "ASC" : "DESC"} LIMIT ? OFFSET ?`,
+            `SELECT ${bookingColumns}${reviewerAccess ? ",reviewer,COALESCE((SELECT contact FROM users WHERE id=bookings.reviewer),'') AS reviewerName" : ""} FROM bookings${where} ORDER BY created ${url.searchParams.get("order") === "oldest" ? "ASC" : "DESC"},id ${url.searchParams.get("order") === "oldest" ? "ASC" : "DESC"} LIMIT ? OFFSET ?`,
           )
           .all(...args, limit, (page - 1) * limit)
           .map((b) => ({

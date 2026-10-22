@@ -30,25 +30,64 @@ export default function Records({ user, notify, onChange }) {
 }
 
 function ApplicationHistory({ user, notify, onChange }) {
+  const reviewerAccess = can(user, "bookings.review");
   const [filter, setFilter] = useState(""),
     [query, setQuery] = useState(""),
+    [from, setFrom] = useState(""),
+    [to, setTo] = useState(""),
+    [reviewer, setReviewer] = useState(""),
+    [reviewers, setReviewers] = useState([]),
+    [reviewersError, setReviewersError] = useState(""),
     [page, setPage] = useState(1),
     [data, setData] = useState({ items: [], total: 0, pages: 1 }),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
     [selected, setSelected] = useState(null),
-    [version, setVersion] = useState(0);
+    [version, setVersion] = useState(0),
+    [resultKey, setResultKey] = useState("");
+  const rangeError =
+    from && to && from > to ? "提交开始日期不能晚于结束日期。" : "";
+  const criteriaKey = JSON.stringify([filter, query, from, to, reviewer, page]);
+  useEffect(() => {
+    if (!reviewerAccess) return;
+    let active = true;
+    api("/bookings/reviewers")
+      .then((r) => {
+        if (active) {
+          setReviewers(r.items);
+          setReviewersError("");
+        }
+      })
+      .catch(
+        (e) =>
+          active &&
+          setReviewersError(`无法读取审批人：${e.message} 可点击刷新重试。`),
+      );
+    return () => {
+      active = false;
+    };
+  }, [reviewerAccess, user.id, version]);
   useEffect(() => {
     let active = true;
+    if (rangeError) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
+    setError("");
     const t = setTimeout(
       () =>
         api(
-          `/bookings?status=${encodeURIComponent(filter)}&q=${encodeURIComponent(query)}&page=${page}`,
+          `/bookings?status=${encodeURIComponent(filter)}&q=${encodeURIComponent(query)}&page=${page}&from=${from}&to=${to}${reviewerAccess ? `&reviewer=${encodeURIComponent(reviewer)}` : ""}`,
         )
           .then((r) => {
             if (active) {
+              if (page > r.pages) {
+                setPage(r.pages);
+                return;
+              }
               setData(r);
+              setResultKey(criteriaKey);
               setError("");
             }
           })
@@ -60,7 +99,18 @@ function ApplicationHistory({ user, notify, onChange }) {
       active = false;
       clearTimeout(t);
     };
-  }, [filter, query, page, version, user.id]);
+  }, [
+    filter,
+    query,
+    from,
+    to,
+    reviewer,
+    page,
+    version,
+    user.id,
+    reviewerAccess,
+    rangeError,
+  ]);
   return (
     <>
       <section className="card records-card">
@@ -100,10 +150,67 @@ function ApplicationHistory({ user, notify, onChange }) {
               }}
             />
           </label>
-          <span className="muted">共 {data.total} 条申请</span>
+          <span className="muted">
+            {resultKey === criteriaKey && !rangeError && !error
+              ? `共 ${data.total} 条申请`
+              : "正在核对筛选条件"}
+          </span>
         </div>
+        <div className="form-columns history-filters">
+          <label>
+            提交开始日期（北京时间）
+            <input
+              type="date"
+              value={from}
+              onChange={(e) => {
+                setFrom(e.target.value);
+                setPage(1);
+              }}
+            />
+          </label>
+          <label>
+            提交结束日期（北京时间）
+            <input
+              type="date"
+              value={to}
+              onChange={(e) => {
+                setTo(e.target.value);
+                setPage(1);
+              }}
+            />
+          </label>
+          {reviewerAccess && (
+            <label>
+              审批人
+              <select
+                aria-label="审批人"
+                value={reviewer}
+                onChange={(e) => {
+                  setReviewer(e.target.value);
+                  setPage(1);
+                }}
+              >
+                <option value="">全部审批人</option>
+                {reviewers.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+        </div>
+        <ErrorBox>{rangeError || reviewersError}</ErrorBox>
         <ErrorBox>{error}</ErrorBox>
-        {loading ? (
+        {rangeError ? (
+          <p className="loading-block">
+            请调整提交日期后查询，未显示旧筛选结果。
+          </p>
+        ) : error ? (
+          <p className="loading-block">
+            未能读取最新申请，请点击刷新重试；未显示旧筛选结果。
+          </p>
+        ) : loading || resultKey !== criteriaKey ? (
           <div className="loading-block">正在加载申请…</div>
         ) : (
           <div className="table-scroll">
@@ -112,9 +219,11 @@ function ApplicationHistory({ user, notify, onChange }) {
                 <tr>
                   <th>申报企业 / 编号</th>
                   <th>联系人</th>
+                  <th>提交时间（北京时间）</th>
                   <th>布展时间</th>
                   <th>桁架位</th>
                   <th>状态</th>
+                  {reviewerAccess && <th>审批人</th>}
                   <th>操作</th>
                 </tr>
               </thead>
@@ -130,6 +239,12 @@ function ApplicationHistory({ user, notify, onChange }) {
                       <small>{b.phone}</small>
                     </td>
                     <td>
+                      {new Date(b.created).toLocaleString("zh-CN", {
+                        timeZone: "Asia/Shanghai",
+                        hour12: false,
+                      })}
+                    </td>
+                    <td>
                       {b.start}
                       <small>至 {b.end}</small>
                     </td>
@@ -139,6 +254,7 @@ function ApplicationHistory({ user, notify, onChange }) {
                     <td>
                       <Status value={b.status} />
                     </td>
+                    {reviewerAccess && <td>{b.reviewerName || "未记录"}</td>}
                     <td>
                       <button
                         className="text-button"
@@ -156,7 +272,7 @@ function ApplicationHistory({ user, notify, onChange }) {
             </table>
             {!data.items.length && (
               <Empty icon={ClipboardText} title="暂无相关申请">
-                {filter || query
+                {filter || query || from || to || reviewer
                   ? "请调整筛选条件后重试。"
                   : "提交申请后，您可以在这里查看进度与审核结果。"}
               </Empty>
@@ -170,7 +286,12 @@ function ApplicationHistory({ user, notify, onChange }) {
           <div>
             <Button
               className="secondary small"
-              disabled={page <= 1}
+              disabled={
+                loading ||
+                !!rangeError ||
+                resultKey !== criteriaKey ||
+                page <= 1
+              }
               onClick={() => setPage((p) => p - 1)}
             >
               <ArrowLeft size={16} />
@@ -178,7 +299,12 @@ function ApplicationHistory({ user, notify, onChange }) {
             </Button>
             <Button
               className="secondary small"
-              disabled={page >= data.pages}
+              disabled={
+                loading ||
+                !!rangeError ||
+                resultKey !== criteriaKey ||
+                page >= data.pages
+              }
               onClick={() => setPage((p) => p + 1)}
             >
               下一页

@@ -37,7 +37,7 @@ npm run test:visual
 
 PowerShell 使用 `$env:PLAYWRIGHT_CHANNEL="chromium"` 设置环境变量；Linux/macOS 可执行 `PLAYWRIGHT_CHANNEL=chromium npm run test:e2e`。无系统依赖的 Linux 主机可先执行 `npx playwright install --with-deps chromium`。
 
-2026-10-22 独立复核运行了 98 项后端测试、45 项浏览器测试，均通过；构建通过，隔离压测 1000 次读取无错误，32 条同位竞争审批只有一次成功。本轮未改前端产品代码或视觉基线。浏览器测试在 Windows 沙箱收尾时需核对并结束本次隔离服务，最终退出码为 0。前轮 `57a56c5` 的[远程工作流](https://github.com/Crystalclear9/OutdoorsWeb/actions/runs/39593055304)已通过 Docker 构建和固定 Linux 视觉回归；本轮远程结果以对应提交的 CI 为准。此前依赖审计记录见变更及复核文档，不能当作持续有效的漏洞承诺。
+2026-10-22 全量需求验收补齐遗漏后，本地 103 项后端、47 项浏览器测试，以及 2 项桌面/手机视觉回归均通过；构建通过，隔离压测 1000 次读取无错误，32 条同位竞争审批只有一次成功。前端只扩展申请历史筛选，默认审批台及正式视觉基线未改。本轮新增完整 Docker 运行验收，实际容器结果以对应 CI 为准，本机 Linux Docker engine 未启动，不宣称在本机已验收。此前 `57a56c5` 的[远程工作流](https://github.com/Crystalclear9/OutdoorsWeb/actions/runs/39593055304)保留作历史证据。此前依赖审计记录不能作为持续有效的漏洞承诺。
 
 新增回归覆盖游客现场状态及隐私、入口二维码、设计图异步读取竞争、非法换图清除旧图，以及现场登记冲突后重读失败的输入保留。另覆盖工作日历、电话跟进、独立财务权限、并发核款、取消退款与版本七迁移。测试数量会随代码增加，以实际输出为准。
 
@@ -56,6 +56,19 @@ PowerShell 使用 `$env:PLAYWRIGHT_CHANNEL="chromium"` 设置环境变量；Linu
 第三轮新增 `server/tests/version-guard.test.mjs`、`business-recheck.test.mjs`、`delivery-validity.test.mjs` 共 5 项后端回归，覆盖强制版本、改期磁盘保护、无效队列关闭和收件人隐私。旧测试明确传入实际版本，不在助手中自动猜版本；通信测试使用真实预约关系和隔离发送器，未向真实手机发送。审计范围和修正见[项目复核](project-audit.md)，交接步骤见[全流程清单](release-checklist.md)。
 
 第四轮新增 `server/tests/automatic-backup.test.mjs`（3 项）、`delivery-concurrency.test.mjs`（2 项）、`session-rotation.test.mjs`（3 项）：分别验证自动备份发布故障和有效轮换、人工核实后的迟到通知响应，以及密码/短信/OAuth/注册/MFA 的当前浏览器会话替换。故障注入与发送器只在隔离测试中使用。
+
+本次全量需求验收新增 `server/tests/approval-finance.test.mjs`（3 项）、`history-filters.test.mjs`（2 项）和 `tests/history-filters.spec.js`（2 项），覆盖财务新待办、北京时间首尾日期、历史停用审批人、归属权限、无效条件与手机布局。筛选异常界面采用隔离响应模拟；日期和权限另由真实 API 回归验证。
+
+## 完整 Docker 镜像验收
+
+```sh
+docker build -t outdoorsweb:verify .
+npm run test:docker
+```
+
+需要运行中的 Linux Docker engine。脚本不读正式 `.env`，使用 UUID 容器和卷，检查非 root、健康、页面资源、首次管理员 MFA 门禁、企业申报审批、容器替换后的会话/申请/设计图，以及原密码和 MFA 密钥保留。最后只清理本次资源。为在真实镜像中稳定认证，仅对隔离卷内本条验证码挑战设置已知答案；仍使用正式 API 的浏览器绑定、过期和单次消费逻辑，生产镜像没有免验证码入口。验证码生成与抗重放由专门 API 回归覆盖，此 smoke 不宣称识别了随机验证码图片。
+
+CI 在镜像构建后执行此项，整体上限 25 分钟、构建 10 分钟、smoke 5 分钟。引擎未启动时脚本明确失败，不跳过并假报通过。此项验证镜像和持久化，不能替代真实服务账号、目标主机或异机灾备验收。
 
 ## 直接调用写接口
 
@@ -103,6 +116,7 @@ npm start
 | `npm test`                                             | 按顺序运行后端及浏览器测试               |
 | `npm run test:load`                                    | 运行隔离压测并生成临时报告               |
 | `npm run test:visual`                                  | 比较桌面和手机视觉基线                   |
+| `npm run test:docker`                                  | 运行隔离完整镜像与重启持久化验收         |
 | `npm run backup -- <新目标路径>`                       | 生成一致性备份及密钥副本                 |
 | `npm run compact -- --offline`                         | 停服务后离线回收空间                     |
 | `npm run restore:encrypted -- <加密备份> <新目标路径>` | 恢复加密异机备份                         |

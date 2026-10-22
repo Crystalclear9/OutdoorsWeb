@@ -76,6 +76,7 @@ test("独立财务点击付款消息直接定位对应申请，无需手工翻�
     await page
       .locator(".notification-items button")
       .filter({ hasText: company })
+      .filter({ hasText: "企业提交了付款流水" })
       .click();
     await expect(page.getByLabel("搜索办理记录")).toHaveValue(id);
     const panel = page.getByRole("region", { name: "办理与缴费记录" });

@@ -1543,6 +1543,18 @@ tr:hover td {
   gap: 18px;
 }
 
+.history-filters {
+  padding: 0 24px 18px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+}
+
+@media (max-width: 640px) {
+  .history-filters {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 0 16px 18px;
+  }
+}
+
 .form-section-title {
   display: flex;
   gap: 10px;

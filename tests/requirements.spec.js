@@ -18,6 +18,7 @@ test("现场登记发生并发冲突且重新读取失败时保留输入并明�
     .getByRole("button", { name: "场地开放安排", exact: true })
     .click();
   await page.getByLabel("27号现场备注").fill("尚未保存的现场核对");
+  let readFails = true;
   await page.route("**/api/onsite**", async (route) => {
     if (route.request().method() === "POST") {
       await route.fulfill({
@@ -25,18 +26,88 @@ test("现场登记发生并发冲突且重新读取失败时保留输入并明�
         contentType: "application/json",
         body: JSON.stringify({ error: "现场登记已被其他人员更新" }),
       });
-    } else await route.abort("failed");
+    } else if (readFails) await route.abort("failed");
+    else await route.continue();
   });
   const save = page.getByRole("button", { name: "保存现场登记" });
   await save.click();
   await expect(
-    page.getByText(/重新读取失败：.*请刷新页面后重新核对/),
+    page.getByText(/重新读取失败：.*请重新读取后核对/),
   ).toBeVisible();
   await expect(page.getByLabel("27号现场备注")).toHaveValue(
     "尚未保存的现场核对",
   );
-  await expect(save).toBeEnabled();
+  await expect(save).toBeDisabled();
+  readFails = false;
+  await page.getByRole("button", { name: "重新读取并核对现场状态" }).click();
+  await expect(page.getByLabel("27号现场备注")).not.toHaveValue(
+    "尚未保存的现场核对",
+  );
+  await expect(page.getByRole("alert")).toHaveCount(0);
   expect(errors).toEqual([]);
+});
+
+test("现场登记已保存但重读失败时明确结果并阻止重复提交，人工读取后显示已保存记录", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "登录 / 注册" }).click();
+  await page.locator("[name=email]").fill("admin@test.local");
+  await page.locator("[name=password]").fill("BrowserAdmin123!");
+  await page.getByLabel("图片验证码", { exact: true }).fill("246789");
+  await page.getByRole("button", { name: "登录账号", exact: true }).click();
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "场地开放安排", exact: true })
+    .click();
+  const note = `已保存等待核对-${Date.now()}`;
+  await page.getByLabel("28号现场备注").fill(note);
+  let readFails = false,
+    writes = 0;
+  await page.route("**/api/onsite**", async (route) => {
+    if (route.request().method() === "POST") {
+      writes++;
+      const response = await route.fetch();
+      readFails = true;
+      await route.fulfill({ response });
+    } else if (readFails) await route.abort("failed");
+    else await route.continue();
+  });
+  const save = page.getByRole("button", { name: "保存现场登记" });
+  await save.click();
+  await expect(page.getByRole("alert")).toContainText("已保存");
+  await expect(page.getByLabel("28号现场备注")).toHaveValue(note);
+  await expect(save).toBeDisabled();
+  readFails = false;
+  await page.getByRole("button", { name: "重新读取并核对现场状态" }).click();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page.getByLabel("28号现场备注")).toHaveValue(note);
+  await expect(save).toBeDisabled();
+  expect(writes).toBe(1);
+});
+
+test("现场登记首次读取失败可原位重试，不必更换日期或刷新整页", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "登录 / 注册" }).click();
+  await page.locator("[name=email]").fill("admin@test.local");
+  await page.locator("[name=password]").fill("BrowserAdmin123!");
+  await page.getByLabel("图片验证码", { exact: true }).fill("246789");
+  await page.getByRole("button", { name: "登录账号", exact: true }).click();
+  let unavailable = true;
+  await page.route("**/api/onsite?**", (route) =>
+    unavailable ? route.abort("failed") : route.continue(),
+  );
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "场地开放安排", exact: true })
+    .click();
+  await expect(page.getByRole("alert")).toBeVisible();
+  unavailable = false;
+  await page.getByRole("button", { name: "重新读取并核对现场状态" }).click();
+  await expect(page.getByLabel("27号现场备注")).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
 });
 
 test("使用指南提供可下载的入口二维码，过滤查询和片段，窄屏可读并提示本机地址", async ({

@@ -8,11 +8,13 @@ export default function Onsite({ notify, onChange }) {
     [data, setData] = useState(null),
     [draft, setDraft] = useState({}),
     [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [needsRefresh, setNeedsRefresh] = useState(false);
   useEffect(() => {
     let active = true;
     setData(null);
     setDraft({});
+    setNeedsRefresh(false);
     api(`/onsite?date=${date}`)
       .then((r) => {
         if (active) {
@@ -20,7 +22,12 @@ export default function Onsite({ notify, onChange }) {
           setError("");
         }
       })
-      .catch((e) => active && setError(e.message));
+      .catch((e) => {
+        if (active) {
+          setError(e.message);
+          setNeedsRefresh(true);
+        }
+      });
     return () => {
       active = false;
     };
@@ -36,8 +43,10 @@ export default function Onsite({ notify, onChange }) {
   const update = (slot, value) =>
     setDraft((d) => ({ ...d, [slot]: { ...row(slot), ...value } }));
   async function save() {
+    if (busy || needsRefresh || !data || date !== dateString()) return;
     setBusy(true);
     setError("");
+    let written = false;
     try {
       await api("/onsite", {
         method: "POST",
@@ -49,22 +58,48 @@ export default function Onsite({ notify, onChange }) {
           })),
         },
       });
+      written = true;
       setData(await api(`/onsite?date=${date}`));
       setDraft({});
       onChange();
       notify("现场摆放状态已保存");
     } catch (e) {
+      if (written) {
+        setNeedsRefresh(true);
+        setError(
+          `现场登记已保存，但重新读取失败：${e.message}。请重新读取后核对，勿重复提交。`,
+        );
+        onChange();
+        return;
+      }
       setError(e.message);
       if (e.status === 409) {
         try {
           setData(await api(`/onsite?date=${date}`));
           setDraft({});
         } catch (refreshError) {
+          setNeedsRefresh(true);
           setError(
-            `${e.message}；重新读取失败：${refreshError.message}。请刷新页面后重新核对。`,
+            `${e.message}；重新读取失败：${refreshError.message}。请重新读取后核对。`,
           );
         }
       }
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function reload() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const latest = await api(`/onsite?date=${date}`);
+      setData(latest);
+      setDraft({});
+      setNeedsRefresh(false);
+      setError("");
+    } catch (e) {
+      setNeedsRefresh(true);
+      setError(`重新读取失败：${e.message}。已保留输入，请稍后重试。`);
     } finally {
       setBusy(false);
     }
@@ -90,6 +125,16 @@ export default function Onsite({ notify, onChange }) {
         </label>
       </div>
       <ErrorBox>{error}</ErrorBox>
+      {needsRefresh && (
+        <div className="info-box">
+          <p>
+            当前输入暂时保留。重新读取成功后将显示服务器最新记录，并清除本页未保存的更改，请先核对或留存所需内容。
+          </p>
+          <Button className="secondary" loading={busy} onClick={reload}>
+            重新读取并核对现场状态
+          </Button>
+        </div>
+      )}
       {data && (
         <>
           <div className="onsite-summary">
@@ -105,7 +150,7 @@ export default function Onsite({ notify, onChange }) {
             <span>当日生效预约 {data.approved.length} 个位置</span>
             <Button
               className="secondary"
-              disabled={busy || date !== dateString()}
+              disabled={busy || needsRefresh || date !== dateString()}
               onClick={() => {
                 const d = {};
                 for (const b of data.approved)
@@ -129,7 +174,7 @@ export default function Onsite({ notify, onChange }) {
                     <input
                       type="checkbox"
                       checked={!!r.present}
-                      disabled={busy || date !== dateString()}
+                      disabled={busy || needsRefresh || date !== dateString()}
                       onChange={(e) =>
                         update(r.slot, { present: e.target.checked })
                       }
@@ -142,7 +187,7 @@ export default function Onsite({ notify, onChange }) {
                     aria-label={`${r.slot}号现场备注`}
                     placeholder="现场备注（选填）"
                     maxLength={300}
-                    disabled={busy || date !== dateString()}
+                    disabled={busy || needsRefresh || date !== dateString()}
                     value={r.note}
                     onChange={(e) => update(r.slot, { note: e.target.value })}
                   />
@@ -158,7 +203,11 @@ export default function Onsite({ notify, onChange }) {
             <Button
               className="primary"
               loading={busy}
-              disabled={!Object.keys(draft).length || date !== dateString()}
+              disabled={
+                needsRefresh ||
+                !Object.keys(draft).length ||
+                date !== dateString()
+              }
               onClick={save}
             >
               保存现场登记

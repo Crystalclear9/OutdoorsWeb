@@ -175,7 +175,9 @@ export async function restoreEncrypted(source, target) {
   const cipher = createDecipheriv("aes-256-gcm", key, header.subarray(8));
   cipher.setAuthTag(tag);
   const partial = target + `.${randomUUID()}.restore.part`;
+  const partialKey = partial + ".mfa-key";
   let mfaKey = Buffer.alloc(0);
+  let publishedKey = null;
   try {
     await pipeline(
       createReadStream(source, { start: 20, end: size - 17 }),
@@ -206,13 +208,34 @@ export async function restoreEncrypted(source, target) {
         throw new Error("恢复目录已有不同的MFA密钥，请选择一个空目录");
     } catch (e) {
       if (e.code !== "ENOENT") throw e;
-      await writeFile(keyPath, mfaKey, { flag: "wx", mode: 0o600 });
+      await writeFile(partialKey, mfaKey, { flag: "wx", mode: 0o600 });
+      const identity = await lstat(partialKey);
+      await link(partialKey, keyPath);
+      publishedKey = { file: keyPath, identity };
     }
     await link(partial, target);
+    publishedKey = null;
     return { target, mfaKeyRestored: true };
+  } catch (error) {
+    if (publishedKey) {
+      const current = await lstat(publishedKey.file).catch((e) => {
+        if (e.code !== "ENOENT") throw e;
+      });
+      if (
+        current?.dev === publishedKey.identity.dev &&
+        current.ino === publishedKey.identity.ino
+      )
+        await unlink(publishedKey.file);
+    }
+    throw error;
   } finally {
     // A read-only check of a WAL-mode snapshot can still create SQLite sidecars.
-    for (const file of [partial, partial + "-wal", partial + "-shm"])
+    for (const file of [
+      partial,
+      partialKey,
+      partial + "-wal",
+      partial + "-shm",
+    ])
       await unlink(file).catch(() => {});
   }
 }

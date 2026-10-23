@@ -29,6 +29,9 @@ test("真实企业、管理员和独立财务完成费用通知、流水核对�
   page,
   browser,
 }, info) => {
+  // This three-account workflow includes payment, contact, refund and closing
+  // two extra browser contexts. Keep the normal per-assertion deadlines.
+  test.setTimeout(60_000);
   const ownContext = await browser.newContext(),
     financeContext = await browser.newContext();
   try {

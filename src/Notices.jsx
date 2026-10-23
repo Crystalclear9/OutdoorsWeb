@@ -18,6 +18,7 @@ export default function Notices({ items, user, onSaved, readError }) {
   };
   async function publish(e) {
     e.preventDefault();
+    if (publishing) return;
     const form = e.currentTarget,
       values = Object.fromEntries(new FormData(form));
     setPublishing(true);
@@ -104,6 +105,7 @@ export default function Notices({ items, user, onSaved, readError }) {
               公告标题
               <input
                 name="title"
+                disabled={publishing}
                 required
                 maxLength={80}
                 placeholder="例如：本周场地开放安排"
@@ -113,6 +115,7 @@ export default function Notices({ items, user, onSaved, readError }) {
               公告正文
               <textarea
                 name="content"
+                disabled={publishing}
                 required
                 maxLength={5000}
                 rows={4}
@@ -121,7 +124,7 @@ export default function Notices({ items, user, onSaved, readError }) {
             </label>
             <div className="notice-compose-footer">
               <label className="check-label">
-                <input type="checkbox" name="pinned" />
+                <input type="checkbox" name="pinned" disabled={publishing} />
                 置顶此公告
               </label>
               <span className="muted">发布后立即在公告栏显示</span>

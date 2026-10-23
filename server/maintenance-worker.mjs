@@ -17,7 +17,7 @@ import { archiveHistory } from "./business.mjs";
 import { overdueCases } from "./casework.mjs";
 import { offsiteConfigured, uploadOffsite } from "./offsite.mjs";
 import { alertExternal } from "./delivery.mjs";
-import { backupMfaKey } from "./backup-key.mjs";
+import { backupMfaKey, backupKeyFile, verifyMfaKey } from "./backup-key.mjs";
 
 const config = JSON.parse(process.argv[2]),
   db = new DatabaseSync(config.dbPath);
@@ -117,12 +117,19 @@ try {
     const file = path.resolve(config.backupDir, last.file);
     if (path.dirname(file) === path.resolve(config.backupDir))
       lastAvailable = await stat(file)
-        .then(
-          async (s) =>
-            s.isFile() &&
-            s.size >= 100 &&
-            (await stat(file + ".mfa-key")).size === 32,
-        )
+        .then(async (s) => {
+          if (!s.isFile() || s.size < 100) return false;
+          const key = backupKeyFile(file + ".mfa-key");
+          const check = new DatabaseSync(file, { readOnly: true });
+          try {
+            if (check.prepare("PRAGMA quick_check").get().quick_check !== "ok")
+              return false;
+            verifyMfaKey(check, key);
+            return true;
+          } finally {
+            check.close();
+          }
+        })
         .catch(() => false);
   }
   let backup = last;
@@ -157,6 +164,7 @@ try {
     try {
       if (verify.prepare("PRAGMA quick_check").get().quick_check !== "ok")
         throw new Error("备份完整性检查失败");
+      verifyMfaKey(verify, mfaKey);
     } finally {
       verify.close();
     }
@@ -212,8 +220,15 @@ try {
           path.resolve(config.backupDir, files[i].name),
           { readOnly: true },
         );
-        if (check.prepare("PRAGMA quick_check").get().quick_check === "ok")
-          verified++;
+        if (check.prepare("PRAGMA quick_check").get().quick_check !== "ok")
+          throw new Error("备份完整性检查失败");
+        verifyMfaKey(
+          check,
+          backupKeyFile(
+            path.resolve(config.backupDir, files[i].name) + ".mfa-key",
+          ),
+        );
+        verified++;
       } catch {
         console.error(
           JSON.stringify({ event: "backup.invalid", file: files[i].name }),

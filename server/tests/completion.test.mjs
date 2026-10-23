@@ -783,7 +783,11 @@ test("S3协议上传后回读验证密文，外部告警失败可见、成功签
   process.env.ALERT_WEBHOOK_SECRET = "test-signing-secret";
   const dir = await mkdtemp(path.join(os.tmpdir(), "outdoors-s3-contract-")),
     source = path.join(dir, "snapshot.sqlite");
-  await writeFile(source, Buffer.from("test snapshot payload"));
+  const snapshot = new DatabaseSync(source);
+  snapshot.exec(
+    "CREATE TABLE proof(value TEXT); INSERT INTO proof VALUES('test snapshot payload')",
+  );
+  snapshot.close();
   let uploaded, metadata;
   const client = {
     async send(command) {

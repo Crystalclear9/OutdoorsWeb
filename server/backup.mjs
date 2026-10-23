@@ -9,7 +9,7 @@ import {
 } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { backupMfaKey } from "./backup-key.mjs";
+import { backupMfaKey, verifyMfaKey } from "./backup-key.mjs";
 
 const source = path.resolve(process.env.DB_PATH || "data/app.sqlite");
 const destination = path.resolve(
@@ -37,6 +37,7 @@ try {
   try {
     if (verify.prepare("PRAGMA quick_check").get().quick_check !== "ok")
       throw new Error("备份完整性检查失败");
+    verifyMfaKey(verify, key);
   } finally {
     verify.close();
   }

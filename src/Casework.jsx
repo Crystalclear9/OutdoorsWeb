@@ -419,19 +419,33 @@ export function CasePanel({ id, user, notify = () => {} }) {
 function Calendar({ notify }) {
   const [data, setData] = useState(null),
     [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
-  const load = () =>
-    api("/casework/calendar")
-      .then((r) => {
-        setData(r);
-        setError("");
-      })
-      .catch((e) => setError(e.message));
+    [busy, setBusy] = useState(false),
+    [reading, setReading] = useState(true),
+    [readError, setReadError] = useState(false);
+  async function load(clearError = true) {
+    setReading(true);
+    try {
+      const r = await api("/casework/calendar");
+      setData(r);
+      setReadError(false);
+      if (clearError) setError("");
+      return { ok: true };
+    } catch (e) {
+      setReadError(true);
+      setError(
+        `无法读取最新工作日历：${e.message} 已保留输入，请重新读取后再保存。`,
+      );
+      return { ok: false, error: e.message };
+    } finally {
+      setReading(false);
+    }
+  }
   useEffect(() => {
     load();
   }, []);
   async function save(e) {
     e.preventDefault();
+    if (busy || reading || readError || !data) return;
     setBusy(true);
     setError("");
     const f = Object.fromEntries(new FormData(e.currentTarget));
@@ -443,11 +457,20 @@ function Calendar({ notify }) {
           working: f.working === "default" ? null : f.working === "true",
         },
       });
-      await load();
+      const refreshed = await load(false);
+      if (refreshed.ok) setError("");
+      else
+        setError(
+          `日历调整已保存，但重新读取失败：${refreshed.error}。请重新读取后核对，勿重复提交。`,
+        );
       notify("工作日历已更新，办理时限将重新计算");
     } catch (e) {
-      setError(e.message);
-      await load();
+      const refreshed = await load(false);
+      setError(
+        refreshed.ok
+          ? `${e.message}。已读取最新日历，请核对日期与安排后重新提交。`
+          : `${e.message}；重新读取失败：${refreshed.error}。已保留输入，请重新读取后再提交。`,
+      );
     } finally {
       setBusy(false);
     }
@@ -459,7 +482,11 @@ function Calendar({ notify }) {
         默认周一至周五。请按本单位实际安排录入法定节假日、调休和校内停办日；系统不自动推测节假日。变更会重新计算尚未完成的反馈时限。
       </p>
       <ErrorBox>{error}</ErrorBox>
-      <Button className="secondary small" disabled={busy} onClick={load}>
+      <Button
+        className="secondary small"
+        disabled={busy || reading}
+        onClick={() => load()}
+      >
         重新读取工作日历
       </Button>
       {data && (
@@ -468,18 +495,28 @@ function Calendar({ notify }) {
             <div className="form-columns">
               <label>
                 调整日期
-                <input name="date" type="date" required />
+                <input
+                  name="date"
+                  type="date"
+                  required
+                  disabled={busy || reading || readError}
+                />
               </label>
               <label>
                 当日安排
-                <select name="working">
+                <select name="working" disabled={busy || reading || readError}>
                   <option value="false">休息日</option>
                   <option value="true">工作日</option>
                   <option value="default">恢复默认</option>
                 </select>
               </label>
             </div>
-            <Button className="secondary" loading={busy} type="submit">
+            <Button
+              className="secondary"
+              loading={busy}
+              disabled={reading || readError}
+              type="submit"
+            >
               保存日历调整
             </Button>
           </form>

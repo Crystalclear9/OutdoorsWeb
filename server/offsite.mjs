@@ -24,7 +24,7 @@ import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { backupMfaKey, backupKeyFile } from "./backup-key.mjs";
+import { backupMfaKey, backupKeyFile, verifyMfaKey } from "./backup-key.mjs";
 
 const MAGIC = Buffer.from("HUSTBK01");
 function encryptionKey() {
@@ -81,6 +81,14 @@ export async function uploadOffsite(source, dbPath, clientOverride) {
     path.resolve(source) === path.resolve(dbPath)
       ? backupMfaKey(dbPath)
       : backupKeyFile(source + ".mfa-key");
+  const verify = new DatabaseSync(source, { readOnly: true });
+  try {
+    if (verify.prepare("PRAGMA quick_check").get().quick_check !== "ok")
+      throw new Error("备份完整性检查失败");
+    verifyMfaKey(verify, mfaKey);
+  } finally {
+    verify.close();
+  }
   try {
     await encryptBackup(source, target, mfaKey);
     const sha256 = await digest(createReadStream(target)),
@@ -185,6 +193,7 @@ export async function restoreEncrypted(source, target) {
     try {
       if (verify.prepare("PRAGMA quick_check").get().quick_check !== "ok")
         throw new Error("恢复数据库完整性检查失败");
+      verifyMfaKey(verify, mfaKey);
     } finally {
       verify.close();
     }
@@ -202,6 +211,8 @@ export async function restoreEncrypted(source, target) {
     await link(partial, target);
     return { target, mfaKeyRestored: true };
   } finally {
-    await unlink(partial).catch(() => {});
+    // A read-only check of a WAL-mode snapshot can still create SQLite sidecars.
+    for (const file of [partial, partial + "-wal", partial + "-shm"])
+      await unlink(file).catch(() => {});
   }
 }

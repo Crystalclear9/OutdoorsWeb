@@ -285,6 +285,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
     };
   }, [item.id]);
   async function action(type, status) {
+    if (busy) return;
     setBusy(status || type);
     setError("");
     try {
@@ -319,6 +320,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
   }
   async function reschedule(e) {
     e.preventDefault();
+    if (busy) return;
     setBusy("reschedule");
     setError("");
     try {
@@ -339,7 +341,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
       <Modal
         title="申请改期或更换位置"
         description={`原预约：${item.start} 至 ${item.end} · ${slotName(item.slot)}`}
-        onClose={() => setRescheduling(false)}
+        onClose={() => !busy && setRescheduling(false)}
       >
         <form onSubmit={reschedule}>
           <div className="info-box">
@@ -355,6 +357,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
                 name="start"
                 min={dateString()}
                 defaultValue={item.start}
+                disabled={!!busy}
                 required
               />
             </label>
@@ -365,13 +368,14 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
                 name="end"
                 min={dateString()}
                 defaultValue={item.end}
+                disabled={!!busy}
                 required
               />
             </label>
           </div>
           <label>
             新桁架位置
-            <select name="slot" defaultValue={item.slot}>
+            <select name="slot" defaultValue={item.slot} disabled={!!busy}>
               {Array.from({ length: 29 }, (_, i) => (
                 <option key={i} value={i + 1}>
                   {slotName(i + 1)} · {zoneName(i + 1)}
@@ -383,6 +387,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
           <div className="dialog-actions">
             <Button
               className="secondary"
+              disabled={!!busy}
               onClick={() => setRescheduling(false)}
             >
               返回详情
@@ -402,7 +407,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
           : "申请详情"
       }
       description={item.id}
-      onClose={onClose}
+      onClose={() => !busy && onClose()}
       wide
     >
       <div className="detail-layout">
@@ -486,6 +491,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
             rows={3}
             maxLength={500}
             value={reason}
+            disabled={!!busy}
             onChange={(e) => setReason(e.target.value)}
             placeholder="请说明审核结果或需要企业修改的内容"
           />
@@ -518,6 +524,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
               aria-label="取消预约原因"
               maxLength={500}
               value={cancelReason}
+              disabled={!!busy}
               onChange={(e) => setCancelReason(e.target.value)}
               rows={2}
             />
@@ -526,6 +533,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
             <input
               type="checkbox"
               checked={cancelConfirmed}
+              disabled={!!busy}
               onChange={(e) => setCancelConfirmed(e.target.checked)}
             />
             确认取消并释放位置，待审的改期申请也将撤回。
@@ -537,7 +545,11 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
           item.status === "已通过" &&
           item.start >= dateString() &&
           !cancelling && (
-            <Button className="secondary" onClick={() => setRescheduling(true)}>
+            <Button
+              className="secondary"
+              disabled={!!busy}
+              onClick={() => setRescheduling(true)}
+            >
               申请改期 / 换位
             </Button>
           )}
@@ -566,6 +578,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
           ) : (
             <Button
               className="danger-outline"
+              disabled={!!busy}
               onClick={() => setCancelling(true)}
             >
               取消已通过预约
@@ -601,7 +614,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
                 撤回申请
               </Button>
             )}
-            <Button className="secondary" onClick={onClose}>
+            <Button className="secondary" disabled={!!busy} onClick={onClose}>
               关闭
             </Button>
           </>

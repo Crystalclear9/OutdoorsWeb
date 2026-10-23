@@ -9,7 +9,7 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { backupMfaKey } from "./backup-key.mjs";
+import { backupMfaKey, verifyMfaKey } from "./backup-key.mjs";
 
 export async function compactDatabase(filename) {
   const source = path.resolve(filename);
@@ -41,6 +41,7 @@ export async function compactDatabase(filename) {
       try {
         if (verify.prepare("PRAGMA quick_check").get().quick_check !== "ok")
           throw new Error("安全快照校验失败，未压缩");
+        verifyMfaKey(verify, key);
       } finally {
         verify.close();
       }

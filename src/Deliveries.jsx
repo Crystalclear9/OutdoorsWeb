@@ -25,6 +25,7 @@ export default function Deliveries({ notify }) {
   }, []);
   async function save(e) {
     e.preventDefault();
+    if (busy) return;
     setBusy(true);
     setError("");
     try {
@@ -85,7 +86,9 @@ export default function Deliveries({ notify }) {
                   {["failed", "uncertain"].includes(r.state) && (
                     <Button
                       className="secondary small"
+                      disabled={busy}
                       onClick={() => {
+                        if (busy) return;
                         setSelected(r);
                         setError("");
                       }}
@@ -109,7 +112,7 @@ export default function Deliveries({ notify }) {
           <form onSubmit={save}>
             <label>
               核实结果
-              <select name="action">
+              <select name="action" disabled={busy}>
                 <option value="accepted">已受理，结束任务</option>
                 <option value="failed">确认未受理，标记失败</option>
                 {selected.state === "failed" && (
@@ -119,11 +122,20 @@ export default function Deliveries({ notify }) {
             </label>
             <label>
               核实依据或服务商编号
-              <textarea name="reason" maxLength={300} required />
+              <textarea
+                name="reason"
+                maxLength={300}
+                required
+                disabled={busy}
+              />
             </label>
             <ErrorBox>{error}</ErrorBox>
             <div className="dialog-actions">
-              <Button className="secondary" onClick={() => setSelected(null)}>
+              <Button
+                className="secondary"
+                disabled={busy}
+                onClick={() => !busy && setSelected(null)}
+              >
                 取消
               </Button>
               <Button className="primary" loading={busy} type="submit">

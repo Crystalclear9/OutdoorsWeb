@@ -51,10 +51,21 @@ test("办理记录刷新失败保留付款输入，重新核对成功前禁止�
     .click();
   await page.locator(".case-row").click();
   const panel = page.getByRole("region", { name: "办理与缴费记录" });
+  await panel.locator("details.case-fee > summary").click();
+  await panel
+    .getByRole("button", { name: "填写付款流水", exact: true })
+    .click();
+  await expect(panel.getByLabel("线下付款时间及流水号")).toBeFocused();
   await panel.getByLabel("线下付款时间及流水号").fill("BANK-DRAFT-001");
   failNext = true;
   await panel.getByRole("button", { name: "刷新办理记录" }).click();
   await expect(panel.getByRole("alert")).toContainText("无法读取最新办理记录");
+  await expect(
+    panel.getByRole("region", { name: "当前办理与下一步" }),
+  ).toContainText("办理进度暂不可用");
+  await expect(
+    panel.getByRole("region", { name: "当前办理与下一步" }),
+  ).not.toContainText("按通知缴费");
   await expect(panel.getByLabel("线下付款时间及流水号")).toHaveValue(
     "BANK-DRAFT-001",
   );

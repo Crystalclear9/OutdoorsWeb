@@ -77,12 +77,12 @@ export default function Dashboard({
           </span>
           <h2>
             {staff && !admin
-              ? `${user.contact}，按职责开展工作。`
+              ? "工作人员待办"
               : admin
-                ? "先处理待办，再安排新的活动。"
+                ? "审批待办"
                 : user
-                  ? `${user.contact}，欢迎回来。`
-                  : "从了解场地，到有序开展。"}
+                  ? "申请与办理"
+                  : "户外广场布展预约"}
           </h2>
           <p>
             {staff && !admin

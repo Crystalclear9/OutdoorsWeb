@@ -176,3 +176,18 @@ https://crystalclear9.github.io/OutdoorsWeb/ 保留为静态前端入口。**Pag
 `VITE_API_BASE_URL` 可在编译时指定 API 地址，但推荐 Docker 同域运行。会话 Cookie 使用 SameSite=Lax，不能把跨站 Pages + API 直接视为正式同域服务。
 
 [返回项目首页](../README.md) · [文档目录](README.md)
+
+### 界面字体与通知排版
+
+通知列表和办事界面使用随站提供的思源黑体 CN 2.005R 可变字体，覆盖原字体全部字符。
+字体来源为 Adobe 官方 `source-han-sans` release 分支的
+`Variable/WOFF2/TTF/Subset/SourceHanSansCN-VF.ttf.woff2`。
+生成子集后按 SIL OFL 的保留名称要求将内部字体名改为 `Campus Sans`，字形保持原样；
+许可保存在 `src/assets/fonts/source-han/LICENSE.txt`。
+
+安装 `fonttools`、`brotli` 后运行
+`python scripts/prepare-ui-font.py /path/to/SourceHanSansCN-VF.ttf.woff2` 重建分包。
+静态界面字符单独打包，其他字符用 `unicode-range` 按需加载，支持新公告和企业名称。
+`src/fonts.css` 为生成文件；`src/typography.css` 统一管理通知标题、正文及栏目字号，
+避免在主题和媒体查询中反复追加覆盖。通知列表正文为 16px/400，通知详情为 16px、2 倍行高，
+文章标题为 24px/600。

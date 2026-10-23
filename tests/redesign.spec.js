@@ -1,13 +1,25 @@
 import { test, expect } from "./browser-fixtures.js";
 
-test("校园界面使用真实会话，预览参数不能切换身份，字体由完整服务提供", async ({
+test("校园界面使用真实会话，预览参数不能切换身份，标题与正文使用统一字体", async ({
   page,
 }) => {
-  const font = page.waitForResponse((r) => r.url().endsWith(".woff2"));
   await page.goto("/?preview=admin");
-  const response = await font;
-  expect(response.status()).toBe(200);
-  expect(response.headers()["content-type"]).toBe("font/woff2");
+  await page.evaluate(() => document.fonts.ready);
+  expect(
+    await page.evaluate(() =>
+      [...document.fonts].some(
+        (font) => font.family === "Campus Sans" && font.status === "loaded",
+      ),
+    ),
+  ).toBe(true);
+  const bodyFont = await page
+    .locator("body")
+    .evaluate((el) => getComputedStyle(el).fontFamily);
+  await expect(page.locator("h1").first()).toHaveCSS("font-family", bodyFont);
+  await expect(page.locator("button").first()).toHaveCSS(
+    "font-family",
+    bodyFont,
+  );
   await expect(
     page.getByRole("img", { name: "华中科技大学", exact: true }).first(),
   ).toBeVisible();

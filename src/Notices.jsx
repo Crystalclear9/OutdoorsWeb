@@ -137,7 +137,7 @@ export default function Notices({ items, user, onSaved, readError }) {
           </form>
         </section>
       )}
-      <section className="card">
+      <section className="card notice-list">
         <div className="card-header">
           <div>
             <h2>
@@ -148,11 +148,10 @@ export default function Notices({ items, user, onSaved, readError }) {
         </div>
         <ErrorBox>{readError}</ErrorBox>
         {items.map((n) => (
-          <article className="notice-article" key={n.id}>
-            <div className="notice-calendar">
-              <strong>{n.created.slice(8, 10)}</strong>
-              <small>{n.created.slice(0, 7).replace("-", ".")}</small>
-            </div>
+          <article className="notice-article service-notice" key={n.id}>
+            <time className="notice-published" dateTime={n.created}>
+              {n.created.slice(0, 10)}
+            </time>
             <div>
               <button
                 className="notice-title"

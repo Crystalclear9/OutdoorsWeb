@@ -16,6 +16,10 @@ async function headers(page) {
 }
 async function openCase(page, id) {
   await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "服务工作台", exact: true })
+    .click();
+  await page
     .getByRole("button", { name: "通知与缴费办理", exact: true })
     .click();
   await page.getByLabel("搜索办理记录").fill(id);
@@ -55,6 +59,20 @@ test("真实企业、管理员和独立财务完成费用通知、流水核对�
     });
     expect(made.status()).toBe(201);
     const id = (await made.json()).id;
+    await owner
+      .getByRole("button", { name: "我的申请", exact: false })
+      .first()
+      .click();
+    await owner
+      .getByRole("row")
+      .filter({ hasText: id })
+      .getByRole("button", { name: "查看详情" })
+      .click();
+    const detail = owner.getByRole("dialog");
+    await expect(
+      detail.getByRole("region", { name: "当前办理与下一步" }),
+    ).toContainText("等待管理员审核");
+    await detail.getByLabel("关闭", { exact: true }).click();
     await login(page, "admin@test.local", "BrowserAdmin123!");
     expect(
       (
@@ -64,6 +82,10 @@ test("真实企业、管理员和独立财务完成费用通知、流水核对�
         })
       ).ok(),
     ).toBe(true);
+    const pendingFeePanel = await openCase(owner, id);
+    await expect(
+      pendingFeePanel.getByRole("region", { name: "当前办理与下一步" }),
+    ).toContainText("等待财务发出费用安排");
     const panel = await openCase(page, id);
     await panel.getByLabel("应缴金额（元）").fill("23.45");
     await panel
@@ -72,7 +94,11 @@ test("真实企业、管理员和独立财务完成费用通知、流水核对�
     await panel.getByLabel("收费依据或免缴说明").fill("已批准的场地收费依据");
     await panel.getByRole("button", { name: "发送费用办理通知" }).click();
     await expect(panel).toContainText("人民币 23.45 元");
-    const ownPanel = await openCase(owner, id);
+    const ownPanel = pendingFeePanel;
+    await ownPanel.getByRole("button", { name: "刷新办理记录" }).click();
+    await expect(
+      ownPanel.getByRole("region", { name: "当前办理与下一步" }),
+    ).toContainText("按通知缴费并提交付款流水");
     await expect(
       ownPanel.getByRole("button", { name: "保存费用核对" }),
     ).toHaveCount(0);
@@ -81,6 +107,9 @@ test("真实企业、管理员和独立财务完成费用通知、流水核对�
       .fill("2026-10-21 银行流水 UI-2345");
     await ownPanel.getByRole("button", { name: "提交付款流水" }).click();
     await expect(ownPanel).toContainText("流水待核对");
+    await expect(
+      ownPanel.getByRole("region", { name: "当前办理与下一步" }),
+    ).toContainText("等待财务核实到账");
     await login(finance, "finance-ui@test.local", "BrowserAdmin123!");
     await expect(
       finance
@@ -106,6 +135,9 @@ test("真实企业、管理员和独立财务完成费用通知、流水核对�
     await ownPanel.getByRole("button", { name: "刷新办理记录" }).click();
     await expect(ownPanel).toContainText("已登记电话告知");
     await expect(ownPanel).toContainText("已核实收款");
+    await expect(
+      ownPanel.getByRole("region", { name: "当前办理与下一步" }),
+    ).toContainText("按批准日期和位置准备布展");
     await owner.setViewportSize({ width: 390, height: 844 });
     expect(
       await owner.evaluate(() => document.documentElement.scrollWidth),
@@ -123,6 +155,10 @@ test("真实企业、管理员和独立财务完成费用通知、流水核对�
         })
       ).ok(),
     ).toBe(true);
+    await ownPanel.getByRole("button", { name: "刷新办理记录" }).click();
+    await expect(
+      ownPanel.getByRole("region", { name: "当前办理与下一步" }),
+    ).toContainText("等待财务办理退款");
     await finPanel.getByRole("button", { name: "刷新办理记录" }).click();
     await expect(finPanel).toContainText("预约已取消，请停止付款");
     await finPanel

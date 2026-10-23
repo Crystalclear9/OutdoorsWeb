@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { api } from "./api.js";
 import { can } from "./permissions.js";
 import { Button, Empty, ErrorBox, Pagination } from "./components.jsx";
-import { slotName } from "./utils.js";
+import { bookingNextStep } from "./booking-next-step.js";
+import { dateString, slotName } from "./utils.js";
 const formatDate = (value) =>
   new Intl.DateTimeFormat("zh-CN", {
     timeZone: "Asia/Shanghai",
@@ -36,6 +37,7 @@ export function CasePanel({ id, user, notify = () => {} }) {
     [readError, setReadError] = useState(false),
     [busy, setBusy] = useState(false),
     [version, setVersion] = useState(0);
+  const paymentInput = useRef(null);
   const item = record?.id === id ? record : null;
   const reviewer = can(user, "bookings.review"),
     finance = can(user, "payments.manage"),
@@ -91,13 +93,16 @@ export function CasePanel({ id, user, notify = () => {} }) {
       return setError("金额须为人民币数字，最多两位小数");
     act("fee", { ...data, amountFen: Math.round(Number(data.amount) * 100) });
   }
+  const nextStep = item ? bookingNextStep(item, dateString()) : null;
+  const ContactContainer = owner ? "details" : "div";
+  const FeeContainer = owner ? "details" : "div";
   const fee = item?.fee,
     active = item?.status === "已通过" && !item?.cancelled;
   return (
     <section className="card case-panel" aria-label="办理与缴费记录">
       <div className="card-header">
         <div>
-          <h2>办理与缴费记录</h2>
+          <h2>{owner ? "申请办理" : "办理与缴费记录"}</h2>
           <p>
             {item
               ? `${item.company} · ${slotName(item.slot)} · ${item.status}${item.cancelled ? "（已取消）" : ""}`
@@ -113,12 +118,75 @@ export function CasePanel({ id, user, notify = () => {} }) {
         </Button>
       </div>
       <ErrorBox>{error}</ErrorBox>
+      {owner && (
+        <section
+          className="case-next-step"
+          aria-label="当前办理与下一步"
+          aria-live="polite"
+        >
+          <div>
+            <strong>
+              {loading
+                ? "正在核对办理进度…"
+                : readError || !item
+                  ? "办理进度暂不可用"
+                  : nextStep.title}
+            </strong>
+            <p>
+              {loading
+                ? "正在读取最新审核和费用记录。"
+                : readError || !item
+                  ? "点击刷新办理记录，重新加载进度。"
+                  : nextStep.detail}
+            </p>
+            {!loading && !readError && item && (
+              <>
+                <p className="case-booking-facts">
+                  {item.start} 至 {item.end} · {slotName(item.slot)}位置
+                </p>
+                {active && fee?.state === "due" && (
+                  <div className="case-next-action">
+                    <strong>应缴 ¥{(fee.amount_fen / 100).toFixed(2)}</strong>
+                    <Button
+                      className="primary"
+                      disabled={busy}
+                      onClick={() => {
+                        const records =
+                          paymentInput.current?.closest("details");
+                        if (records) records.open = true;
+                        paymentInput.current?.scrollIntoView({
+                          behavior: "smooth",
+                          block: "center",
+                        });
+                        paymentInput.current?.focus({ preventScroll: true });
+                      }}
+                    >
+                      填写付款流水
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </section>
+      )}
       {item && (
         <fieldset
           disabled={busy || loading || readError}
           style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}
         >
-          <div className={`info-box ${item.overdue ? "case-overdue" : ""}`}>
+          <ContactContainer
+            className={
+              owner
+                ? "case-contact-record"
+                : `info-box ${item.overdue ? "case-overdue" : ""}`
+            }
+          >
+            {owner && (
+              <summary>
+                电话跟进 · {contactLabels[item.contactResult.state]}
+              </summary>
+            )}
             <div>
               <strong>
                 {item.overdue ? "已超过反馈时限" : "反馈时限"}：
@@ -130,11 +198,9 @@ export function CasePanel({ id, user, notify = () => {} }) {
                   ? ` · ${formatDate(item.contactResult.reached_at)}`
                   : ""}
               </p>
-              <p>
-                按提交后的下一个工作日同一北京时间计算；默认周一至周五，以管理员维护的节假日和调休为准。审批通过不等于已经电话告知。
-              </p>
+              <p>反馈时限按下一个工作日计算，以学校工作日历为准。</p>
             </div>
-          </div>
+          </ContactContainer>
           {reviewer && (
             <div className="case-contact">
               <p>
@@ -213,11 +279,23 @@ export function CasePanel({ id, user, notify = () => {} }) {
             </div>
           )}
           {(owner || finance) && (
-            <div className="case-fee">
-              <h3>线下费用办理</h3>
-              <p className="field-note">
-                系统记录通知、流水与人工核对，不直接扣款。请按单位批准的收费依据和收款说明办理。
-              </p>
+            <FeeContainer
+              className="case-fee"
+              key={`${id}-${fee?.state || "none"}`}
+              open={owner ? active && fee?.state === "due" : undefined}
+            >
+              {owner ? (
+                <summary>
+                  费用记录 · {fee ? feeLabels[fee.state] : "待财务安排"}
+                </summary>
+              ) : (
+                <h3>线下费用办理</h3>
+              )}
+              {!owner && (
+                <p className="field-note">
+                  按收费依据发单，并核对实际到账和退款记录。
+                </p>
+              )}
               {fee ? (
                 <>
                   <div className="case-fee-facts">
@@ -239,7 +317,7 @@ export function CasePanel({ id, user, notify = () => {} }) {
                   <p className="case-preserve">办理说明：{fee.note}</p>
                   {item.cancelled && (
                     <div className="error-box">
-                      预约已取消，请停止付款。已付款项由财务核实后线下退回；系统不会自动退款或转移到改期申请。
+                      预约已取消，请停止付款。原款项由财务核对并办理退款。
                     </div>
                   )}
                   {owner && active && fee.state === "due" && (
@@ -257,6 +335,7 @@ export function CasePanel({ id, user, notify = () => {} }) {
                       <label>
                         线下付款时间及流水号
                         <input
+                          ref={paymentInput}
                           name="reference"
                           maxLength={200}
                           required
@@ -371,7 +450,7 @@ export function CasePanel({ id, user, notify = () => {} }) {
                     )}
                 </>
               ) : (
-                <p>尚未发出缴费或免缴通知，请勿自行向未知账户付款。</p>
+                <p>财务确认费用安排后，金额和收款说明将显示在这里。</p>
               )}
               {finance && active && (!fee || fee.state === "void") && (
                 <form onSubmit={issue} key={fee?.version || 0}>
@@ -408,7 +487,7 @@ export function CasePanel({ id, user, notify = () => {} }) {
                   </Button>
                 </form>
               )}
-            </div>
+            </FeeContainer>
           )}
         </fieldset>
       )}

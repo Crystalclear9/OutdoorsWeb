@@ -535,7 +535,7 @@ export function AuthPage({
   );
 }
 
-export function AccountPage({ user, onUser, onLogout, notify }) {
+export function AccountPage({ user, onUser, onLogout, logoutBusy, notify }) {
   const [busy, setBusy] = useState(""),
     [error, setError] = useState("");
   async function save(e) {
@@ -586,7 +586,11 @@ export function AccountPage({ user, onUser, onLogout, notify }) {
             账号状态<strong className="success-text">正常</strong>
           </span>
         </div>
-        <Button className="secondary full" onClick={onLogout}>
+        <Button
+          className="secondary full"
+          onClick={onLogout}
+          loading={logoutBusy}
+        >
           安全退出登录
         </Button>
       </section>

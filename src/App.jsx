@@ -64,6 +64,7 @@ const titles = {
 export default function App() {
   const [user, setUser] = useState(null),
     [sessionLoading, setSessionLoading] = useState(true),
+    [logoutBusy, setLogoutBusy] = useState(false),
     [connected, setConnected] = useState(false),
     [serviceError, setServiceError] = useState(""),
     [auth, setAuth] = useState(null),
@@ -88,6 +89,7 @@ export default function App() {
   const venueDate = page === "venue" ? date : dateString();
   const venueReady = connected && !venueLoading && venue.date === venueDate;
   const sessionGeneration = useRef(0);
+  const logoutPending = useRef(false);
   const refresh = () => setVersion((v) => v + 1);
   const notify = (message) => setToast(message);
   const changeZone = (value) => {
@@ -209,6 +211,9 @@ export default function App() {
   }, []);
   useEffect(() => {
     const fn = () => {
+      // Logout revokes the server session before its response may arrive. Other
+      // reads must not reopen login while that response can still clear cookies.
+      if (logoutPending.current) return;
       sessionGeneration.current++;
       setSessionLoading(false);
       setUser(null);
@@ -226,6 +231,9 @@ export default function App() {
     return () => clearTimeout(t);
   }, [toast]);
   async function logout() {
+    if (logoutPending.current) return;
+    logoutPending.current = true;
+    setLogoutBusy(true);
     sessionGeneration.current++;
     try {
       await api("/auth/logout", { method: "POST" });
@@ -238,6 +246,9 @@ export default function App() {
       refresh();
     } catch (e) {
       notify(e.message);
+    } finally {
+      logoutPending.current = false;
+      setLogoutBusy(false);
     }
   }
   function beginBooking() {
@@ -422,6 +433,8 @@ export default function App() {
                 <button
                   className="logout-button"
                   aria-label="退出登录"
+                  disabled={logoutBusy}
+                  aria-busy={logoutBusy}
                   onClick={logout}
                 >
                   <SignOut size={18} />
@@ -764,6 +777,7 @@ export default function App() {
               user={user}
               onUser={setUser}
               onLogout={logout}
+              logoutBusy={logoutBusy}
               notify={notify}
             />
           )}

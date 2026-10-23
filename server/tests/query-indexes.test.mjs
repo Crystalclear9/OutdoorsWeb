@@ -42,7 +42,11 @@ test("历史、待审及审批人日期查询使用索引排序，操作人选�
       .all()
       .map((row) => row.detail)
       .join("\n");
-    assert.match(options, /SEARCH b USING (?:COVERING )?INDEX.*reviewer=/);
+    // SQLite releases may label the correlated lookup as "b EXISTS".
+    assert.match(
+      options,
+      /SEARCH b(?: EXISTS)? USING (?:COVERING )?INDEX.*reviewer=/,
+    );
     assert.doesNotMatch(options, /SCAN b(?:$|\n)/);
   } finally {
     db.close();

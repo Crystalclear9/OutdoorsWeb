@@ -20,6 +20,7 @@ import {
   now,
   today,
   dateValid,
+  dateRange,
   dates,
   fields,
   body,
@@ -623,7 +624,7 @@ export async function createApi(db, options = {}) {
       const b = await body(req),
         f = fields(b),
         slot = Number(b.slot);
-      dates(b.start, b.end, true);
+      dateRange(b.start, b.end, true);
       fail(!Number.isInteger(slot) || slot < 1 || slot > 29, 400, "桁架位无效");
       const image = await decodeImage(b.image);
       const key = req.headers["idempotency-key"];
@@ -656,6 +657,9 @@ export async function createApi(db, options = {}) {
             return JSON.parse(old.response);
           }
         }
+        // Recheck the current Beijing date after image processing and lock
+        // acquisition; completed idempotent requests above keep their result.
+        dates(b.start, b.end, true);
         limit(`booking:${fresh.id}`, 30, 3600000);
         fail(
           db
@@ -917,6 +921,7 @@ export async function createApi(db, options = {}) {
         "请选择桁架位并填写暂停原因",
       );
       write(req, "venue.manage", (u) => {
+        dates(b.start, b.end);
         const id = randomUUID();
         db.prepare(
           "INSERT INTO closures(id,slot,start,end,reason,created) VALUES(?,?,?,?,?,?)",

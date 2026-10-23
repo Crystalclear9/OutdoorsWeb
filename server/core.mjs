@@ -29,18 +29,21 @@ export const dateValid = (v) =>
   /^\d{4}-\d{2}-\d{2}$/.test(v) &&
   !isNaN(Date.parse(v)) &&
   new Date(v).toISOString().slice(0, 10) === v;
-export function dates(start, end, booking = false) {
+export function dateRange(start, end, booking = false) {
   fail(
     !dateValid(start) || !dateValid(end) || end < start,
     400,
     "请选择有效的起止日期",
   );
-  fail(start < today(), 400, "开始日期不能早于今天");
   fail(
     booking && (Date.parse(end) - Date.parse(start)) / 86400000 > 2,
     400,
     "每次申报不可超过 3 天（含起止日期）",
   );
+}
+export function dates(start, end, booking = false) {
+  dateRange(start, end, booking);
+  fail(start < today(), 400, "开始日期不能早于今天");
 }
 export function fields(body) {
   const company = clean(body.company, 80),

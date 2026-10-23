@@ -196,6 +196,11 @@ export function businessRoutes(db, sec, send, notifyReviewers, maintenance) {
         "登记列表无效",
       );
       write(req, "venue.manage", (u) => {
+        fail(
+          b.date !== today(),
+          400,
+          "只能登记今天的现场状态，历史记录保留供查询",
+        );
         for (const i of b.items) {
           fail(
             !Number.isInteger(i.slot) ||
@@ -242,6 +247,7 @@ export function businessRoutes(db, sec, send, notifyReviewers, maintenance) {
       dates(b.start, b.end, true);
       fail(!Number.isInteger(slot) || slot < 1 || slot > 29, 400, "位置无效");
       const result = write(req, "enterprise", (u) => {
+        dates(b.start, b.end, true);
         sec.limit(`reschedule:${u.id}`, 20, 3600000);
         const old = db
           .prepare("SELECT * FROM bookings WHERE id=? AND user_id=?")

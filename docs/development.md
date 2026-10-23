@@ -93,6 +93,14 @@ PowerShell 使用 `$env:PLAYWRIGHT_CHANNEL="chromium"` 设置环境变量；Linu
 
 本轮最终 138 项后端与传输测试、默认十个 worker 的 62 项浏览器回归全部通过，构建、生产依赖审计和隔离压测通过。产品代码及视觉基线未变；原提交 `c0458d4` 的 Docker 完整业务、持久化与 Linux 视觉已确认在[对应 CI](https://github.com/Crystalclear9/OutdoorsWeb/actions/runs/39904118896)成功，新提交仍执行同一工作流。
 
+## 2026-10-23 合并远程界面分支
+
+将 `codex/campus-venue-redesign` 的 `cc9fb60` 合并到主分支，保留现有审批、授权、财务、通知重试和备份保护。同步引入办理下一步提示、通知分页及字体、验证码图片与刷新交互。通知查询增加分页参数，验证码生成改为异步 PNG；数据库结构不变。
+
+旧浏览器断言更新为当前界面入口：账号入口核对联系人，企业详情直接展示办理进度，验证码失败使用状态提示。视觉截图按本次明确的字体与布局变更逐张检查后更新；截图使用软断言以收集全部差异，任一差异仍使测试失败，容差保持不变。
+
+Windows 浏览器可能锁定已加载的字体，因此 Pages 同步跳过字节相同的文件，内容不同仍正常复制。构建与浏览器测试必须串行执行，避免构建清空 `dist/` 时测试访问缺失资源。验证目标为 140 项后端、67 项浏览器、桌面/手机视觉和隔离并发测试；Linux 容器结果以当前提交 CI 为准。
+
 ## 完整 Docker 镜像验收
 
 ```sh
@@ -176,3 +184,18 @@ https://crystalclear9.github.io/OutdoorsWeb/ 保留为静态前端入口。**Pag
 `VITE_API_BASE_URL` 可在编译时指定 API 地址，但推荐 Docker 同域运行。会话 Cookie 使用 SameSite=Lax，不能把跨站 Pages + API 直接视为正式同域服务。
 
 [返回项目首页](../README.md) · [文档目录](README.md)
+
+### 界面字体与通知排版
+
+通知列表和办事界面使用随站提供的思源黑体 CN 2.005R 可变字体，覆盖原字体全部字符。
+字体来源为 Adobe 官方 `source-han-sans` release 分支的
+`Variable/WOFF2/TTF/Subset/SourceHanSansCN-VF.ttf.woff2`。
+生成子集后按 SIL OFL 的保留名称要求将内部字体名改为 `Campus Sans`，字形保持原样；
+许可保存在 `src/assets/fonts/source-han/LICENSE.txt`。
+
+安装 `fonttools`、`brotli` 后运行
+`python scripts/prepare-ui-font.py /path/to/SourceHanSansCN-VF.ttf.woff2` 重建分包。
+静态界面字符单独打包，其他字符用 `unicode-range` 按需加载，支持新公告和企业名称。
+`src/fonts.css` 为生成文件；`src/typography.css` 统一管理通知标题、正文及栏目字号，
+避免在主题和媒体查询中反复追加覆盖。通知列表正文为 16px/400，通知详情为 16px、2 倍行高，
+文章标题为 24px/600。

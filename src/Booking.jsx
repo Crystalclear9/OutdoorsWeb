@@ -410,6 +410,13 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
       onClose={() => !busy && onClose()}
       wide
     >
+      {user.role === "enterprise" && (
+        <LazyPageBoundary key={item.id}>
+          <Suspense fallback={<p>正在读取办理进度与下一步…</p>}>
+            <CasePanel id={item.id} user={user} />
+          </Suspense>
+        </LazyPageBoundary>
+      )}
       <div className="detail-layout">
         <div>
           <Status value={item.status} />
@@ -497,19 +504,21 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
           />
         </label>
       )}
-      <details
-        className="case-details"
-        onToggle={(e) => setCaseOpen(e.currentTarget.open)}
-      >
-        <summary>查看办理时限、电话跟进与费用记录</summary>
-        {caseOpen && (
-          <LazyPageBoundary key={item.id}>
-            <Suspense fallback={<p>正在加载办理记录…</p>}>
-              <CasePanel id={item.id} user={user} />
-            </Suspense>
-          </LazyPageBoundary>
-        )}
-      </details>
+      {user.role !== "enterprise" && (
+        <details
+          className="case-details"
+          onToggle={(e) => setCaseOpen(e.currentTarget.open)}
+        >
+          <summary>查看办理时限、电话跟进与费用记录</summary>
+          {caseOpen && (
+            <LazyPageBoundary key={item.id}>
+              <Suspense fallback={<p>正在加载办理记录…</p>}>
+                <CasePanel id={item.id} user={user} />
+              </Suspense>
+            </LazyPageBoundary>
+          )}
+        </details>
+      )}
       <ErrorBox>{error}</ErrorBox>
       {item.cancel_reason && (
         <div className="info-box">

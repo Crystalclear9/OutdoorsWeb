@@ -4,7 +4,7 @@ test("登录、现场登记与审批台固定视觉基线", async ({ page }, inf
   await page.goto("/");
   await page.getByRole("button", { name: "登录 / 注册" }).click();
   await expect(page.locator(".captcha-image img")).toBeVisible();
-  await expect(page).toHaveScreenshot("login.png", {
+  await expect.soft(page).toHaveScreenshot("login.png", {
     mask: [page.locator(".captcha-image")],
   });
   await page.locator("[name=email]").fill("visual@test.local");
@@ -25,7 +25,7 @@ test("登录、现场登记与审批台固定视觉基线", async ({ page }, inf
     page.getByRole("button", { name: "保存现场登记" }),
   ).toBeVisible();
   await page.locator(".toast").waitFor({ state: "hidden" });
-  await expect(page).toHaveScreenshot("onsite.png");
+  await expect.soft(page).toHaveScreenshot("onsite.png");
   await navigate("企业申报审核");
   await expect(
     page.getByRole("img", { name: "校园创新科技有限公司的桁架设计图" }),
@@ -39,7 +39,7 @@ test("登录、现场登记与审批台固定视觉基线", async ({ page }, inf
       page.viewportSize().height,
     );
   }
-  await expect(page).toHaveScreenshot("review.png");
+  await expect.soft(page).toHaveScreenshot("review.png");
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,

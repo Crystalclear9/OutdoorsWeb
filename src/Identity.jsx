@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { api, apiUrl } from "./api.js";
+import CaptchaField, { useCaptcha } from "./Captcha.jsx";
 import { Button, ErrorBox, PasswordInput } from "./components.jsx";
 
 function SmsForm({
@@ -8,17 +9,11 @@ function SmsForm({
   disabled = false,
   onBusyChange = () => {},
 }) {
-  const [captcha, setCaptcha] = useState(null),
-    [sent, setSent] = useState(null),
+  const captcha = useCaptcha();
+  const { refresh } = captcha;
+  const [sent, setSent] = useState(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
-  const refresh = () =>
-    api("/auth/captcha")
-      .then(setCaptcha)
-      .catch((e) => setError(e.message));
-  useEffect(() => {
-    refresh();
-  }, []);
   async function submit(e) {
     e.preventDefault();
     if (busy || disabled) return;
@@ -35,8 +30,8 @@ function SmsForm({
             body: {
               phone: values.phone,
               purpose,
-              captchaId: captcha?.id,
-              captcha: values.captcha,
+              captchaId: captcha.challenge?.id,
+              captcha: captcha.code,
             },
           }),
         );
@@ -96,36 +91,14 @@ function SmsForm({
           <p className="field-note">短信已发送，5分钟内有效。</p>
         </>
       ) : (
-        <div className="captcha-field">
-          <label>
-            图片验证码
-            <input
-              name="captcha"
-              required
-              pattern="[0-9]{6}"
-              maxLength={6}
-              inputMode="numeric"
-            />
-          </label>
-          <button
-            className="captcha-image"
-            type="button"
-            aria-label="刷新短信图片验证码"
-            disabled={busy || disabled}
-            onClick={refresh}
-          >
-            {captcha && (
-              <img src={captcha.image} alt="短信发送前的图片验证码" />
-            )}
-          </button>
-        </div>
+        <CaptchaField captcha={captcha} disabled={busy || disabled} sms />
       )}
       <ErrorBox>{error}</ErrorBox>
       <Button
         className="primary"
         type="submit"
         loading={busy}
-        disabled={!captcha || disabled}
+        disabled={(!sent && !captcha.ready) || disabled}
       >
         {sent
           ? purpose === "link"

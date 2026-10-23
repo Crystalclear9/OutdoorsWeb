@@ -255,7 +255,7 @@ export async function createApi(db, options = {}) {
     }
     if (p === "/api/auth/captcha" && m === "GET") {
       limit(`captcha:${req.clientIp}`, 60, 600000);
-      return send(res, captcha.issue(req, res));
+      return send(res, await captcha.issue(req, res));
     }
     if (p === "/api/operations" && m === "GET") {
       current(req, "super");

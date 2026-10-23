@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { api } from "./api.js";
-import { Button, ErrorBox, Modal } from "./components.jsx";
+import { Button, ErrorBox, Modal, Pagination } from "./components.jsx";
 const labels = {
   pending: "等待发送",
   sending: "发送中",
@@ -10,19 +10,42 @@ const labels = {
   cancelled: "已取消",
 };
 export default function Deliveries({ notify }) {
-  const [items, setItems] = useState([]),
+  const [data, setData] = useState({ items: [], page: 1, pages: 1, total: 0 }),
+    [scope, setScope] = useState("attention"),
+    [page, setPage] = useState(1),
     [selected, setSelected] = useState(null),
     [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
-  const load = () =>
-    api("/operations/deliveries")
-      .then((r) => setItems(r.items))
-      .catch((e) => setError(e.message));
+    [busy, setBusy] = useState(false),
+    [loading, setLoading] = useState(true);
+  const request = useRef(0);
+  const items = data.items;
+  async function load() {
+    const generation = ++request.current;
+    setLoading(true);
+    try {
+      const result = await api(
+        `/operations/deliveries?scope=${scope}&page=${page}`,
+      );
+      // A slow poll from the previous filter must not replace the current list.
+      if (generation !== request.current) return;
+      setData(result);
+      setPage(result.page);
+      setError("");
+    } catch (e) {
+      if (generation === request.current) setError(e.message);
+    } finally {
+      if (generation === request.current) setLoading(false);
+    }
+  }
   useEffect(() => {
     load();
-    const t = setInterval(load, 15000);
-    return () => clearInterval(t);
-  }, []);
+    // Keep the reconciliation dialog and its errors stable while it is open.
+    const t = selected ? null : setInterval(load, 15000);
+    return () => {
+      clearInterval(t);
+      request.current++;
+    };
+  }, [scope, page, !!selected]);
   async function save(e) {
     e.preventDefault();
     if (busy) return;
@@ -51,11 +74,32 @@ export default function Deliveries({ notify }) {
         <div>
           <h2>结果通知发送记录</h2>
           <p>
-            最近 50
-            条短信或电话任务。先核实不确定的任务，再决定是否重试，避免重复打扰。
+            优先处理失败和需核实的任务；全部记录支持翻页。先核实服务商受理情况，再决定是否重试。
           </p>
         </div>
       </div>
+      <label>
+        通知范围
+        <select
+          value={scope}
+          disabled={busy || !!selected}
+          onChange={(e) => {
+            request.current++;
+            setScope(e.target.value);
+            setPage(1);
+          }}
+        >
+          <option value="attention">待处理通知</option>
+          <option value="all">全部通知记录</option>
+        </select>
+      </label>
+      <Button
+        className="secondary small"
+        disabled={busy || loading || !!selected}
+        onClick={load}
+      >
+        刷新通知记录
+      </Button>
       <ErrorBox>{!selected && error}</ErrorBox>
       <div className="table-scroll">
         <table>
@@ -86,7 +130,7 @@ export default function Deliveries({ notify }) {
                   {["failed", "uncertain"].includes(r.state) && (
                     <Button
                       className="secondary small"
-                      disabled={busy}
+                      disabled={busy || loading}
                       onClick={() => {
                         if (busy) return;
                         setSelected(r);
@@ -101,8 +145,29 @@ export default function Deliveries({ notify }) {
             ))}
           </tbody>
         </table>
-        {!items.length && <p className="empty-state">尚无外发通知</p>}
+        {!items.length && (
+          <p className="empty-state">
+            {loading
+              ? "正在读取通知记录…"
+              : error
+                ? "通知记录读取失败，请刷新重试"
+                : scope === "attention"
+                  ? "暂无待处理通知"
+                  : "尚无外发通知"}
+          </p>
+        )}
       </div>
+      <fieldset
+        disabled={busy || loading || !!selected}
+        style={{ border: 0, padding: 0 }}
+      >
+        <Pagination
+          page={data.page}
+          pages={data.pages}
+          total={data.total}
+          onPage={setPage}
+        />
+      </fieldset>
       {selected && (
         <Modal
           title="核实通知发送结果"

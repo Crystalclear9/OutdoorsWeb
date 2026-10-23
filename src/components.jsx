@@ -12,6 +12,7 @@ import {
   WarningCircle,
 } from "@phosphor-icons/react";
 import { api, setCsrf } from "./api.js";
+import CaptchaField, { useCaptcha } from "./Captcha.jsx";
 import Sessions from "./Sessions.jsx";
 import Mfa from "./Mfa.jsx";
 import Identity, { LoginExtras } from "./Identity.jsx";
@@ -185,26 +186,8 @@ export function AuthPage({
   const [mode, setMode] = useState(initialMode),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
-  const [challenge, setChallenge] = useState(null),
-    [code, setCode] = useState(""),
-    [captchaBusy, setCaptchaBusy] = useState(false),
-    [captchaError, setCaptchaError] = useState("");
-  async function refreshCaptcha() {
-    setCaptchaBusy(true);
-    setChallenge(null);
-    setCode("");
-    setCaptchaError("");
-    try {
-      setChallenge(await api("/auth/captcha"));
-    } catch (e) {
-      setCaptchaError(e.message);
-    } finally {
-      setCaptchaBusy(false);
-    }
-  }
-  useEffect(() => {
-    refreshCaptcha();
-  }, []);
+  const captcha = useCaptcha();
+  const { challenge, code, refresh: refreshCaptcha } = captcha;
   async function submit(e) {
     e.preventDefault();
     if (busy) return;
@@ -448,50 +431,12 @@ export function AuthPage({
                   placeholder="再次输入密码"
                 />
               )}
-              <div className="captcha-field">
-                <label htmlFor="auth-captcha">图片验证码</label>
-                <div className="captcha-row">
-                  <input
-                    id="auth-captcha"
-                    name="captcha"
-                    value={code}
-                    required
-                    maxLength={6}
-                    minLength={6}
-                    autoComplete="off"
-                    autoCapitalize="characters"
-                    spellCheck={false}
-                    placeholder="请输入 6 位数字"
-                    inputMode="numeric"
-                    pattern="[0-9]{6}"
-                    onChange={(e) => setCode(e.target.value.toUpperCase())}
-                    disabled={busy || captchaBusy}
-                  />
-                  <button
-                    type="button"
-                    className="captcha-image"
-                    aria-label="刷新图片验证码"
-                    disabled={busy || captchaBusy}
-                    onClick={refreshCaptcha}
-                  >
-                    {challenge ? (
-                      <img
-                        src={challenge.image}
-                        alt="图片验证码，请输入图中六位数字"
-                      />
-                    ) : (
-                      <span>{captchaBusy ? "正在生成…" : "点击重试"}</span>
-                    )}
-                  </button>
-                </div>
-                <small>点击图片换一张 · 5 分钟有效</small>
-                <ErrorBox>{captchaError}</ErrorBox>
-              </div>
+              <CaptchaField captcha={captcha} disabled={busy} />
               <ErrorBox>{error}</ErrorBox>
               <Button
                 className="primary full"
                 loading={busy}
-                disabled={!challenge || captchaBusy}
+                disabled={!captcha.ready}
                 type="submit"
               >
                 {mode === "login" ? "登录账号" : "创建账号"}

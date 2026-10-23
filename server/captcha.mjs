@@ -1,113 +1,42 @@
 import { randomInt, randomBytes } from "node:crypto";
-import { deflateSync } from "node:zlib";
+import sharp from "sharp";
 import { fail, tx } from "./core.mjs";
 import { hashToken } from "./security.mjs";
 
-const FONT = {
-  A: ["01110", "10001", "10001", "11111", "10001", "10001", "10001"],
-  B: ["11110", "10001", "10001", "11110", "10001", "10001", "11110"],
-  C: ["01111", "10000", "10000", "10000", "10000", "10000", "01111"],
-  D: ["11110", "10001", "10001", "10001", "10001", "10001", "11110"],
-  E: ["11111", "10000", "10000", "11110", "10000", "10000", "11111"],
-  F: ["11111", "10000", "10000", "11110", "10000", "10000", "10000"],
-  G: ["01111", "10000", "10000", "10111", "10001", "10001", "01110"],
-  H: ["10001", "10001", "10001", "11111", "10001", "10001", "10001"],
-  J: ["00111", "00010", "00010", "00010", "10010", "10010", "01100"],
-  K: ["10001", "10010", "10100", "11000", "10100", "10010", "10001"],
-  M: ["10001", "11011", "10101", "10101", "10001", "10001", "10001"],
-  N: ["10001", "11001", "10101", "10011", "10001", "10001", "10001"],
-  P: ["11110", "10001", "10001", "11110", "10000", "10000", "10000"],
-  Q: ["01110", "10001", "10001", "10001", "10101", "10010", "01101"],
-  R: ["11110", "10001", "10001", "11110", "10100", "10010", "10001"],
-  S: ["01111", "10000", "10000", "01110", "00001", "00001", "11110"],
-  T: ["11111", "00100", "00100", "00100", "00100", "00100", "00100"],
-  U: ["10001", "10001", "10001", "10001", "10001", "10001", "01110"],
-  V: ["10001", "10001", "10001", "10001", "10001", "01010", "00100"],
-  W: ["10001", "10001", "10001", "10101", "10101", "10101", "01010"],
-  X: ["10001", "10001", "01010", "00100", "01010", "10001", "10001"],
-  Y: ["10001", "10001", "01010", "00100", "00100", "00100", "00100"],
-  Z: ["11111", "00001", "00010", "00100", "01000", "10000", "11111"],
-  2: ["01110", "10001", "00001", "00010", "00100", "01000", "11111"],
-  3: ["11110", "00001", "00001", "01110", "00001", "00001", "11110"],
-  4: ["00010", "00110", "01010", "10010", "11111", "00010", "00010"],
-  5: ["11111", "10000", "10000", "11110", "00001", "00001", "11110"],
-  6: ["01110", "10000", "10000", "11110", "10001", "10001", "01110"],
-  7: ["11111", "00001", "00010", "00100", "01000", "01000", "01000"],
-  8: ["01110", "10001", "10001", "01110", "10001", "10001", "01110"],
-  9: ["01110", "10001", "10001", "01111", "00001", "00001", "01110"],
+// Fixed vector outlines render consistently without depending on host fonts.
+// The browser receives only the rasterized PNG, never the answer or SVG paths.
+const DIGITS = {
+  2: "M2 7 C3 -1 18 -1 18 7 C18 12 6 18 2 26 L19 26",
+  3: "M2 3 C9 -2 19 0 18 7 C18 11 13 13 8 13 C14 12 20 16 18 22 C16 28 7 29 2 24",
+  4: "M15 27 L15 0 L1 19 L21 19",
+  5: "M19 1 L3 1 L2 13 C8 9 19 11 19 19 C19 28 7 29 2 25",
+  6: "M17 2 C4 -4 -1 13 3 23 C6 31 20 28 19 19 C18 10 6 10 2 17",
+  7: "M1 1 L20 1 L7 27",
+  8: "M10 13 C-3 10 0 0 10 0 C21 0 24 10 10 13 C-4 16 -1 28 10 28 C22 28 25 16 10 13",
+  9: "M18 11 C14 18 1 16 1 8 C1 -1 15 -3 18 6 C22 17 16 31 4 26",
 };
-function crc32(bytes) {
-  let c = 0xffffffff;
-  for (const b of bytes) {
-    c ^= b;
-    for (let i = 0; i < 8; i++) c = (c >>> 1) ^ (c & 1 ? 0xedb88320 : 0);
-  }
-  return (c ^ 0xffffffff) >>> 0;
-}
-function chunk(type, bytes) {
-  const name = Buffer.from(type),
-    size = Buffer.alloc(4),
-    crc = Buffer.alloc(4);
-  size.writeUInt32BE(bytes.length);
-  crc.writeUInt32BE(crc32(Buffer.concat([name, bytes])));
-  return Buffer.concat([size, name, bytes, crc]);
-}
-export function captchaPng(code) {
-  const w = 220,
-    h = 64,
-    pixels = Buffer.alloc(w * h * 3, 247);
-  const pixel = (x, y, color) => {
-    if (x >= 0 && x < w && y >= 0 && y < h) {
-      const at = (Math.floor(y) * w + Math.floor(x)) * 3;
-      pixels.set(color, at);
-    }
-  };
-  for (let i = 0; i < 550; i++)
-    pixel(randomInt(w), randomInt(h), [
-      randomInt(150, 230),
-      randomInt(170, 240),
-      randomInt(190, 245),
-    ]);
-  [...code].forEach((ch, i) => {
-    const sx = 10 + i * 34,
-      sy = randomInt(10, 20),
-      color = [randomInt(25, 90), randomInt(45, 110), randomInt(65, 140)];
-    FONT[ch].forEach((row, y) =>
-      [...row].forEach((v, x) => {
-        if (v === "1")
-          for (let a = 0; a < 4; a++)
-            for (let b = 0; b < 4; b++)
-              pixel(
-                sx + x * 4 + a + Math.round(Math.sin((y * 4 + b) / 12)),
-                sy + y * 4 + b,
-                color,
-              );
-      }),
-    );
-  });
-  for (let n = 0; n < 3; n++) {
-    const phase = randomInt(60);
-    for (let x = 0; x < w; x++)
-      pixel(
-        x,
-        Math.round(15 + n * 14 + Math.sin((x + phase) / 28) * 7),
-        [145, 166, 185],
-      );
-  }
-  const raw = Buffer.alloc((w * 3 + 1) * h);
-  for (let y = 0; y < h; y++)
-    pixels.copy(raw, y * (w * 3 + 1) + 1, y * w * 3, (y + 1) * w * 3);
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(w);
-  ihdr.writeUInt32BE(h, 4);
-  ihdr[8] = 8;
-  ihdr[9] = 2;
-  return Buffer.concat([
-    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
-    chunk("IHDR", ihdr),
-    chunk("IDAT", deflateSync(raw)),
-    chunk("IEND", Buffer.alloc(0)),
-  ]);
+export async function captchaPng(code) {
+  // Render at 2× display size so strokes remain smooth on high-density screens.
+  const strokes = [...code]
+    .map((digit, i) => {
+      const x = 12 + i * 27,
+        y = randomInt(13, 20),
+        angle = randomInt(-9, 10);
+      return `<path d="${DIGITS[digit]}" transform="translate(${x} ${y}) rotate(${angle} 10 14)" stroke="rgb(${randomInt(35, 70)},${randomInt(40, 75)},${randomInt(45, 80)})"/>`;
+    })
+    .join("");
+  const noise = Array.from(
+    { length: 65 },
+    () =>
+      `<circle cx="${randomInt(188)}" cy="${randomInt(64)}" r="0.6" fill="#bec8cd"/>`,
+  ).join("");
+  const curves = Array.from(
+    { length: 3 },
+    () =>
+      `<path d="M0 ${randomInt(8, 56)} Q94 ${randomInt(64)} 188 ${randomInt(8, 56)}"/>`,
+  ).join("");
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="376" height="128" viewBox="0 0 188 64"><rect width="188" height="64" fill="#f7f8f6"/>${noise}<g fill="none" stroke="#bac6c8" stroke-width="0.8">${curves}</g><g fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${strokes}</g></svg>`;
+  return sharp(Buffer.from(svg)).png().toBuffer();
 }
 export function createCaptcha(db, { secure = false, testAnswer } = {}) {
   const binding = (req) =>
@@ -117,7 +46,7 @@ export function createCaptcha(db, { secure = false, testAnswer } = {}) {
       .find((v) => v.startsWith("hust_captcha="))
       ?.slice(13);
   return {
-    issue(req, res) {
+    async issue(req, res) {
       let token = binding(req);
       if (!/^[a-f0-9]{64}$/.test(token || ""))
         token = randomBytes(32).toString("hex");
@@ -130,6 +59,7 @@ export function createCaptcha(db, { secure = false, testAnswer } = {}) {
           ).join(""),
         id = randomBytes(24).toString("hex"),
         expires = Date.now() + 5 * 60000;
+      const image = await captchaPng(code);
       db.prepare(
         "INSERT INTO captchas(id,binding,answer,expires) VALUES(?,?,?,?)",
       ).run(id, hashToken(token), hashToken(id + code), expires);
@@ -140,7 +70,7 @@ export function createCaptcha(db, { secure = false, testAnswer } = {}) {
       return {
         id,
         expires,
-        image: "data:image/png;base64," + captchaPng(code).toString("base64"),
+        image: "data:image/png;base64," + image.toString("base64"),
       };
     },
     verify(req, b) {

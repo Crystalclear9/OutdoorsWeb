@@ -1,0 +1,161 @@
+/* Service typography, informed by HUST and SJTU notice pages.
+   Keep all heading/list reading rules here instead of layering theme overrides. */
+body {
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.6;
+}
+h1,
+h2,
+h3,
+h4,
+button,
+input,
+select,
+textarea {
+  font-family: var(--font-ui);
+  letter-spacing: normal;
+}
+.page-heading h1,
+.overview-page > .page-heading:not(.booking-intro) h1,
+.auth-story-copy h1 {
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.page-heading h1,
+.overview-page > .page-heading:not(.booking-intro) h1 {
+  color: var(--text-main);
+}
+.card-header h2,
+.venue-card .card-header h2,
+.dashboard-grid .card-header h2,
+.workspace-welcome h2 {
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: normal;
+}
+.page-heading p,
+.overview-page > .page-heading:not(.booking-intro) p,
+.card-header p,
+.dashboard-grid .card-header p,
+.workspace-welcome p,
+.guest-workflow p {
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.8;
+}
+.button,
+.position-card .button,
+.text-button {
+  font-size: 15px;
+  font-weight: 400;
+}
+.sidebar nav button {
+  font-weight: 400;
+}
+.sidebar nav button.selected {
+  font-weight: 500;
+}
+.page-heading .section-kicker {
+  display: none;
+}
+.workspace-welcome {
+  background: transparent;
+  border-radius: 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  padding: 20px 0 28px;
+}
+.workspace-welcome .section-kicker {
+  display: none;
+}
+.dashboard-grid .card-header {
+  border-bottom: 1px solid var(--line);
+}
+.dashboard-grid .card-header::after {
+  display: none;
+}
+.notice-title h3 {
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.7;
+}
+.notice-article p {
+  font-size: 16px;
+  line-height: 1.8;
+}
+.notice-full {
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 2;
+  color: var(--text-main);
+}
+.dialog-content:has(.notice-full) h2 {
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.service-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+  padding: 20px 0;
+}
+.service-notice > div:nth-child(2) {
+  order: 0;
+}
+.service-notice > .notice-published {
+  order: 1;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.95;
+  font-variant-numeric: tabular-nums;
+}
+.service-notice .row-actions,
+.service-notice > button {
+  order: 2;
+}
+/* A notice list prioritizes its title and date; full text opens on selection. */
+.service-notice > div > p,
+.service-notice > div > small {
+  display: none;
+}
+@media (max-width: 760px) {
+  .page-heading h1,
+  .overview-page > .page-heading:not(.booking-intro) h1,
+  .auth-story-copy h1 {
+    font-size: 24px;
+  }
+  .card-header h2,
+  .venue-card .card-header h2,
+  .dashboard-grid .card-header h2,
+  .workspace-welcome h2 {
+    font-size: 18px;
+  }
+  .service-notice {
+    flex-wrap: wrap;
+    gap: 6px 12px;
+  }
+  .service-notice > div:nth-child(2) {
+    flex-basis: 100%;
+  }
+  .service-notice > .notice-published {
+    font-size: 13px;
+  }
+}
+.dashboard-notices strong {
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.7;
+}
+.dashboard-notices p {
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.8;
+}
+.dashboard-notices small {
+  font-size: 14px;
+}

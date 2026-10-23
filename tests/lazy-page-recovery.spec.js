@@ -42,9 +42,7 @@ test("办理分包失效仅显示局部提示，详情和导航保留，手动�
     .getByRole("button", { name: "查看详情" })
     .click();
   const dialog = page.getByRole("dialog");
-  await dialog
-    .getByText("查看办理时限、电话跟进与费用记录", { exact: true })
-    .click();
+  // Enterprise details now load the next-step panel immediately.
   await expect(
     dialog.getByRole("region", { name: "办理模块加载异常" }),
   ).toContainText("可能是版本已更新或网络异常");

@@ -22,9 +22,7 @@ async function register(page, company = "浏览器测试企业") {
   await page.locator("[name=confirm]").fill(password);
   await page.getByLabel("图片验证码", { exact: true }).fill("246789");
   await page.getByRole("button", { name: "创建账号" }).click();
-  await expect(
-    page.getByRole("heading", { name: "场地有序，活动从容。" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "服务工作台" })).toBeVisible();
   return email;
 }
 async function adminLogin(page) {
@@ -111,9 +109,7 @@ test("注册、真实跨账号审核、刷新、退出与登录", async ({ page,
   await page.locator("[name=password]").fill(password);
   await page.getByLabel("图片验证码", { exact: true }).fill("246789");
   await page.getByRole("button", { name: "登录账号", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "场地有序，活动从容。" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "服务工作台" })).toBeVisible();
   expect(errors).toEqual([]);
   await context.close();
 });
@@ -140,9 +136,7 @@ test("企业资料修改与密码更新后会话失效", async ({ page }) => {
   await page.locator("[name=password]").fill("UpdatedAccountPassword456");
   await page.getByLabel("图片验证码", { exact: true }).fill("246789");
   await page.getByRole("button", { name: "登录账号", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "场地有序，活动从容。" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "服务工作台" })).toBeVisible();
 });
 test("管理员发布公告、场地安排、停用与密码恢复界面", async ({
   page,
@@ -520,7 +514,7 @@ test("账号可查看登录设备，并退出其他设备", async ({ page, brows
   await other.getByLabel("图片验证码", { exact: true }).fill("246789");
   await other.getByRole("button", { name: "登录账号", exact: true }).click();
   await expect(
-    other.getByRole("heading", { name: "场地有序，活动从容。" }),
+    other.getByRole("heading", { name: "服务工作台" }),
   ).toBeVisible();
   await page.locator(".account-link").click();
   await expect(page.locator(".session-list>div")).toHaveCount(2);
@@ -735,7 +729,7 @@ test("验证码错误后自动刷新且保留账号输入，手机端可使用",
     name: "图片验证码，请输入图中六位数字",
   });
   await expect(image).toBeVisible();
-  expect(await image.evaluate((el) => el.naturalWidth)).toBe(220);
+  expect(await image.evaluate((el) => el.naturalWidth)).toBe(376);
   const before = await image.getAttribute("src");
   await page.getByLabel("图片验证码", { exact: true }).fill("111111");
   await page.getByRole("button", { name: "登录账号", exact: true }).click();

@@ -56,9 +56,7 @@ test("旧账号迟到的未授权响应不会退出新登录的管理员", async
     await page
       .getByRole("button", { name: "企业申报审核", exact: true })
       .click();
-    await expect(
-      page.getByRole("region", { name: "待办队列" }),
-    ).toBeVisible();
+    await expect(page.getByRole("region", { name: "待办队列" })).toBeVisible();
     await expect(
       page.getByText("旧会话已失效", { exact: true }),
     ).not.toBeVisible();
@@ -96,7 +94,7 @@ test("迟到的访客会话响应不会覆盖刚完成的注册登录", async ({
     await form.locator("[name=confirm]").fill("NewSignupAccount123!");
     await form.getByRole("checkbox").check();
     await form.getByRole("button", { name: "完成资料并进入工作台" }).click();
-    await expect(page.locator(".workspace-welcome")).toContainText("陈老师");
+    await expect(page.locator(".account-link")).toContainText("陈老师");
     const oldResponse = page.waitForResponse("**/api/auth/session");
     release();
     await (await oldResponse).finished();
@@ -187,10 +185,10 @@ for (const mobile of [false, true])
       ),
     ).toBe(true);
     await form.getByRole("button", { name: "完成资料并进入工作台" }).click();
-    await expect(page.locator(".workspace-welcome")).toContainText("王老师");
+    await expect(page.locator(".account-link")).toContainText("王老师");
     expect(new URL(page.url()).hash).toBe("");
     await page.reload();
-    await expect(page.locator(".workspace-welcome")).toContainText("王老师");
+    await expect(page.locator(".account-link")).toContainText("王老师");
     const session = await (await page.request.get("/api/auth/session")).json();
     expect(session.user.role).toBe("enterprise");
     expect(session.user.isSuperAdmin).toBe(false);

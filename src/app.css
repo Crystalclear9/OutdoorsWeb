@@ -1,22 +1,9 @@
-/* Heading subset derived from LXGW WenKai v1.530; SIL OFL 1.1.
-   Renamed Campus Heading to respect the upstream reserved font names.
-   Only headings use this family so dense business information stays legible. */
-@font-face {
-  font-family: "Campus Heading";
-  src: url("./assets/fonts/CampusHeading-Medium.woff2") format("woff2");
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-}
 :root {
-  font-family:
-    "PingFang SC",
-    "Hiragino Sans GB",
-    "Microsoft YaHei",
-    -apple-system,
-    BlinkMacSystemFont,
-    system-ui,
-    sans-serif;
+  /* One UI family across headings, controls and body copy. */
+  --font-ui:
+    "Campus Sans", "Microsoft YaHei", "PingFang SC", -apple-system,
+    BlinkMacSystemFont, system-ui, sans-serif;
+  font-family: var(--font-ui);
   color: #1a2a3a;
   background: #faf9f6;
   font-synthesis: none;
@@ -546,7 +533,6 @@ main {
 
 .page-heading p {
   color: var(--text-muted);
-  font-size: 15px;
   margin-top: 10px;
 }
 
@@ -635,7 +621,6 @@ main {
 }
 
 .card-header h2 {
-  font-size: 18px;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1730,8 +1715,6 @@ tr:hover td {
 
 .notice-full {
   white-space: pre-wrap;
-  font-size: 14px;
-  line-height: 2.05;
   color: var(--text-secondary);
   overflow-wrap: anywhere;
 }
@@ -1784,16 +1767,11 @@ tr:hover td {
 }
 
 .notice-title h3 {
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 1.7;
   color: var(--text-main);
 }
 
 .notice-article p {
-  font-size: 13px;
   color: var(--text-secondary);
-  line-height: 1.85;
   margin-top: 8px;
   white-space: nowrap;
   overflow: hidden;
@@ -2068,11 +2046,7 @@ tr:hover td {
 }
 
 .auth-story-copy h1 {
-  font-size: 48px;
-  line-height: 1.45;
-  letter-spacing: -1px;
   color: #ffffff;
-  font-weight: 600;
   margin-top: 18px;
 }
 
@@ -2264,13 +2238,10 @@ tr:hover td {
 }
 
 .workspace-welcome h2 {
-  font-size: 24px;
   color: var(--text-main);
-  line-height: 1.55;
 }
 
 .workspace-welcome p {
-  font-size: 14px;
   color: var(--text-muted);
   margin-top: 10px;
   max-width: 640px;
@@ -2475,7 +2446,6 @@ tr:hover td {
 }
 
 .guest-workflow p {
-  font-size: 13px;
   color: var(--text-secondary);
 }
 
@@ -3164,9 +3134,6 @@ tr:hover td {
     margin-bottom: 20px;
     padding-bottom: 18px;
   }
-  .review-page .page-heading h1 {
-    font-size: 26px;
-  }
   .review-page .page-heading .section-kicker {
     display: none;
   }
@@ -3234,9 +3201,6 @@ tr:hover td {
   .topbar {
     padding: 0 28px;
   }
-  .page-heading h1 {
-    font-size: 26px;
-  }
   .metrics > div {
     padding: 0 20px;
   }
@@ -3261,9 +3225,6 @@ tr:hover td {
   .auth-story {
     padding: 40px 36px;
   }
-  .auth-story-copy h1 {
-    font-size: 42px;
-  }
   .auth-form-side {
     padding: 32px 40px;
   }
@@ -3282,9 +3243,6 @@ tr:hover td {
   }
   .workspace-welcome {
     padding: 28px;
-  }
-  .workspace-welcome h2 {
-    font-size: 22px;
   }
   .dashboard-metrics > button > svg:last-child {
     display: none;
@@ -3398,11 +3356,7 @@ tr:hover td {
     margin-bottom: 24px;
     padding-bottom: 18px;
   }
-  .page-heading h1 {
-    font-size: 24px;
-  }
   .page-heading p {
-    font-size: 13px;
     margin-top: 8px;
   }
   .metrics {
@@ -3813,13 +3767,9 @@ h3 {
   margin-bottom: 32px;
 }
 .page-heading h1 {
-  font-family: "Songti SC", "Noto Serif CJK SC", "SimSun", serif;
-  font-size: 34px;
-  letter-spacing: 1px;
   color: #502530;
 }
 .page-heading p {
-  font-size: 14px;
   color: var(--text-secondary);
 }
 .section-kicker {
@@ -3902,12 +3852,6 @@ h3 {
   border-radius: 10px;
   margin-bottom: 28px;
 }
-.workspace-welcome h2 {
-  font-size: 23px;
-}
-.workspace-welcome p {
-  font-size: 13px;
-}
 .dashboard-grid {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 72px;
@@ -3918,10 +3862,7 @@ h3 {
   border-bottom: 1px solid #d8d2c9;
 }
 .dashboard-grid .card-header h2 {
-  font-family: "Songti SC", "SimSun", serif;
-  font-size: 25px;
   color: #542934;
-  letter-spacing: 1px;
 }
 .dashboard-grid .card-header p {
   font-size: 12px;
@@ -3939,16 +3880,13 @@ h3 {
   gap: 22px;
 }
 .guest-workflow > div > span {
-  font-family: Georgia, serif;
+  font-family: var(--font-ui);
   font-size: 24px;
   color: #aa8b77;
   font-weight: 400;
 }
 .guest-workflow h3 {
   font-size: 14px;
-}
-.guest-workflow p {
-  font-size: 12px;
 }
 .booking-requirements {
   font-size: 12px;
@@ -4020,10 +3958,6 @@ footer .brand-service {
 }
 .auth-story .brand-service {
   display: none;
-}
-.auth-story-copy h1 {
-  font-family: "Songti SC", serif;
-  font-weight: 500;
 }
 .auth-story-copy .section-kicker {
   color: #dac4b1;
@@ -4174,9 +4108,6 @@ footer .brand-service {
   main {
     padding: 22px 18px 0;
   }
-  .page-heading h1 {
-    font-size: 27px;
-  }
   .booking-intro {
     display: flex;
     flex-direction: column-reverse;
@@ -4210,9 +4141,6 @@ footer .brand-service {
   .dashboard-grid {
     grid-template-columns: 1fr;
     gap: 40px;
-  }
-  .dashboard-grid .card-header h2 {
-    font-size: 23px;
   }
   .workspace-welcome {
     padding: 24px;
@@ -4405,21 +4333,6 @@ footer .brand-service {
     white-space: nowrap;
   }
 }
-
-/* Use the same legible campus-service typography across public and staff pages. */
-.page-heading h1,
-.dashboard-grid .card-header h2,
-.auth-story-copy h1 {
-  font-family: inherit;
-  letter-spacing: 0;
-  font-weight: 600;
-}
-.page-heading h1 {
-  font-size: 30px;
-}
-.dashboard-grid .card-header h2 {
-  font-size: 21px;
-}
 .booking-intro {
   min-height: 190px;
   margin-bottom: 28px;
@@ -4482,10 +4395,6 @@ footer .brand-service {
   color: #796e65;
 }
 @media (max-width: 760px) {
-  .page-heading h1,
-  .booking-intro h1 {
-    font-size: 25px;
-  }
   .booking-intro {
     display: block;
   }
@@ -4515,11 +4424,7 @@ main.overview-page {
 .overview-page > .page-heading:not(.booking-intro) .section-kicker {
   display: none;
 }
-.overview-page > .page-heading:not(.booking-intro) h1 {
-  font-size: 27px;
-}
 .overview-page > .page-heading:not(.booking-intro) p {
-  font-size: 12px;
   margin-top: 6px;
 }
 .overview-page .venue-card .card-header {
@@ -4532,24 +4437,6 @@ main.overview-page {
 .overview-page .venue-map {
   margin-left: 0;
   margin-right: 0;
-}
-
-.page-heading h1,
-.overview-page > .page-heading:not(.booking-intro) h1,
-.dashboard-grid .card-header h2,
-.auth-story-copy h1 {
-  font-family: "Campus Heading", "KaiTi", "STKaiti", serif;
-  font-weight: 700;
-  font-synthesis: weight;
-  letter-spacing: 0;
-  line-height: 1.35;
-}
-.page-heading h1,
-.overview-page > .page-heading:not(.booking-intro) h1 {
-  font-size: 34px;
-}
-.dashboard-grid .card-header h2 {
-  font-size: 25px;
 }
 .booking-intro {
   display: block;
@@ -4580,36 +4467,15 @@ main.overview-page {
   margin-top: 16px;
 }
 @media (max-width: 760px) {
-  .page-heading h1,
-  .overview-page > .page-heading:not(.booking-intro) h1 {
-    font-size: 29px;
-  }
 }
 
-/* Typography hierarchy: prominent headings, readable controls, quiet metadata.
-   WenKai supplies one weight; synthesize weight only for display headings. */
+/* Typography hierarchy for service pages and application controls. */
 .sidebar nav button {
   font-size: 15px;
   font-weight: 500;
 }
 .sidebar nav button.selected {
   font-weight: 600;
-}
-.card-header h2,
-.venue-card .card-header h2 {
-  font-size: 21px;
-  font-weight: 600;
-}
-.dashboard-grid .card-header h2 {
-  font-size: 25px;
-  font-weight: 700;
-}
-.page-heading p,
-.overview-page > .page-heading:not(.booking-intro) p,
-.card-header p,
-.dashboard-grid .card-header p {
-  font-size: 14px;
-  line-height: 1.75;
 }
 .button,
 .position-card .button {
@@ -4664,12 +4530,6 @@ label {
   font-size: 16px;
   font-weight: 600;
 }
-.guest-workflow p,
-.dashboard-notices p,
-.workspace-welcome p {
-  font-size: 14px;
-  line-height: 1.8;
-}
 .booking-requirements,
 .map-caption,
 .map-source-note {
@@ -4692,19 +4552,6 @@ td strong {
 @media (max-width: 760px) {
   .sidebar nav button {
     font-size: 15px;
-  }
-  .card-header h2,
-  .venue-card .card-header h2 {
-    font-size: 19px;
-  }
-  .dashboard-grid .card-header h2 {
-    font-size: 23px;
-  }
-  .page-heading p,
-  .overview-page > .page-heading:not(.booking-intro) p,
-  .card-header p,
-  .dashboard-grid .card-header p {
-    font-size: 13px;
   }
   .venue-toolbar select,
   .field-inline input {
@@ -4950,9 +4797,6 @@ td strong {
     align-items: flex-start;
     margin-bottom: 20px;
   }
-  .venue-card .card-header h2 {
-    font-size: 19px;
-  }
   .venue-card .segmented {
     gap: 12px;
   }
@@ -5056,16 +4900,42 @@ main.venue-page {
 }
 .captcha-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 154px;
+  grid-template-columns: minmax(0, 1fr) 188px;
   align-items: stretch;
   gap: 10px;
 }
 .captcha-row input {
   min-width: 0;
   margin: 0;
-  font-size: 12px;
-  letter-spacing: 1px;
+  font-size: 18px;
+  letter-spacing: 2px;
 }
+.captcha-row input::placeholder {
+  font-size: 14px;
+  letter-spacing: normal;
+}
+.captcha-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.captcha-label-row label {
+  margin: 0;
+}
+.captcha-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 0 6px 10px;
+  color: var(--ink);
+  font-size: 14px;
+}
+.captcha-image:disabled {
+  cursor: wait;
+}
+
 .captcha-image {
   min-height: 48px;
   border: 1px solid #dbe2ea;
@@ -5076,8 +4946,8 @@ main.venue-page {
 }
 .captcha-image img {
   display: block;
-  width: 154px;
-  height: 48px;
+  width: 100%;
+  height: 64px;
   object-fit: contain;
 }
 .captcha-image > span {
@@ -5086,8 +4956,8 @@ main.venue-page {
 }
 .captcha-field > small {
   display: block;
-  margin-top: 6px;
-  font-size: 11px;
+  margin-top: 8px;
+  font-size: 13px;
   color: #7c8a99;
 }
 .operations-grid {
@@ -5169,12 +5039,10 @@ main.venue-page {
 }
 @media (max-width: 760px) {
   .captcha-row {
-    grid-template-columns: minmax(0, 1fr) 124px;
+    grid-template-columns: minmax(0, 1fr) 160px;
     gap: 8px;
   }
-  .captcha-image img {
-    width: 124px;
-  }
+
   .operations-grid {
     grid-template-columns: minmax(0, 1fr);
     padding: 0 18px 18px;
@@ -5282,9 +5150,6 @@ main.venue-page {
   max-width: 440px;
 }
 .sms-form .captcha-field {
-  display: flex;
-  align-items: end;
-  gap: 12px;
   margin-bottom: 18px;
 }
 .sms-form .captcha-field label {
@@ -5412,5 +5277,50 @@ main.venue-page {
   .review-design img {
     height: 200px;
     width: 100%;
+  }
+}
+
+/* Enterprise details lead with the current task; supporting records stay compact. */
+.case-next-step {
+  padding: 22px;
+  margin: 12px 0 20px;
+  background: #f5eeeb;
+  border-left: 3px solid var(--primary, #783442);
+}
+.case-next-step > div > strong {
+  font-size: 20px;
+  line-height: 1.5;
+}
+.case-next-step p {
+  margin: 8px 0 0;
+}
+.case-next-step .case-booking-facts {
+  font-size: 13px;
+  color: #6c625f;
+}
+.case-next-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 18px;
+  flex-wrap: wrap;
+}
+.case-contact-record {
+  padding: 12px 0;
+  border-top: 1px solid #e3ddd8;
+}
+.case-contact-record summary,
+details.case-fee > summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 8px 0;
+}
+@media (max-width: 600px) {
+  .case-next-step {
+    padding: 16px;
+  }
+  .case-next-step > div > strong {
+    font-size: 18px;
   }
 }

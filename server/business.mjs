@@ -99,12 +99,30 @@ export function businessRoutes(db, sec, send, notifyReviewers, maintenance) {
       m = req.method;
     if (p === "/api/operations/deliveries" && m === "GET") {
       current(req, "super");
+      const scope = url.searchParams.get("scope") || "all";
+      fail(!["all", "attention"].includes(scope), 400, "通知筛选条件无效");
+      const where =
+        scope === "attention" ? " WHERE state IN ('failed','uncertain')" : "";
+      const total = db
+        .prepare("SELECT COUNT(*) n FROM delivery_jobs" + where)
+        .get().n;
+      const pages = Math.max(1, Math.ceil(total / 50));
+      // Clamp after reconciliation so an emptied last page returns useful records.
+      const page = Math.min(
+        pages,
+        Math.max(1, parseInt(url.searchParams.get("page"), 10) || 1),
+      );
       send(res, {
+        total,
+        pages,
+        page,
         items: db
           .prepare(
-            "SELECT id,kind,state,attempts,last_error,created,delivered,payload,version FROM delivery_jobs ORDER BY created DESC LIMIT 50",
+            "SELECT id,kind,state,attempts,last_error,created,delivered,payload,version FROM delivery_jobs" +
+              where +
+              " ORDER BY created DESC,id DESC LIMIT 50 OFFSET ?",
           )
-          .all()
+          .all((page - 1) * 50)
           .map(({ payload, ...r }) => {
             const p = JSON.parse(payload);
             return {

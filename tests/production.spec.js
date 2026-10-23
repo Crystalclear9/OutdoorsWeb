@@ -48,9 +48,7 @@ test("GitHub Pages 静态入口显示真实后端未连接状态，仍可打开�
   page,
 }) => {
   await page.goto(`${origin}/OutdoorsWeb/`);
-  await expect(
-    page.getByRole("heading", { name: "场地有序，活动从容。" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "服务工作台" })).toBeVisible();
   await expect(
     page.getByText("后端服务尚未连接", { exact: true }),
   ).toBeVisible();
@@ -75,5 +73,7 @@ test("GitHub Pages 静态入口显示真实后端未连接状态，仍可打开�
   await expect(
     page.getByRole("button", { name: "登录账号", exact: true }),
   ).toBeDisabled();
-  await expect(page.getByRole("alert")).toBeVisible();
+  await expect(page.getByRole("status")).toContainText(
+    "验证码加载失败，请重试",
+  );
 });

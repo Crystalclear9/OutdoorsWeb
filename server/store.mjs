@@ -109,6 +109,9 @@ export function openStore(filename) {
         db.exec(`ALTER TABLE sessions ADD COLUMN ${name} ${type}`);
     db.exec("UPDATE sessions SET id=lower(hex(randomblob(16))) WHERE id=''");
     db.exec(`
+      CREATE INDEX IF NOT EXISTS bookings_created ON bookings(created,id);
+      CREATE INDEX IF NOT EXISTS bookings_status_created ON bookings(status,cancelled,created,id);
+      CREATE INDEX IF NOT EXISTS bookings_reviewer_created ON bookings(reviewer,created,id);
       CREATE INDEX IF NOT EXISTS closures_dates ON closures(slot,start,end);
       CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user_id,expires);
       CREATE UNIQUE INDEX IF NOT EXISTS session_public_id ON sessions(id);

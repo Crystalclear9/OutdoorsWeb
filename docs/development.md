@@ -59,6 +59,10 @@ PowerShell 使用 `$env:PLAYWRIGHT_CHANNEL="chromium"` 设置环境变量；Linu
 
 本次全量需求验收新增 `server/tests/approval-finance.test.mjs`（3 项）、`history-filters.test.mjs`（2 项）和 `tests/history-filters.spec.js`（2 项），覆盖财务新待办、北京时间首尾日期、历史停用审批人、归属权限、无效条件与手机布局。筛选异常界面采用隔离响应模拟；日期和权限另由真实 API 回归验证。
 
+2026-10-23 架构复核新增 `server/tests/client-transport.test.mjs`（4 项）、`lifecycle.test.mjs`（5 项）和 `query-indexes.test.mjs`（2 项）：分别覆盖响应体中断、调用者取消、关闭排空及断连、旧库增量索引和真实查询计划。浏览器新增 `tests/public-data-isolation.spec.js`（3 项）和 `lazy-page-recovery.spec.js`（1 项），验证公告和场地故障双向隔离、实际发布申报、旧分包失效时局部恢复。不会为测试放宽正式接口的验证码、权限或版本检查。
+
+本轮本地最终通过 **114 项后端与传输、51 项浏览器、2 项桌面/手机视觉测试**；构建通过但主包仍约 502 kB（gzip 149 kB），Vite 的体积提示保留。生产依赖审计本次为 0 漏洞，不代表今后持续无漏洞。隔离压测 32 个客户端、1000 次读取无错误，32 条同位审批一次成功、31 次冲突；仅代表同机合成样本。Docker 镜像、持久化和 Linux 视觉结果仍以当前提交 CI 为准。
+
 ## 完整 Docker 镜像验收
 
 ```sh

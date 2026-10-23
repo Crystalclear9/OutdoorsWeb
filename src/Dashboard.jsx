@@ -21,6 +21,7 @@ export default function Dashboard({
   user,
   counts,
   notices,
+  noticeError,
   connected,
   version,
   onNavigate,
@@ -276,7 +277,9 @@ export default function Dashboard({
             </div>
             <Megaphone size={22} />
           </div>
-          {notices.length ? (
+          {noticeError ? (
+            <ErrorBox>{noticeError}</ErrorBox>
+          ) : notices.length ? (
             <div className="dashboard-notices">
               {notices.slice(0, 3).map((n) => (
                 <button key={n.id} onClick={() => onNavigate("notices")}>
@@ -290,9 +293,7 @@ export default function Dashboard({
               ))}
             </div>
           ) : (
-            <p className="quiet-empty">
-              {connected ? "暂无已发布公告。" : "公告服务尚未连接。"}
-            </p>
+            <p className="quiet-empty">暂无已发布公告。</p>
           )}
           <div className="dashboard-notice-footer">
             <Button

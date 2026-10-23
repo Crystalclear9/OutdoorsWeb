@@ -10,8 +10,21 @@ if (!app.db.prepare("SELECT id FROM users WHERE role='admin'").get())
   console.warn(
     "No administrator account. Set ADMIN_EMAIL and ADMIN_PASSWORD on the first startup.",
   );
+let shuttingDown = false;
 for (const signal of ["SIGTERM", "SIGINT"])
-  process.on(signal, async () => {
-    await app.close();
-    process.exit(0);
+  process.on(signal, () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    app.close().then(
+      () => process.exit(0),
+      (error) => {
+        console.error(
+          JSON.stringify({
+            event: "shutdown.failed",
+            error: String(error?.message || error),
+          }),
+        );
+        process.exit(1);
+      },
+    );
   });

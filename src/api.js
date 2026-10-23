@@ -1,3 +1,5 @@
+import { readResponse } from "./request.js";
+
 const BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 let csrf = null;
 let authGeneration = 0;
@@ -8,29 +10,30 @@ export function setCsrf(value) {
 }
 export async function api(path, options = {}) {
   const generation = authGeneration;
-  let res;
-  const controller = new AbortController(),
-    timer = setTimeout(() => controller.abort(), 15000);
+  let res, data;
   try {
-    res = await fetch(`${BASE}/api${path}`, {
-      ...options,
-      credentials: "include",
-      signal: controller.signal,
-      headers: {
-        ...(options.body ? { "Content-Type": "application/json" } : {}),
-        ...(csrf ? { "X-CSRF-Token": csrf } : {}),
-        ...options.headers,
+    ({ response: res, body: data } = await readResponse(
+      `${BASE}/api${path}`,
+      {
+        ...options,
+        credentials: "include",
+        headers: {
+          ...(options.body ? { "Content-Type": "application/json" } : {}),
+          ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+          ...options.headers,
+        },
+        ...(options.body ? { body: JSON.stringify(options.body) } : {}),
       },
-      ...(options.body ? { body: JSON.stringify(options.body) } : {}),
-    });
+      (response) =>
+        response.headers.get("content-type")?.includes("application/json")
+          ? response.json()
+          : null,
+    ));
   } catch {
     throw new Error("无法连接账号服务，请确认后端已启动并检查网络连接。");
-  } finally {
-    clearTimeout(timer);
   }
   if (!res.headers.get("content-type")?.includes("application/json"))
     throw new Error("当前站点尚未连接后端。请使用 Docker 完整服务地址访问。");
-  const data = await res.json();
   if (!res.ok) {
     if (
       res.status === 401 &&
@@ -46,13 +49,20 @@ export async function api(path, options = {}) {
 }
 export async function getDesign(id) {
   const generation = authGeneration;
-  const res = await fetch(`${BASE}/api/bookings/${id}/image`, {
-    credentials: "include",
-  });
+  let res, blob;
+  try {
+    ({ response: res, body: blob } = await readResponse(
+      `${BASE}/api/bookings/${id}/image`,
+      { credentials: "include" },
+      (response) => (response.ok ? response.blob() : null),
+    ));
+  } catch {
+    throw new Error("无法加载设计图，请检查网络连接后重试");
+  }
   if (!res.ok) {
     if (res.status === 401 && generation === authGeneration)
       window.dispatchEvent(new Event("session-expired"));
     throw new Error("无法加载设计图");
   }
-  return URL.createObjectURL(await res.blob());
+  return URL.createObjectURL(blob);
 }

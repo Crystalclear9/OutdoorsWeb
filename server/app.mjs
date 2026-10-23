@@ -83,15 +83,19 @@ export async function createApp(options = {}) {
         integrations: options.integrations,
       }),
       security = createSecurity(db, secure);
+    const handlers = new Set();
     const server = createServer(async (req, res) => {
+      let finish;
+      const finished = new Promise((resolve) => (finish = resolve));
+      handlers.add(finished);
       const requestId = randomUUID();
-      res.setHeader("X-Request-ID", requestId);
-      req.clientIp = clientAddress(req, trusted);
-      res.setHeader("X-Content-Type-Options", "nosniff");
-      res.setHeader("Referrer-Policy", "same-origin");
-      res.setHeader("X-Frame-Options", "DENY");
       let requestPath = "<invalid>";
       try {
+        res.setHeader("X-Request-ID", requestId);
+        req.clientIp = clientAddress(req, trusted);
+        res.setHeader("X-Content-Type-Options", "nosniff");
+        res.setHeader("Referrer-Policy", "same-origin");
+        res.setHeader("X-Frame-Options", "DENY");
         let url;
         try {
           url = new URL(req.url, "http://localhost");
@@ -227,6 +231,9 @@ export async function createApp(options = {}) {
             }),
           );
         } else res.end();
+      } finally {
+        handlers.delete(finished);
+        finish();
       }
     });
     server.requestTimeout = 30000;
@@ -237,16 +244,34 @@ export async function createApp(options = {}) {
     });
     maintenance.start();
     delivery.start();
+    let closing;
     return {
       server,
       db,
       maintenance,
       delivery,
-      close: async () => {
-        await delivery.close();
-        await maintenance.close();
-        await new Promise((resolve) => server.close(resolve));
-        db.close();
+      close: () => {
+        if (!closing) {
+          // Stop accepting connections immediately. Active requests may still
+          // use the database or enqueue work, so drain them before the workers.
+          const httpClosed = new Promise((resolve, reject) => {
+            server.close((error) => {
+              if (error && error.code !== "ERR_SERVER_NOT_RUNNING")
+                reject(error);
+              else resolve();
+            });
+          });
+          closing = (async () => {
+            await httpClosed;
+            // A disconnected client can leave its async handler running after
+            // server.close resolves. Its database work must finish as well.
+            await Promise.all(handlers);
+            await delivery.close();
+            await maintenance.close();
+            db.close();
+          })();
+        }
+        return closing;
       },
     };
   } catch (e) {

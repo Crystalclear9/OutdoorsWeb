@@ -37,6 +37,7 @@ import Onsite from "./Onsite.jsx";
 import Archives from "./Archives.jsx";
 import Deliveries from "./Deliveries.jsx";
 import AccessCode from "./AccessCode.jsx";
+import LazyPageBoundary from "./LazyPageBoundary.jsx";
 const Casework = lazy(() => import("./Casework.jsx"));
 import { can } from "./permissions.js";
 import { VENUE_SEGMENTS, inSegment } from "./venue-layout.js";
@@ -80,6 +81,7 @@ export default function App() {
     [venue, setVenue] = useState({ occupied: [], closed: [], total: 29 }),
     [venueLoading, setVenueLoading] = useState(true),
     [notices, setNotices] = useState([]),
+    [noticeError, setNoticeError] = useState(""),
     [counts, setCounts] = useState({}),
     [version, setVersion] = useState(0);
   const admin = user?.role === "admin";
@@ -151,11 +153,10 @@ export default function App() {
   useEffect(() => {
     let active = true;
     setVenueLoading(true);
-    Promise.all([api(`/venue?date=${venueDate}`), api("/notices")])
-      .then(([v, n]) => {
+    api(`/venue?date=${venueDate}`)
+      .then((v) => {
         if (active) {
           setVenue(v);
-          setNotices(n.items);
           setConnected(true);
           setServiceError("");
         }
@@ -167,6 +168,21 @@ export default function App() {
         }
       })
       .finally(() => active && setVenueLoading(false));
+    // Public announcements are independent of venue availability: a failed or
+    // slow announcement read must not block an otherwise healthy reservation.
+    api("/notices")
+      .then((n) => {
+        if (active) {
+          setNotices(n.items);
+          setNoticeError("");
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setNotices([]);
+          setNoticeError("公告暂时无法加载，请稍后重试。");
+        }
+      });
     return () => {
       active = false;
     };
@@ -496,6 +512,7 @@ export default function App() {
               user={user}
               counts={counts}
               notices={notices}
+              noticeError={noticeError}
               connected={connected}
               version={version}
               onNavigate={go}
@@ -717,8 +734,8 @@ export default function App() {
           {page === "notices" && (
             <Notices
               items={notices}
+              readError={noticeError}
               user={user}
-              connected={connected}
               onSaved={(msg) => {
                 notify(msg);
                 refresh();
@@ -730,14 +747,16 @@ export default function App() {
             (user.role === "enterprise" ||
               can(user, "bookings.review") ||
               can(user, "payments.manage")) && (
-              <Suspense fallback={<p>正在加载办理界面…</p>}>
-                <Casework
-                  key={user.id}
-                  user={user}
-                  notify={notify}
-                  initialId={caseTarget}
-                />
-              </Suspense>
+              <LazyPageBoundary key={user.id}>
+                <Suspense fallback={<p>正在加载办理界面…</p>}>
+                  <Casework
+                    key={user.id}
+                    user={user}
+                    notify={notify}
+                    initialId={caseTarget}
+                  />
+                </Suspense>
+              </LazyPageBoundary>
             )}
           {page === "account" && user && (
             <AccountPage

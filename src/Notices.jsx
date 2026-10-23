@@ -5,7 +5,7 @@ import { can } from "./permissions.js";
 import { Button, ErrorBox, Empty, Modal } from "./components.jsx";
 import { formatDate } from "./utils.js";
 
-export default function Notices({ items, user, onSaved, connected }) {
+export default function Notices({ items, user, onSaved, readError }) {
   const [modal, setModal] = useState(null),
     [publishing, setPublishing] = useState(false),
     [publishError, setPublishError] = useState(""),
@@ -125,12 +125,7 @@ export default function Notices({ items, user, onSaved, connected }) {
                 置顶此公告
               </label>
               <span className="muted">发布后立即在公告栏显示</span>
-              <Button
-                type="submit"
-                className="primary"
-                loading={publishing}
-                disabled={!connected}
-              >
+              <Button type="submit" className="primary" loading={publishing}>
                 <Plus size={18} />
                 发布公告
               </Button>
@@ -148,6 +143,7 @@ export default function Notices({ items, user, onSaved, connected }) {
             <p>场地使用说明、活动安排与服务通知。</p>
           </div>
         </div>
+        <ErrorBox>{readError}</ErrorBox>
         {items.map((n) => (
           <article className="notice-article" key={n.id}>
             <div className="notice-calendar">
@@ -196,14 +192,9 @@ export default function Notices({ items, user, onSaved, connected }) {
             )}
           </article>
         ))}
-        {!items.length && (
-          <Empty
-            icon={Megaphone}
-            title={connected ? "暂无已发布公告" : "公告服务未连接"}
-          >
-            {connected
-              ? "新的通知将在这里发布。"
-              : "公告暂时无法加载，请稍后重试。"}
+        {!items.length && !readError && (
+          <Empty icon={Megaphone} title="暂无已发布公告">
+            新的通知将在这里发布。
           </Empty>
         )}
       </section>

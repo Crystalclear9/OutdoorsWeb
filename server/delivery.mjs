@@ -157,14 +157,24 @@ export function createDelivery(db, maintenance, options = {}) {
           );
           settle(job, "accepted", `服务商受理编号 ${providerId}`, null, now());
         } catch (e) {
-          const uncertain = !e.status || /timeout|abort|fetch/i.test(String(e));
+          const uncertain =
+            e.deliveryUncertain ||
+            !e.status ||
+            /timeout|abort|fetch/i.test(String(e));
           settle(
             job,
-            uncertain ? "uncertain" : job.attempts >= 4 ? "failed" : "pending",
             uncertain
-              ? "网络结果不确定，需在服务商后台核实，系统未自动重复发送"
+              ? "uncertain"
+              : e.retryable === false || job.attempts >= 4
+                ? "failed"
+                : "pending",
+            uncertain
+              ? "服务商受理结果不确定，需在服务商后台核实，系统未自动重复发送"
               : e.message,
-            Date.now() + Math.min(3600000, 60000 * 2 ** job.attempts),
+            Math.max(
+              Date.now() + Math.min(3600000, 60000 * 2 ** job.attempts),
+              e.retryAt || 0,
+            ),
           );
         }
       }

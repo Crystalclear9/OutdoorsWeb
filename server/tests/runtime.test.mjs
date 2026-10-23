@@ -11,8 +11,9 @@ test("畸形请求地址返回400，服务进程继续提供健康检查", async
     import assert from 'node:assert/strict';
     import net from 'node:net';
     import {createApp} from ${JSON.stringify(new URL("../app.mjs", import.meta.url).href)};
+    import {listenHttp} from ${JSON.stringify(new URL("./http-listen.mjs", import.meta.url).href)};
     const app = await createApp({dbPath:':memory:',maintenance:{scheduled:false}});
-    await new Promise(r => app.server.listen(0,'127.0.0.1',r));
+    await listenHttp(app.server);
     try {
       const port = app.server.address().port;
       const response = await new Promise((resolve,reject) => {

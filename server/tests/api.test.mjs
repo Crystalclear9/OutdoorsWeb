@@ -4,6 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createApp } from "../app.mjs";
+import { listenHttp } from "./http-listen.mjs";
 
 const PASSWORD = "SecureAccount123!";
 const admin = { email: "admin@test.local", password: PASSWORD };
@@ -30,7 +31,7 @@ async function fixture(t, dbPath = ":memory:") {
     captchaTestAnswer: "246789",
     maintenance: { scheduled: false },
   });
-  await new Promise((r) => app.server.listen(0, "127.0.0.1", r));
+  await listenHttp(app.server);
   const origin = `http://127.0.0.1:${app.server.address().port}`;
   t.after(() => app.close());
   function client() {
@@ -503,7 +504,7 @@ test("账号和申请在进程重启后从数据库恢复", async (t) => {
     captchaTestAnswer: "246789",
     maintenance: { scheduled: false },
   });
-  await new Promise((r) => app.server.listen(0, "127.0.0.1", r));
+  await listenHttp(app.server);
   const origin = `http://127.0.0.1:${app.server.address().port}`;
   const challenge = await fetch(origin + "/api/auth/captcha");
   const value = await challenge.json();

@@ -217,6 +217,24 @@ export function openStore(filename) {
       db.exec(
         "ALTER TABLE sms_codes ADD COLUMN user_id TEXT REFERENCES users(id)",
       );
+    // Older senders incorrectly retried ambiguous provider responses. Quarantine
+    // those durable jobs before either the API or the scheduler can retry them.
+    // Human reconciliation replaces last_error, so its decisions are preserved.
+    const legacyUncertain = `state IN ('pending','failed') AND (
+      last_error GLOB '通信服务拒绝请求（HTTP 5[0-9][0-9]），*'
+      OR last_error GLOB '通信服务拒绝请求（HTTP 408），*'
+      OR last_error='通信服务未确认受理'
+    )`;
+    db.prepare(
+      `INSERT INTO audit(actor,action,target,created,details)
+       SELECT NULL,'delivery.legacy_uncertain',id,?,json_object('previousState',state,'reason',last_error)
+       FROM delivery_jobs WHERE ${legacyUncertain}`,
+    ).run(new Date().toISOString());
+    db.prepare(
+      `UPDATE delivery_jobs SET state='uncertain',version=version+1,
+       last_error='旧版本受理结果不确定，请先核实服务商记录；'||last_error
+       WHERE ${legacyUncertain}`,
+    ).run();
     db.exec("COMMIT");
   } catch (e) {
     db.exec("ROLLBACK");

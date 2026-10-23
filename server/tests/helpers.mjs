@@ -1,4 +1,5 @@
 import { createApp } from "../app.mjs";
+import { listenHttp } from "./http-listen.mjs";
 export const PASSWORD = "ConcurrentAccount123!";
 export const ADMIN = { email: "root@test.local", password: PASSWORD };
 export const TODAY = () =>
@@ -69,9 +70,9 @@ export async function fixture(t, dbPath = ":memory:", options = {}) {
     maintenance: { scheduled: false },
     ...options,
   });
-  await new Promise((r) => app.server.listen(0, "127.0.0.1", r));
-  const origin = `http://127.0.0.1:${app.server.address().port}`;
   t.after(() => app.close());
+  await listenHttp(app.server);
+  const origin = `http://127.0.0.1:${app.server.address().port}`;
   return { ...app, origin, client: () => client(origin) };
 }
 export async function register(c, email = "enterprise@test.local") {

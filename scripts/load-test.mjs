@@ -1,4 +1,5 @@
 import { createApp } from "../server/app.mjs";
+import { listenHttp } from "../server/tests/http-listen.mjs";
 import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
@@ -20,7 +21,7 @@ const app = await createApp({
   captchaTestAnswer: "246789",
   maintenance: { scheduled: false },
 });
-await new Promise((resolve) => app.server.listen(0, "127.0.0.1", resolve));
+await listenHttp(app.server);
 const origin = `http://127.0.0.1:${app.server.address().port}`;
 try {
   const root = client(origin),

@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import { test } from "node:test";
 import { readResponse } from "../../src/request.js";
+import { listenHttp } from "./http-listen.mjs";
 
 async function withServer(handler, run) {
   const server = http.createServer(handler);
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await listenHttp(server);
   try {
     await run(`http://127.0.0.1:${server.address().port}`);
   } finally {

@@ -1,5 +1,5 @@
 import { randomUUID, randomInt } from "node:crypto";
-import { body, fail, tx, now } from "./core.mjs";
+import { body, fail, tx, now, HttpError } from "./core.mjs";
 import { hashToken, randomToken, verifyPassword } from "./security.mjs";
 import { externalRegistration } from "./external-registration.mjs";
 import { integrationReadiness } from "./readiness.mjs";
@@ -31,6 +31,7 @@ export async function deliverPhone(kind, phone, message) {
     `https://api.twilio.com/2010-04-01/Accounts/${sid}/${kind === "voice" ? "Calls" : "Messages"}.json`,
     {
       method: "POST",
+      redirect: "error",
       signal: AbortSignal.timeout(10000),
       headers: {
         Authorization: `Basic ${Buffer.from(sid + ":" + process.env.TWILIO_AUTH_TOKEN).toString("base64")}`,
@@ -39,13 +40,37 @@ export async function deliverPhone(kind, phone, message) {
       body: new URLSearchParams(data),
     },
   );
-  fail(
-    !result.ok,
-    503,
-    `通信服务拒绝请求（HTTP ${result.status}），请管理员检查配置与发送区域`,
-  );
+  if (!result.ok) {
+    // Creating a call/message is not idempotent: a server error can arrive
+    // after acceptance. Only an explicit rate-limit refusal is safe to retry.
+    const error = new HttpError(
+      503,
+      `通信服务返回 HTTP ${result.status}，请管理员核对受理记录或配置`,
+    );
+    error.deliveryUncertain = result.status >= 500 || result.status === 408;
+    error.retryable = result.status === 429;
+    if (error.retryable) {
+      const value = result.headers.get("Retry-After") || "";
+      const retryAt = /^\d+$/.test(value)
+        ? Date.now() + Number(value) * 1000
+        : Date.parse(value);
+      if (Number.isSafeInteger(retryAt)) error.retryAt = retryAt;
+    }
+    await result.body?.cancel().catch(() => {});
+    throw error;
+  }
   const response = await result.json();
-  fail(!response.sid, 503, "通信服务未确认受理");
+  if (
+    typeof response?.sid !== "string" ||
+    !response.sid.trim() ||
+    response.sid.length > 128
+  )
+    throw Object.assign(
+      new HttpError(503, "通信服务未确认受理，请核实服务商记录"),
+      {
+        deliveryUncertain: true,
+      },
+    );
   return response.sid;
 }
 

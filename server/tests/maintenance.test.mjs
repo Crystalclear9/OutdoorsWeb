@@ -13,6 +13,7 @@ import { openStore } from "../store.mjs";
 import os from "node:os";
 import path from "node:path";
 import { createApp } from "../app.mjs";
+import { listenHttp } from "./http-listen.mjs";
 import { hashToken } from "../security.mjs";
 import {
   client,
@@ -258,7 +259,7 @@ test("后台备份可恢复账号与申请；清理临时数据不删除业务�
     await app.close();
     await rm(dir, { recursive: true, force: true });
   });
-  await new Promise((r) => app.server.listen(0, "127.0.0.1", r));
+  await listenHttp(app.server);
   const origin = `http://127.0.0.1:${app.server.address().port}`,
     c = client(origin),
     root = client(origin);

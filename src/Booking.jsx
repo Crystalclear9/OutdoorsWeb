@@ -73,15 +73,16 @@ export function BookingForm({ user, slot, date, onClose, onSaved }) {
   }
   async function submit(e) {
     e.preventDefault();
+    if (busy) return;
     setError("");
     if (imageLoading) return setError("设计图仍在读取，请稍后提交");
     if (!image) return setError("请上传桁架设计图");
+    const payload = {
+      ...Object.fromEntries(new FormData(e.currentTarget)),
+      image,
+    };
     setBusy(true);
     try {
-      const payload = {
-        ...Object.fromEntries(new FormData(e.currentTarget)),
-        image,
-      };
       const fingerprint = JSON.stringify(payload);
       if (request.current?.fingerprint !== fingerprint)
         request.current = {
@@ -119,6 +120,7 @@ export function BookingForm({ user, slot, date, onClose, onSaved }) {
               企业名称
               <input
                 name="company"
+                disabled={busy}
                 required
                 maxLength={80}
                 defaultValue={user.company}
@@ -129,6 +131,7 @@ export function BookingForm({ user, slot, date, onClose, onSaved }) {
                 联系人
                 <input
                   name="contact"
+                  disabled={busy}
                   required
                   maxLength={30}
                   defaultValue={user.contact}
@@ -138,6 +141,7 @@ export function BookingForm({ user, slot, date, onClose, onSaved }) {
                 联系电话
                 <input
                   name="phone"
+                  disabled={busy}
                   type="tel"
                   pattern="1[0-9]{10}"
                   maxLength={11}
@@ -154,6 +158,7 @@ export function BookingForm({ user, slot, date, onClose, onSaved }) {
                 开始日期
                 <input
                   name="start"
+                  disabled={busy}
                   required
                   type="date"
                   min={dateString()}
@@ -164,6 +169,7 @@ export function BookingForm({ user, slot, date, onClose, onSaved }) {
                 结束日期
                 <input
                   name="end"
+                  disabled={busy}
                   required
                   type="date"
                   min={dateString()}
@@ -176,7 +182,7 @@ export function BookingForm({ user, slot, date, onClose, onSaved }) {
             </p>
             <label>
               桁架位置
-              <select name="slot" defaultValue={slot}>
+              <select name="slot" defaultValue={slot} disabled={busy}>
                 {Array.from({ length: 29 }, (_, i) => (
                   <option key={i} value={i + 1}>
                     {slotName(i + 1)} · {zoneName(i + 1)}
@@ -225,7 +231,7 @@ export function BookingForm({ user, slot, date, onClose, onSaved }) {
           </div>
         </div>
         <label className="check-label">
-          <input type="checkbox" required />
+          <input type="checkbox" required disabled={busy} />
           我确认申报信息真实，并遵守校园场地管理要求。
         </label>
         <ErrorBox>{error}</ErrorBox>

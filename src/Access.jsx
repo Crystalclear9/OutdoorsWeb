@@ -93,7 +93,11 @@ export default function Access({ notify }) {
             <h2>管理员授权</h2>
             <p>按职责分配业务权限。授权变更后，该账号需重新登录。</p>
           </div>
-          <Button className="primary" onClick={() => open("create")}>
+          <Button
+            className="primary"
+            disabled={busy}
+            onClick={() => open("create")}
+          >
             <Plus size={18} />
             新增管理员
           </Button>
@@ -214,11 +218,22 @@ export default function Access({ notify }) {
                 <>
                   <label>
                     管理员姓名
-                    <input required name="contact" maxLength={30} />
+                    <input
+                      required
+                      name="contact"
+                      maxLength={30}
+                      disabled={busy}
+                    />
                   </label>
                   <label>
                     登录邮箱
-                    <input required type="email" name="email" maxLength={254} />
+                    <input
+                      required
+                      type="email"
+                      name="email"
+                      maxLength={254}
+                      disabled={busy}
+                    />
                   </label>
                 </>
               ) : (
@@ -226,7 +241,7 @@ export default function Access({ notify }) {
                   正在为 {modal.user.email} 分配权限。
                 </p>
               )}
-              <fieldset className="grant-options">
+              <fieldset className="grant-options" disabled={busy}>
                 <legend>业务权限</legend>
                 {PERMISSIONS.map((p) => (
                   <label key={p.key}>
@@ -253,6 +268,7 @@ export default function Access({ notify }) {
                 name="currentPassword"
                 minLength={1}
                 autoComplete="current-password"
+                disabled={busy}
               />
               <ErrorBox>{error}</ErrorBox>
               <div className="dialog-actions">

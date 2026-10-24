@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { api, apiUrl } from "./api.js";
 import CaptchaField, { useCaptcha } from "./Captcha.jsx";
 import { Button, ErrorBox, PasswordInput } from "./components.jsx";
@@ -44,7 +44,7 @@ function SmsForm({
             currentPassword: values.currentPassword,
           },
         });
-        onSuccess(result);
+        await onSuccess(result);
       }
     } catch (e) {
       setError(e.message);
@@ -65,6 +65,7 @@ function SmsForm({
           maxLength={11}
           required
           readOnly={!!sent}
+          disabled={busy || disabled}
           autoComplete="tel"
         />
       </label>
@@ -79,6 +80,7 @@ function SmsForm({
               maxLength={6}
               inputMode="numeric"
               autoComplete="one-time-code"
+              disabled={busy || disabled}
             />
           </label>
           {purpose === "link" && (
@@ -86,6 +88,7 @@ function SmsForm({
               name="currentPassword"
               label="当前账号密码"
               autoComplete="current-password"
+              disabled={busy || disabled}
             />
           )}
           <p className="field-note">短信已发送，5分钟内有效。</p>
@@ -179,16 +182,48 @@ export default function Identity({ notify }) {
   const [data, setData] = useState(null),
     [link, setLink] = useState(false),
     [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
-  const load = () =>
-    api("/auth/identities")
-      .then(setData)
-      .catch((e) => setError(e.message));
+    [busy, setBusy] = useState(false),
+    [loading, setLoading] = useState(true),
+    [readFailed, setReadFailed] = useState(false);
+  const mounted = useRef(true),
+    request = useRef(0);
+  async function load(saved = "") {
+    if (!mounted.current) return false;
+    const generation = ++request.current;
+    setLoading(true);
+    setError("");
+    try {
+      const latest = await api("/auth/identities");
+      if (!mounted.current || generation !== request.current) return false;
+      setData(latest);
+      setReadFailed(false);
+      return true;
+    } catch (e) {
+      if (mounted.current && generation === request.current) {
+        setData(null);
+        setReadFailed(true);
+        setError(
+          saved
+            ? `${saved}，但状态读取失败：${e.message}。请重新读取后核对。`
+            : e.message,
+        );
+      }
+      return false;
+    } finally {
+      if (mounted.current && generation === request.current) setLoading(false);
+    }
+  }
   useEffect(() => {
+    mounted.current = true;
     load();
+    return () => {
+      mounted.current = false;
+      request.current++;
+    };
   }, []);
   async function preferences(e) {
     e.preventDefault();
+    if (busy || loading || !data) return;
     setBusy(true);
     setError("");
     try {
@@ -196,23 +231,25 @@ export default function Identity({ notify }) {
         method: "POST",
         body: { sms: !!data.preferences.sms, voice: !!data.preferences.voice },
       });
-      notify("通知偏好已保存");
+      if (mounted.current) notify("通知偏好已保存");
     } catch (e) {
-      setError(e.message);
+      if (mounted.current) setError(e.message);
     } finally {
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   }
   async function unlink(provider) {
+    if (busy || loading || !data) return;
     setBusy(true);
+    setError("");
     try {
       await api(`/auth/oauth/${provider}/unlink`, { method: "POST" });
-      await load();
-      notify("已解除绑定");
+      await load("解除绑定已保存");
+      if (mounted.current) notify("已解除绑定");
     } catch (e) {
-      setError(e.message);
+      if (mounted.current) setError(e.message);
     } finally {
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   }
   return (
@@ -225,14 +262,28 @@ export default function Identity({ notify }) {
       </div>
       <div className="identity-content">
         <ErrorBox>{error}</ErrorBox>
-        {data && (
+        {readFailed && (
+          <Button
+            className="secondary"
+            disabled={busy || loading}
+            onClick={() => load()}
+          >
+            重新读取绑定与通知状态
+          </Button>
+        )}
+        {loading && <p className="field-note">正在读取绑定与通知状态…</p>}
+        {data && !loading && (
           <>
             <p>
               已验证手机号：<strong>{data.phone || "尚未绑定"}</strong>
             </p>
             {data.configured.sms ? (
               <>
-                <Button className="secondary" onClick={() => setLink(!link)}>
+                <Button
+                  className="secondary"
+                  disabled={busy}
+                  onClick={() => setLink(!link)}
+                >
                   {link
                     ? "收起绑定"
                     : data.phone
@@ -242,10 +293,13 @@ export default function Identity({ notify }) {
                 {link && (
                   <SmsForm
                     purpose="link"
-                    onSuccess={() => {
+                    disabled={busy}
+                    onBusyChange={setBusy}
+                    onSuccess={async () => {
+                      if (!mounted.current) return;
                       setLink(false);
-                      load();
-                      notify("手机号已验证并绑定");
+                      await load("手机号绑定已保存");
+                      if (mounted.current) notify("手机号已验证并绑定");
                     }}
                   />
                 )}
@@ -271,6 +325,9 @@ export default function Identity({ notify }) {
                     key={p}
                     className="button secondary"
                     href={apiUrl(`/auth/oauth/${p}/start?intent=link`)}
+                    aria-disabled={busy || undefined}
+                    tabIndex={busy ? -1 : undefined}
+                    onClick={(event) => busy && event.preventDefault()}
                   >
                     绑定 {label}
                   </a>
@@ -292,6 +349,7 @@ export default function Identity({ notify }) {
                     <input
                       type="checkbox"
                       checked={!!data.preferences[key]}
+                      disabled={busy}
                       onChange={(e) =>
                         setData((d) => ({
                           ...d,

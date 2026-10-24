@@ -8,6 +8,7 @@
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
 | 认证、验证码、MFA 与会话撤销               | `server/tests/api.test.mjs`、`session-rotation.test.mjs`、`challenge-concurrency.test.mjs`、`captcha-capacity.test.mjs` |
 | 跨来源、新挑战和多服务的 MFA 账号限流      | `server/tests/mfa-account-limit.test.mjs`                                                                               |
+| MFA 登记前撤销本人设备的 CSRF 与归属       | `server/tests/admin-mfa-sessions.test.mjs`                                                                              |
 | 企业归属、职责授权及写入时重新鉴权         | `server/tests/permissions.test.mjs`、`security-review.test.mjs`、`business-recheck.test.mjs`                            |
 | 同位竞争、版本冲突、幂等及跨午夜           | `server/tests/multiprocess.test.mjs`、`version-guard.test.mjs`、`commit-date.test.mjs`                                  |
 | 电话、财务及取消退款                       | `server/tests/casework.test.mjs`、`casework-audit.test.mjs`、`tests/casework.spec.js`                                   |
@@ -16,6 +17,8 @@
 | 通知页离开后迟到响应不打断当前办理         | `tests/notification-late-navigation.spec.js`、`tests/notification-target.spec.js`                                       |
 | 日志筛选、失败恢复与导出内容一致性         | `tests/audit-export-consistency.spec.js`                                                                                |
 | 账号回写代次、改密互斥及失败重试           | `tests/account-session-boundaries.spec.js`                                                                              |
+| 通知偏好保存一致性、绑定互斥及读取恢复     | `tests/identity-preference-saving.spec.js`，隔离通信适配器、实际注册与绑定及真实偏好写入                                |
+| 初次申请提交字段互斥、失败保留与真实重试   | `tests/booking-form-saving.spec.js`                                                                                     |
 | MFA 状态读取与账号同步失败恢复             | `tests/mfa-state-recovery.spec.js`，实际启用及一次性恢复码保留                                                          |
 | 首次验证码 Cookie 迟到与页面重开           | `tests/captcha-cookie-order.spec.js`，独立转发真实接口并实际登录                                                        |
 | 账号查询失败后暂停敏感操作及恢复目标核对   | `tests/account-query-recovery.spec.js`                                                                                  |

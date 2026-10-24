@@ -157,7 +157,11 @@ export function createSecurity(db, secure) {
           "/api/auth/password",
           "/api/auth/sessions",
           "/api/auth/logout-others",
-        ].includes(requestPath),
+        ].includes(requestPath) &&
+        !(
+          req.method === "DELETE" &&
+          /^\/api\/auth\/sessions\/[^/]+$/.test(requestPath)
+        ),
       403,
       "请先在账号设置中开启两步验证",
     );

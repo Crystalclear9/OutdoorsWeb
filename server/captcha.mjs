@@ -2,6 +2,15 @@ import { randomInt, randomBytes } from "node:crypto";
 import sharp from "sharp";
 import { fail, tx } from "./core.mjs";
 import { hashToken } from "./security.mjs";
+import { createWorkQueue } from "./work-queue.mjs";
+
+// Separate from uploaded image decoding and password work: anonymous captcha
+// requests must not enqueue unbounded native image jobs across source IPs.
+const renderWork = createWorkQueue({
+  concurrency: 2,
+  maxWaiting: 16,
+  message: "验证码生成繁忙，请稍后重试",
+});
 
 // Fixed vector outlines render consistently without depending on host fonts.
 // The browser receives only the rasterized PNG, never the answer or SVG paths.
@@ -15,7 +24,9 @@ const DIGITS = {
   8: "M10 13 C-3 10 0 0 10 0 C21 0 24 10 10 13 C-4 16 -1 28 10 28 C22 28 25 16 10 13",
   9: "M18 11 C14 18 1 16 1 8 C1 -1 15 -3 18 6 C22 17 16 31 4 26",
 };
-export async function captchaPng(code) {
+export const captchaPng = (code) => renderWork(() => renderCaptcha(code));
+
+async function renderCaptcha(code) {
   // Render at 2× display size so strokes remain smooth on high-density screens.
   const strokes = [...code]
     .map((digit, i) => {

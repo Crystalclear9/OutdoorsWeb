@@ -67,9 +67,9 @@ SQLite 适用于单主机或多个进程共享同一个本地数据库文件，�
 
 ## 字体与校名素材
 
-校园风格界面合自 `codex/campus-venue-redesign`（`86910b3`）。校名字样位于 `src/assets/hust-signature.png`；标题使用本地 `src/assets/fonts/CampusHeading-Medium.woff2`，授权保留在同目录 `OFL.txt`，并通过 `src/public/assets/CampusHeading-OFL.txt` 随构建发布。
+校园风格界面合自 `codex/campus-venue-redesign`，最新合并至 `cc9fb60`。校名字样位于 `src/assets/hust-signature.png`；当前正文、标题和表单统一使用自托管的 Campus Sans，来源为思源黑体 CN 2.005R，授权保存在 `src/assets/fonts/source-han/LICENSE.txt`。
 
-常规构建直接使用已提交的字体，不需要额外下载或 Python 依赖。需要重新生成标题子集时，安装 `fonttools` 与 `brotli`，将 LXGW WenKai Medium v1.530 原字体路径传给 `python scripts/prepare-heading-font.py <字体路径>`；修改后的字体使用 Campus Heading 名称，并保留原授权。
+常规构建直接使用已提交的字体，不需要额外下载或 Python 依赖。重建当前字体分包使用 `python scripts/prepare-ui-font.py <原字体路径>`，需要 `fonttools` 与 `brotli`；静态界面字符集中加载，其余字形按 `unicode-range` 按需获取。`src/fonts.css` 为生成文件，`src/typography.css` 统一排版。旧 Campus Heading 素材与生成脚本仍保留，已不作为当前标题字体。
 
 合并保留主分支的真实 API、业务逻辑和依赖，不接入重设计分支的身份预览功能。
 
@@ -81,7 +81,7 @@ SQLite 适用于单主机或多个进程共享同一个本地数据库文件，�
 | `api.mjs`、`business.mjs`                                    | 预约审批、账号管理、公告、现场登记、查询和操作记录 |
 | `casework.mjs`                                               | 工作日历、反馈时限、电话跟进与线下费用状态流转     |
 | `core.mjs`                                                   | 身份与权限检查、事务、参数校验、图片解码           |
-| `security.mjs`、`work-queue.mjs`                             | 密码散列、令牌摘要及受限密码任务队列               |
+| `security.mjs`、`work-queue.mjs`                             | 密码散列、令牌摘要及密码/验证码共用的队列实现（独立限额） |
 | `captcha.mjs`、`mfa.mjs`、`external-registration.mjs`        | 图片验证码、两步验证、首次快捷注册                 |
 | `integrations.mjs`、`delivery.mjs`、`readiness.mjs`          | 第三方登录、手机号验证、通知队列及配置诊断         |
 | `store.mjs`                                                  | 数据表、索引、约束与保留数据的增量迁移             |

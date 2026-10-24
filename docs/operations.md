@@ -38,6 +38,8 @@ docker compose run --rm app node server/admin.mjs
 
 在线一致性备份：
 
+手动备份不会覆盖已有目标。数据库发布失败时，仅清理文件标识仍属于本次发布的配套密钥，保留并发替换的文件；目标密钥已被移除时仍报告原发布错误。数据库和密钥已完整发布后，即使命令行输出失败也保留完整快照。异常退出后先检查目标文件和恢复能力，再决定重试路径，避免把命令退出码当作文件已被删除。
+
 ```powershell
 docker compose exec app node server/backup.mjs /app/data/backups/manual.sqlite
 docker compose cp app:/app/data/backups/manual.sqlite ./backup.sqlite

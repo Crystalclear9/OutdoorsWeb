@@ -29,7 +29,7 @@ for (const file of [destination, destination + ".mfa-key"]) {
 mkdirSync(path.dirname(destination), { recursive: true });
 const db = new DatabaseSync(source, { readOnly: true });
 const partial = destination + `.${randomUUID()}.part`;
-let publishedKey = false;
+let publishedKey = null;
 try {
   db.exec(`VACUUM INTO '${partial.replaceAll("'", "''")}'`);
   chmodSync(partial, 0o600);
@@ -42,13 +42,29 @@ try {
     verify.close();
   }
   writeFileSync(partial + ".mfa-key", key, { flag: "wx", mode: 0o600 });
+  const keyIdentity = lstatSync(partial + ".mfa-key");
   // Publish without overwriting targets created by another process during VACUUM.
   linkSync(partial + ".mfa-key", destination + ".mfa-key");
-  publishedKey = true;
+  publishedKey = keyIdentity;
   linkSync(partial, destination);
+  // A complete pair must survive later failures such as writing CLI output.
+  publishedKey = null;
   console.log(`一致性备份已保存：${destination}`);
 } catch (error) {
-  if (publishedKey) unlinkSync(destination + ".mfa-key");
+  if (publishedKey) {
+    try {
+      const current = lstatSync(destination + ".mfa-key");
+      if (current.dev === publishedKey.dev && current.ino === publishedKey.ino)
+        unlinkSync(destination + ".mfa-key");
+    } catch (cleanupError) {
+      if (cleanupError.code !== "ENOENT")
+        throw new AggregateError(
+          [error, cleanupError],
+          "备份发布失败且配套密钥清理失败",
+          { cause: error },
+        );
+    }
+  }
   throw error;
 } finally {
   db.close();

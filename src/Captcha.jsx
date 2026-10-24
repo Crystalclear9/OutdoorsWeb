@@ -2,6 +2,21 @@ import React, { useCallback, useEffect, useId, useRef, useState } from "react";
 import { ArrowClockwise } from "@phosphor-icons/react";
 import { api } from "./api.js";
 
+let captchaQueue = Promise.resolve();
+function readCaptcha(isCurrent) {
+  // Every reader shares the browser-binding cookie. Wait for an in-flight
+  // response to install its cookie before another hook issues a new challenge.
+  // JSON generation guards alone cannot undo a late Set-Cookie header.
+  const pending = captchaQueue.then(() =>
+    isCurrent() ? api("/auth/captcha", { cache: "no-store" }) : null,
+  );
+  captchaQueue = pending.then(
+    () => undefined,
+    () => undefined,
+  );
+  return pending;
+}
+
 export function useCaptcha() {
   const [challenge, setChallenge] = useState(null);
   const [code, setCode] = useState("");
@@ -19,7 +34,7 @@ export function useCaptcha() {
     setExpired(false);
     setLoaded(false);
     try {
-      const next = await api("/auth/captcha", { cache: "no-store" });
+      const next = await readCaptcha(() => request === sequence.current);
       // A late response must never replace the image for a newer request.
       if (request === sequence.current) setChallenge(next);
     } catch {

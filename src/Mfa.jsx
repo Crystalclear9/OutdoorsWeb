@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { api } from "./api.js";
 import { Button, ErrorBox, PasswordInput } from "./components.jsx";
 
@@ -7,31 +7,80 @@ export default function Mfa({ notify, onChanged }) {
     [setup, setSetup] = useState(null),
     [codes, setCodes] = useState(null),
     [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
-  const load = () =>
-    api("/auth/mfa")
-      .then(setStatus)
-      .catch((e) => setError(e.message));
+    [busy, setBusy] = useState(false),
+    [loading, setLoading] = useState(true);
+  const mounted = useRef(true),
+    request = useRef(0);
+  async function load() {
+    if (!mounted.current) return false;
+    const generation = ++request.current;
+    setLoading(true);
+    try {
+      const latest = await api("/auth/mfa");
+      if (!mounted.current || generation !== request.current) return false;
+      setStatus(latest);
+      if (latest.enabled) setSetup(null);
+      setError("");
+      return true;
+    } catch (e) {
+      if (mounted.current && generation === request.current) {
+        // A failed read cannot confirm that MFA is disabled, nor authorize an
+        // operation chosen from the status before a successful mutation.
+        setStatus(null);
+        setError(e.message);
+      }
+      return false;
+    } finally {
+      if (mounted.current && generation === request.current) setLoading(false);
+    }
+  }
   useEffect(() => {
+    mounted.current = true;
     load();
+    return () => {
+      mounted.current = false;
+      request.current++;
+    };
   }, []);
+  async function retry() {
+    if (busy || loading) return;
+    setBusy(true);
+    try {
+      // Read and synchronize only. Never repeat the enable/disable mutation or
+      // replace the one-time recovery codes after an uncertain follow-up read.
+      if (await load()) await onChanged?.();
+    } catch (e) {
+      if (mounted.current)
+        setError(`账号状态同步失败：${e.message}，请重新读取。`);
+    } finally {
+      if (mounted.current) setBusy(false);
+    }
+  }
   async function submit(e) {
     e.preventDefault();
+    if (busy || loading || !status) return;
     const values = Object.fromEntries(new FormData(e.currentTarget));
     setBusy(true);
     setError("");
+    let changed = false;
     try {
       const action = status.enabled ? "disable" : setup ? "enable" : "setup";
       const result = await api(`/auth/mfa/${action}`, {
         method: "POST",
         body: values,
       });
-      if (action === "setup") setSetup(result);
-      else {
-        setSetup(null);
-        setCodes(result.codes || null);
+      if (action === "setup") {
+        if (mounted.current) setSetup(result);
+      } else {
+        changed = true;
+        if (mounted.current) {
+          setSetup(null);
+          setCodes(result.codes || null);
+        }
         await load();
-        onChanged?.();
+        // The App guards this callback by authentication generation; it may
+        // still synchronize a completed mutation after this page was left.
+        await onChanged?.();
         notify(
           action === "enable"
             ? "两步验证已开启，其他设备已退出"
@@ -39,9 +88,14 @@ export default function Mfa({ notify, onChanged }) {
         );
       }
     } catch (e) {
-      setError(e.message);
+      if (mounted.current)
+        setError(
+          changed
+            ? `两步验证设置已保存，但账号状态同步失败：${e.message}，请重新读取后核对。`
+            : e.message,
+        );
     } finally {
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   }
   return (
@@ -52,10 +106,26 @@ export default function Mfa({ notify, onChanged }) {
           <p>使用身份验证器保护账号。管理员建议开启；恢复码只显示一次。</p>
         </div>
         <span className="subtle-tag">
-          {status?.enabled ? "已开启" : "未开启"}
+          {loading
+            ? "正在读取"
+            : !status
+              ? "状态待确认"
+              : status.enabled
+                ? "已开启"
+                : "未开启"}
         </span>
       </div>
       <ErrorBox>{error}</ErrorBox>
+      {error && (
+        <Button
+          className="secondary"
+          type="button"
+          disabled={busy || loading}
+          onClick={retry}
+        >
+          重新读取验证状态
+        </Button>
+      )}
       {codes && (
         <div className="recovery-codes">
           <strong>请立即保存恢复码</strong>
@@ -83,7 +153,7 @@ export default function Mfa({ notify, onChanged }) {
           </Button>
         </div>
       )}
-      {status && !codes && (
+      {status && !loading && !codes && (
         <form
           className="mfa-form"
           onSubmit={submit}
@@ -136,7 +206,12 @@ export default function Mfa({ notify, onChanged }) {
                 : "设置两步验证"}
           </Button>
           {setup && (
-            <Button className="secondary" onClick={() => setSetup(null)}>
+            <Button
+              className="secondary"
+              type="button"
+              disabled={busy}
+              onClick={() => setSetup(null)}
+            >
               取消设置
             </Button>
           )}

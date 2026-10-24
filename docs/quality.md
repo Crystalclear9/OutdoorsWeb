@@ -16,6 +16,8 @@
 | 通知页离开后迟到响应不打断当前办理         | `tests/notification-late-navigation.spec.js`、`tests/notification-target.spec.js`                                       |
 | 日志筛选、失败恢复与导出内容一致性         | `tests/audit-export-consistency.spec.js`                                                                                |
 | 账号回写代次、改密互斥及失败重试           | `tests/account-session-boundaries.spec.js`                                                                              |
+| MFA 状态读取与账号同步失败恢复             | `tests/mfa-state-recovery.spec.js`，实际启用及一次性恢复码保留                                                          |
+| 首次验证码 Cookie 迟到与页面重开           | `tests/captcha-cookie-order.spec.js`，独立转发真实接口并实际登录                                                        |
 | 账号查询失败后暂停敏感操作及恢复目标核对   | `tests/account-query-recovery.spec.js`                                                                                  |
 | 维护轮询先后顺序及慢网下的状态更新         | `tests/operations-poll-order.spec.js`                                                                                   |
 | 审批队列查询失败、操作门禁与草稿恢复       | `tests/review-query-consistency.spec.js`                                                                                |

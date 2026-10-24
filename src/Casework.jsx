@@ -30,7 +30,13 @@ const contactLabels = {
   reached: "已登记电话告知",
 };
 
-export function CasePanel({ id, user, notify = () => {} }) {
+export function CasePanel({
+  id,
+  user,
+  notify = () => {},
+  disabled = false,
+  onBusyChange,
+}) {
   const [record, setItem] = useState(null),
     [error, setError] = useState(""),
     [loading, setLoading] = useState(true),
@@ -38,6 +44,7 @@ export function CasePanel({ id, user, notify = () => {} }) {
     [busy, setBusy] = useState(false),
     [version, setVersion] = useState(0);
   const paymentInput = useRef(null);
+  useEffect(() => () => onBusyChange?.(false), [onBusyChange]);
   const item = record?.id === id ? record : null;
   const reviewer = can(user, "bookings.review"),
     finance = can(user, "payments.manage"),
@@ -67,8 +74,9 @@ export function CasePanel({ id, user, notify = () => {} }) {
     };
   }, [id, version]);
   async function act(kind, data) {
-    if (busy || loading || readError || !item) return;
+    if (disabled || busy || loading || readError || !item) return;
     setBusy(true);
+    onBusyChange?.(true);
     setError("");
     try {
       const v =
@@ -84,6 +92,7 @@ export function CasePanel({ id, user, notify = () => {} }) {
       setError(`${e.message}。请刷新办理记录后核对，勿重复确认收款。`);
     } finally {
       setBusy(false);
+      onBusyChange?.(false);
     }
   }
   function issue(e) {
@@ -111,7 +120,7 @@ export function CasePanel({ id, user, notify = () => {} }) {
         </div>
         <Button
           className="secondary small"
-          disabled={busy || loading}
+          disabled={disabled || busy || loading}
           onClick={() => setVersion((v) => v + 1)}
         >
           刷新办理记录
@@ -149,7 +158,7 @@ export function CasePanel({ id, user, notify = () => {} }) {
                     <strong>应缴 ¥{(fee.amount_fen / 100).toFixed(2)}</strong>
                     <Button
                       className="primary"
-                      disabled={busy}
+                      disabled={disabled || busy}
                       onClick={() => {
                         const records =
                           paymentInput.current?.closest("details");
@@ -172,7 +181,7 @@ export function CasePanel({ id, user, notify = () => {} }) {
       )}
       {item && (
         <fieldset
-          disabled={busy || loading || readError}
+          disabled={disabled || busy || loading || readError}
           style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}
         >
           <ContactContainer

@@ -259,6 +259,7 @@ export function BookingForm({ user, slot, date, onClose, onSaved }) {
 
 export function BookingDetail({ item: initial, user, onClose, onSaved }) {
   const [caseOpen, setCaseOpen] = useState(false);
+  const [caseBusy, setCaseBusy] = useState(false);
   const [rescheduling, setRescheduling] = useState(false);
   const [item, setItem] = useState(initial);
   const [cancelling, setCancelling] = useState(false),
@@ -269,6 +270,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
     [reason, setReason] = useState(""),
     [error, setError] = useState(""),
     [busy, setBusy] = useState("");
+  const blocked = !!busy || caseBusy;
   useEffect(() => {
     let active = true,
       url;
@@ -285,7 +287,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
     };
   }, [item.id]);
   async function action(type, status) {
-    if (busy) return;
+    if (blocked) return;
     setBusy(status || type);
     setError("");
     try {
@@ -320,7 +322,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
   }
   async function reschedule(e) {
     e.preventDefault();
-    if (busy) return;
+    if (blocked) return;
     setBusy("reschedule");
     setError("");
     try {
@@ -341,7 +343,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
       <Modal
         title="申请改期或更换位置"
         description={`原预约：${item.start} 至 ${item.end} · ${slotName(item.slot)}`}
-        onClose={() => !busy && setRescheduling(false)}
+        onClose={() => !blocked && setRescheduling(false)}
       >
         <form onSubmit={reschedule}>
           <div className="info-box">
@@ -357,7 +359,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
                 name="start"
                 min={dateString()}
                 defaultValue={item.start}
-                disabled={!!busy}
+                disabled={blocked}
                 required
               />
             </label>
@@ -368,14 +370,14 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
                 name="end"
                 min={dateString()}
                 defaultValue={item.end}
-                disabled={!!busy}
+                disabled={blocked}
                 required
               />
             </label>
           </div>
           <label>
             新桁架位置
-            <select name="slot" defaultValue={item.slot} disabled={!!busy}>
+            <select name="slot" defaultValue={item.slot} disabled={blocked}>
               {Array.from({ length: 29 }, (_, i) => (
                 <option key={i} value={i + 1}>
                   {slotName(i + 1)} · {zoneName(i + 1)}
@@ -387,7 +389,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
           <div className="dialog-actions">
             <Button
               className="secondary"
-              disabled={!!busy}
+              disabled={blocked}
               onClick={() => setRescheduling(false)}
             >
               返回详情
@@ -407,13 +409,18 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
           : "申请详情"
       }
       description={item.id}
-      onClose={() => !busy && onClose()}
+      onClose={() => !blocked && onClose()}
       wide
     >
       {user.role === "enterprise" && (
         <LazyPageBoundary key={item.id}>
           <Suspense fallback={<p>正在读取办理进度与下一步…</p>}>
-            <CasePanel id={item.id} user={user} />
+            <CasePanel
+              id={item.id}
+              user={user}
+              disabled={!!busy}
+              onBusyChange={setCaseBusy}
+            />
           </Suspense>
         </LazyPageBoundary>
       )}
@@ -498,7 +505,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
             rows={3}
             maxLength={500}
             value={reason}
-            disabled={!!busy}
+            disabled={blocked}
             onChange={(e) => setReason(e.target.value)}
             placeholder="请说明审核结果或需要企业修改的内容"
           />
@@ -509,11 +516,18 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
           className="case-details"
           onToggle={(e) => setCaseOpen(e.currentTarget.open)}
         >
-          <summary>查看办理时限、电话跟进与费用记录</summary>
+          <summary onClick={(e) => blocked && e.preventDefault()}>
+            查看办理时限、电话跟进与费用记录
+          </summary>
           {caseOpen && (
             <LazyPageBoundary key={item.id}>
               <Suspense fallback={<p>正在加载办理记录…</p>}>
-                <CasePanel id={item.id} user={user} />
+                <CasePanel
+                  id={item.id}
+                  user={user}
+                  disabled={!!busy}
+                  onBusyChange={setCaseBusy}
+                />
               </Suspense>
             </LazyPageBoundary>
           )}
@@ -533,7 +547,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
               aria-label="取消预约原因"
               maxLength={500}
               value={cancelReason}
-              disabled={!!busy}
+              disabled={blocked}
               onChange={(e) => setCancelReason(e.target.value)}
               rows={2}
             />
@@ -542,7 +556,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
             <input
               type="checkbox"
               checked={cancelConfirmed}
-              disabled={!!busy}
+              disabled={blocked}
               onChange={(e) => setCancelConfirmed(e.target.checked)}
             />
             确认取消并释放位置，待审的改期申请也将撤回。
@@ -556,7 +570,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
           !cancelling && (
             <Button
               className="secondary"
-              disabled={!!busy}
+              disabled={blocked}
               onClick={() => setRescheduling(true)}
             >
               申请改期 / 换位
@@ -570,7 +584,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
             <>
               <Button
                 className="secondary"
-                disabled={!!busy}
+                disabled={blocked}
                 onClick={() => setCancelling(false)}
               >
                 保留预约
@@ -578,7 +592,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
               <Button
                 className="danger-outline"
                 loading={busy === "cancel"}
-                disabled={!cancelConfirmed || !cancelReason.trim() || !!busy}
+                disabled={!cancelConfirmed || !cancelReason.trim() || blocked}
                 onClick={() => action("cancel")}
               >
                 确认取消预约
@@ -587,7 +601,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
           ) : (
             <Button
               className="danger-outline"
-              disabled={!!busy}
+              disabled={blocked}
               onClick={() => setCancelling(true)}
             >
               取消已通过预约
@@ -597,7 +611,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
           <>
             <Button
               className="danger-outline"
-              disabled={!!busy}
+              disabled={blocked}
               onClick={() => action("review", "未通过")}
             >
               未通过
@@ -605,7 +619,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
             <Button
               className="primary"
               loading={busy === "已通过"}
-              disabled={!!busy}
+              disabled={blocked}
               onClick={() => action("review", "已通过")}
             >
               审核通过
@@ -618,12 +632,13 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
               <Button
                 className="danger-outline"
                 loading={!!busy}
+                disabled={blocked}
                 onClick={() => action("withdraw")}
               >
                 撤回申请
               </Button>
             )}
-            <Button className="secondary" disabled={!!busy} onClick={onClose}>
+            <Button className="secondary" disabled={blocked} onClick={onClose}>
               关闭
             </Button>
           </>

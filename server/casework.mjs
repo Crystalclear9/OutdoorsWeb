@@ -180,7 +180,7 @@ export function caseworkRoutes(db, sec, send, notify) {
           );
         if (u.role === "enterprise" || can(present(u), "payments.manage"))
           tasks.push(
-            "((b.cancelled=0 AND b.status='已通过' AND (f.state IS NULL OR f.state IN ('due','submitted'))) OR (b.cancelled=1 AND f.state IN ('paid','reconcile')))",
+            "((b.cancelled=0 AND b.status='已通过' AND (f.state IS NULL OR f.state IN ('due','submitted','void'))) OR (b.cancelled=1 AND f.state IN ('paid','reconcile')))",
           );
         conditions.push("(" + tasks.join(" OR ") + ")");
       }

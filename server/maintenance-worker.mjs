@@ -29,10 +29,56 @@ const save = (key, value) =>
     )
     .run(key, JSON.stringify(value));
 let partial, partialKey, publishedKey;
+
+// Only names produced by the automatic backup writer (including legacy names
+// without a UUID) are eligible. Complete snapshots and unknown files stay put.
+const automaticPartial =
+  /^auto-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z(?:-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})?\.sqlite(?:\.[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.encrypted)?\.part(?:\.mfa-key)?$/;
+async function cleanupBackupParts(cutoff) {
+  const directory = path.resolve(config.backupDir);
+  let entries;
+  try {
+    entries = await readdir(directory, { withFileTypes: true });
+  } catch (error) {
+    if (error.code === "ENOENT") return 0;
+    throw error;
+  }
+  let removed = 0;
+  for (const entry of entries) {
+    if (!entry.isFile() || !automaticPartial.test(entry.name)) continue;
+    const file = path.resolve(directory, entry.name);
+    if (path.dirname(file) !== directory) continue;
+    try {
+      const original = await lstat(file);
+      if (!original.isFile() || original.mtimeMs >= cutoff) continue;
+      // Recheck both ownership and age immediately before removal. A replaced
+      // file, refreshed writer, directory or symlink must not be cleaned up.
+      const current = await lstat(file);
+      if (
+        !current.isFile() ||
+        current.dev !== original.dev ||
+        current.ino !== original.ino ||
+        current.size !== original.size ||
+        current.mtimeMs !== original.mtimeMs ||
+        current.mtimeMs >= cutoff
+      )
+        continue;
+      await unlink(file);
+      removed++;
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+  }
+  return removed;
+}
+
 try {
   const at = Date.now(),
     day = 86400000,
     removed = {};
+  // Reclaim interrupted snapshots even when backups are disabled/not due, and
+  // before checking whether there is enough space to create the next snapshot.
+  removed.staleBackupParts = await cleanupBackupParts(at - day);
   db.exec("BEGIN IMMEDIATE");
   try {
     removed.captchas = db
@@ -259,22 +305,6 @@ try {
           await unlink(target + ".mfa-key");
       }
     }
-    for (const entry of await readdir(config.backupDir, {
-      withFileTypes: true,
-    }))
-      if (
-        entry.isFile() &&
-        /^auto-\d{4}-.*\.sqlite(?:\.[a-f0-9-]+\.encrypted)?\.part(?:\.mfa-key)?$/.test(
-          entry.name,
-        )
-      ) {
-        const target = path.resolve(config.backupDir, entry.name);
-        if (
-          path.dirname(target) === path.resolve(config.backupDir) &&
-          (await stat(target)).mtimeMs < at - day
-        )
-          await unlink(target);
-      }
   }
   if (offsiteConfigured() && backup?.file) {
     const old = JSON.parse(

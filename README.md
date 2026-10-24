@@ -44,8 +44,8 @@ docker compose logs --tail=100 app
 | 接入短信、QQ/微信、S3 与告警   | [外部服务接入](docs/integrations.md)             |
 | 本地开发、测试与 Pages 发布    | [开发与测试](docs/development.md)                |
 | 查运行架构、扩展边界和目录职责 | [项目结构与架构](docs/architecture.md)           |
-| 对照原 PDF 与后续要求          | [需求核对与验收边界](docs/requirements-audit.md) |
-| 查多代理审计与修复范围         | [项目复核记录](docs/project-audit.md)            |
+| 对照业务功能与验收条件         | [功能对应与验收边界](docs/requirements-audit.md) |
+| 查验证范围及已知限制           | [质量说明](docs/quality.md)                      |
 | 组织发布、运营与维护交接       | [全流程验收清单](docs/release-checklist.md)      |
 | 查近期修正                     | [变更记录](CHANGELOG.md)                         |
 
@@ -60,4 +60,4 @@ docker compose logs --tail=100 app
 - SQLite 适用于单机，或多个进程共享同一个本地数据库文件。多台服务器需改用集中式数据库，不能靠复制数据卷保证全局互斥。
 - [GitHub Pages 入口](https://crystalclear9.github.io/OutdoorsWeb/)仅提供静态页面，无法独立运行账号和业务 API。完整功能使用 Docker 服务地址。
 
-数据库结构版本为 **7**。升级前先备份，回滚必须匹配数据库与程序版本。2026-10-24 手动备份发布复核后，本地 146 项后端与传输测试全部通过。67 项浏览器、构建、并发、Docker 和桌面/手机视觉在此前验证码保护版本 CI 已通过；本轮只修改手动备份 CLI，前端资源和基线未变。CI 另验证完整 Docker 镜像的启动、业务和重启持久化，具体结果以对应提交工作流为准，方法见[开发与测试](docs/development.md#验证)。核心业务已实现；用户已确认保留财务核定后通知企业的流程，不再将其列为待确认事项。真实电话送达、收费依据和外部服务仍待运营验收，见[完整需求结论](docs/requirements-audit.md#2026-10-22-全量需求验收结论)。
+数据库结构版本为 **7**。升级前备份数据库及匹配密钥，回滚须匹配程序与数据库版本。验证方法见[开发与测试](docs/development.md)，目标提交结果见 [CI](https://github.com/Crystalclear9/OutdoorsWeb/actions/workflows/verify.yml)。费用流程为审批通过后由财务核定金额或免缴并通知企业；真实收费、通信、外部接入及恢复能力按[验收清单](docs/release-checklist.md)确认。

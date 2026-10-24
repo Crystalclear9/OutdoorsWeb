@@ -20,7 +20,11 @@ const xml = (s) =>
   );
 export async function deliverPhone(kind, phone, message) {
   fail(!transportConfigured(), 503, "短信或电话服务尚未配置");
-  fail(!/^1\d{10}$/.test(phone), 400, "手机号无效");
+  fail(
+    typeof phone !== "string" || !/^1\d{10}$/.test(phone),
+    400,
+    "手机号无效",
+  );
   const sid = process.env.TWILIO_ACCOUNT_SID;
   fail(!/^AC[a-fA-F0-9]{32}$/.test(sid), 503, "通信服务账号配置无效");
   const data = { To: `+86${phone}`, From: process.env.TWILIO_FROM };
@@ -183,7 +187,9 @@ export function integrationRoutes(db, sec, send, captcha, mfa, options = {}) {
       const b = await body(req);
       captcha.verify(req, b);
       fail(
-        !/^1\d{10}$/.test(b.phone) || !["login", "link"].includes(b.purpose),
+        typeof b.phone !== "string" ||
+          !/^1\d{10}$/.test(b.phone) ||
+          !["login", "link"].includes(b.purpose),
         400,
         "手机号或验证用途无效",
       );

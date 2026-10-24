@@ -1,4 +1,4 @@
-import { createHmac } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import { tx, now, today } from "./core.mjs";
 import { deliverPhone } from "./integrations.mjs";
 
@@ -11,11 +11,19 @@ export async function alertExternal(db, event, detail, sender = fetch) {
   )
     throw new Error("告警地址必须使用HTTPS");
   const key = `alert:${event}`,
-    old = db
-      .prepare("SELECT value FROM maintenance_state WHERE key=?")
-      .get(key);
-  if (old && Date.now() - JSON.parse(old.value).at < 1800000)
-    return { throttled: true };
+    leaseKey = `alertLease:${event}`,
+    leaseId = randomUUID(),
+    state = (name) =>
+      JSON.parse(
+        db.prepare("SELECT value FROM maintenance_state WHERE key=?").get(name)
+          ?.value || "null",
+      ),
+    save = (name, value) =>
+      db
+        .prepare(
+          "INSERT INTO maintenance_state VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        )
+        .run(name, JSON.stringify(value));
   const payload = JSON.stringify({
       event,
       detail,
@@ -27,6 +35,28 @@ export async function alertExternal(db, event, detail, sender = fetch) {
           .update(payload)
           .digest("hex")
       : "";
+  // Claim before yielding to the network. All processes sharing this database
+  // observe one sender; expiry lets a crashed process relinquish its claim.
+  const claimed = tx(db, () => {
+    const at = Date.now(),
+      previous = state(key);
+    if (
+      (previous && at - previous.at < 1800000) ||
+      state(leaseKey)?.expires > at
+    )
+      return false;
+    save(leaseKey, { id: leaseId, expires: at + 60000 });
+    return true;
+  });
+  if (!claimed) return { throttled: true };
+  const settle = (result) =>
+    tx(db, () => {
+      // An expired sender must not overwrite or release a newer sender's claim.
+      if (state(leaseKey)?.id !== leaseId) return;
+      if (result.ok) save(key, { at: Date.now() });
+      save("externalAlert", { ...result, event, at: now() });
+      db.prepare("DELETE FROM maintenance_state WHERE key=?").run(leaseKey);
+    });
   try {
     const response = await sender(url, {
       method: "POST",
@@ -41,29 +71,17 @@ export async function alertExternal(db, event, detail, sender = fetch) {
       },
       body: payload,
     });
+    await response.body?.cancel().catch(() => {});
     if (!response.ok)
       throw new Error(`外部告警未受理（HTTP ${response.status}）`);
   } catch (e) {
-    db.prepare(
-      "INSERT INTO maintenance_state VALUES('externalAlert',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-    ).run(
-      JSON.stringify({
-        ok: false,
-        event,
-        at: now(),
-        error: e.status
-          ? e.message
-          : "外部告警未受理或网络不可用，请检查接收方",
-      }),
-    );
+    settle({
+      ok: false,
+      error: e.status ? e.message : "外部告警未受理或网络不可用，请检查接收方",
+    });
     throw e;
   }
-  db.prepare(
-    "INSERT INTO maintenance_state VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-  ).run(key, JSON.stringify({ at: Date.now() }));
-  db.prepare(
-    "INSERT INTO maintenance_state VALUES('externalAlert',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-  ).run(JSON.stringify({ ok: true, event, at: now() }));
+  settle({ ok: true });
   return { ok: true };
 }
 

@@ -67,28 +67,28 @@ SQLite 适用于单主机或多个进程共享同一个本地数据库文件，�
 
 ## 字体与校名素材
 
-校园风格界面合自 `codex/campus-venue-redesign`，最新合并至 `cc9fb60`。校名字样位于 `src/assets/hust-signature.png`；当前正文、标题和表单统一使用自托管的 Campus Sans，来源为思源黑体 CN 2.005R，授权保存在 `src/assets/fonts/source-han/LICENSE.txt`。
+校名字样位于 `src/assets/hust-signature.png`；正文、标题和表单统一使用自托管的 Campus Sans，来源为思源黑体 CN 2.005R，授权保存在 `src/assets/fonts/source-han/LICENSE.txt`。
 
 常规构建直接使用已提交的字体，不需要额外下载或 Python 依赖。重建当前字体分包使用 `python scripts/prepare-ui-font.py <原字体路径>`，需要 `fonttools` 与 `brotli`；静态界面字符集中加载，其余字形按 `unicode-range` 按需获取。`src/fonts.css` 为生成文件，`src/typography.css` 统一排版。旧 Campus Heading 素材与生成脚本仍保留，已不作为当前标题字体。
 
-合并保留主分支的真实 API、业务逻辑和依赖，不接入重设计分支的身份预览功能。
+界面身份由真实服务端会话及权限决定，不接受预览参数切换角色。
 
 ## 后端模块
 
-| 文件                                                         | 职责                                               |
-| ------------------------------------------------------------ | -------------------------------------------------- |
-| `index.mjs`、`app.mjs`                                       | 启动关闭、HTTP 边界、静态文件、来源校验和异常响应  |
-| `api.mjs`、`business.mjs`                                    | 预约审批、账号管理、公告、现场登记、查询和操作记录 |
-| `casework.mjs`                                               | 工作日历、反馈时限、电话跟进与线下费用状态流转     |
-| `core.mjs`                                                   | 身份与权限检查、事务、参数校验、图片解码           |
+| 文件                                                         | 职责                                                      |
+| ------------------------------------------------------------ | --------------------------------------------------------- |
+| `index.mjs`、`app.mjs`                                       | 启动关闭、HTTP 边界、静态文件、来源校验和异常响应         |
+| `api.mjs`、`business.mjs`                                    | 预约审批、账号管理、公告、现场登记、查询和操作记录        |
+| `casework.mjs`                                               | 工作日历、反馈时限、电话跟进与线下费用状态流转            |
+| `core.mjs`                                                   | 身份与权限检查、事务、参数校验、图片解码                  |
 | `security.mjs`、`work-queue.mjs`                             | 密码散列、令牌摘要及密码/验证码共用的队列实现（独立限额） |
-| `captcha.mjs`、`mfa.mjs`、`external-registration.mjs`        | 图片验证码、两步验证、首次快捷注册                 |
-| `integrations.mjs`、`delivery.mjs`、`readiness.mjs`          | 第三方登录、手机号验证、通知队列及配置诊断         |
-| `store.mjs`                                                  | 数据表、索引、约束与保留数据的增量迁移             |
-| `maintenance.mjs`、`maintenance-worker.mjs`                  | 维护调度、租约、健康检查、清理、归档和自动备份     |
-| `backup.mjs`、`backup-key.mjs`、`offsite.mjs`、`restore.mjs` | 一致性快照、加密异机备份和恢复                     |
-| `compact.mjs`、`compaction.mjs`                              | 离线空间回收及压缩前安全快照                       |
-| `admin.mjs`、`monitor.mjs`、`proxy.mjs`                      | 管理员恢复、独立监控和可信代理来源识别             |
+| `captcha.mjs`、`mfa.mjs`、`external-registration.mjs`        | 图片验证码、两步验证、首次快捷注册                        |
+| `integrations.mjs`、`delivery.mjs`、`readiness.mjs`          | 第三方登录、手机号验证、通知队列及配置诊断                |
+| `store.mjs`                                                  | 数据表、索引、约束与保留数据的增量迁移                    |
+| `maintenance.mjs`、`maintenance-worker.mjs`                  | 维护调度、租约、健康检查、清理、归档和自动备份            |
+| `backup.mjs`、`backup-key.mjs`、`offsite.mjs`、`restore.mjs` | 一致性快照、加密异机备份和恢复                            |
+| `compact.mjs`、`compaction.mjs`                              | 离线空间回收及压缩前安全快照                              |
+| `admin.mjs`、`monitor.mjs`、`proxy.mjs`                      | 管理员恢复、独立监控和可信代理来源识别                    |
 
 后端源文件保持现有入口路径，供 npm 脚本、Docker 和维护命令使用。数据库结构版本为 7，迁移不自动重置业务记录或已有密码。
 

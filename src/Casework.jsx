@@ -629,14 +629,21 @@ export default function Casework({ user, notify, initialId = "" }) {
     [selected, setSelected] = useState(null),
     [error, setError] = useState(""),
     [version, setVersion] = useState(0),
-    [loading, setLoading] = useState(true);
+    [loading, setLoading] = useState(true),
+    [caseBusy, setCaseBusy] = useState(false);
+  const appliedTarget = useRef("");
   useEffect(() => {
+    // An external target can arrive while a record is saving. Apply it after
+    // settlement, once, rather than unmounting the pending form or replaying it
+    // every time the busy state changes.
+    if (caseBusy || initialId === appliedTarget.current) return;
+    appliedTarget.current = initialId;
     if (!initialId) return;
     setPage(1);
     setScope("all");
     setQuery(initialId);
     setSelected(initialId);
-  }, [initialId]);
+  }, [initialId, caseBusy]);
   useEffect(() => {
     let active = true;
     setLoading(true);
@@ -680,6 +687,7 @@ export default function Casework({ user, notify, initialId = "" }) {
           </div>
           <Button
             className="secondary"
+            disabled={caseBusy}
             onClick={() => setVersion((v) => v + 1)}
           >
             刷新办理队列
@@ -690,6 +698,7 @@ export default function Casework({ user, notify, initialId = "" }) {
             办理范围
             <select
               value={scope}
+              disabled={caseBusy}
               onChange={(e) => {
                 setScope(e.target.value);
                 setPage(1);
@@ -703,6 +712,7 @@ export default function Casework({ user, notify, initialId = "" }) {
             搜索办理记录
             <input
               value={query}
+              disabled={caseBusy}
               onChange={(e) => {
                 setQuery(e.target.value);
                 setPage(1);
@@ -721,6 +731,7 @@ export default function Casework({ user, notify, initialId = "" }) {
                 type="button"
                 key={r.id}
                 className={`case-row ${selected === r.id ? "selected" : ""}`}
+                disabled={caseBusy}
                 onClick={() => setSelected(r.id)}
               >
                 <span>
@@ -751,15 +762,26 @@ export default function Casework({ user, notify, initialId = "" }) {
         ) : (
           <Empty title="暂无符合条件的办理事项" />
         )}
-        <Pagination
-          page={page}
-          pages={data.pages}
-          total={data.total}
-          onPage={setPage}
-        />
+        <fieldset
+          disabled={caseBusy}
+          style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}
+        >
+          <Pagination
+            page={page}
+            pages={data.pages}
+            total={data.total}
+            onPage={(next) => !caseBusy && setPage(next)}
+          />
+        </fieldset>
       </section>
       {selected && (
-        <CasePanel key={selected} id={selected} user={user} notify={refresh} />
+        <CasePanel
+          key={selected}
+          id={selected}
+          user={user}
+          notify={refresh}
+          onBusyChange={setCaseBusy}
+        />
       )}
       {user.isSuperAdmin && <Calendar notify={refresh} />}
     </>

@@ -21,7 +21,7 @@ import {
   lstat,
 } from "node:fs/promises";
 import { Readable, Transform } from "node:stream";
-import { pipeline } from "node:stream/promises";
+import { pipeline, finished } from "node:stream/promises";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { backupMfaKey, backupKeyFile, verifyMfaKey } from "./backup-key.mjs";
@@ -37,6 +37,14 @@ async function digest(stream) {
   const hash = createHash("sha256");
   for await (const part of stream) hash.update(part);
   return hash.digest("hex");
+}
+
+async function closeReadable(stream) {
+  // Async-generator test/adapter bodies have no native handle to destroy.
+  if (typeof stream?.destroy !== "function") return;
+  const closed = finished(stream, { cleanup: true }).catch(() => {});
+  stream.destroy();
+  await closed;
 }
 
 export async function encryptBackup(source, target, mfaKey) {
@@ -68,6 +76,7 @@ export async function encryptBackup(source, target, mfaKey) {
 
 export async function uploadOffsite(source, dbPath, clientOverride) {
   const target = source + `.${randomUUID()}.encrypted.part`;
+  let uploadBody, remoteBody;
   const disk = await statfs(path.dirname(source));
   if (
     Number(disk.bavail) * Number(disk.bsize) <
@@ -118,11 +127,12 @@ export async function uploadOffsite(source, dbPath, clientOverride) {
       });
     const Bucket = process.env.S3_BACKUP_BUCKET,
       Key = `${(process.env.S3_BACKUP_PREFIX || "outdoors/").replace(/\/?$/, "/")}${path.basename(source)}.enc`;
+    uploadBody = createReadStream(target);
     await client.send(
       new PutObjectCommand({
         Bucket,
         Key,
-        Body: createReadStream(target),
+        Body: uploadBody,
         ContentLength: size,
         ContentType: "application/octet-stream",
         Metadata: { sha256, format: "HUSTBK01" },
@@ -137,6 +147,7 @@ export async function uploadOffsite(source, dbPath, clientOverride) {
     const remote = await client.send(new GetObjectCommand({ Bucket, Key }), {
       abortSignal: AbortSignal.timeout(120000),
     });
+    remoteBody = remote.Body;
     if ((await digest(remote.Body)) !== sha256)
       throw new Error("异机备份下载校验失败");
     return {
@@ -147,6 +158,10 @@ export async function uploadOffsite(source, dbPath, clientOverride) {
       verified: true,
     };
   } finally {
+    // An early HTTP rejection/reset can leave the upload's piped file paused.
+    // Close handles before unlinking so failed sends release disk space too.
+    await closeReadable(uploadBody);
+    await closeReadable(remoteBody);
     await unlink(target).catch(() => {});
   }
 }

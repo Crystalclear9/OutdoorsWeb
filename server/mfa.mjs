@@ -175,6 +175,24 @@ export function createMfa(db, dbPath, sec, send, options = {}) {
               401,
               "验证已过期，请重新登录",
             );
+            const user = db
+                .prepare("SELECT password_hash,disabled FROM users WHERE id=?")
+                .get(proof.user_id),
+              config = get(proof.user_id);
+            fail(
+              !user ||
+                user.disabled ||
+                hashToken(user.password_hash) !==
+                  JSON.parse(proof.payload).password ||
+                !config?.enabled,
+              401,
+              "登录凭据已变化，请重新登录",
+            );
+            // Commit the account-wide attempt before checking the second factor.
+            // Wrong codes must not roll it back or gain a new budget via another
+            // source IP or freshly issued challenge. Invalid/revoked challenges
+            // cannot consume another account's budget.
+            sec.limit(`mfa-account:${proof.user_id}`, 10, 900000);
             db.prepare(
               "UPDATE auth_challenges SET attempts=attempts+1 WHERE id=?",
             ).run(id);
@@ -209,6 +227,9 @@ export function createMfa(db, dbPath, sec, send, options = {}) {
             "动态验证码或恢复码无效（验证码不可重复使用）",
           );
           db.prepare("DELETE FROM auth_challenges WHERE id=?").run(id);
+          db.prepare("DELETE FROM rate_limits WHERE key=?").run(
+            `mfa-account:${user.id}`,
+          );
           sec.audit(user.id, "account.mfa_login", user.id);
           return sec.start(req, res, user);
         });

@@ -4,21 +4,25 @@
 
 ## 验证范围
 
-| 范围                                 | 主要证据                                                                                                                |
-| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
-| 认证、验证码、MFA 与会话撤销         | `server/tests/api.test.mjs`、`session-rotation.test.mjs`、`challenge-concurrency.test.mjs`、`captcha-capacity.test.mjs` |
-| 企业归属、职责授权及写入时重新鉴权   | `server/tests/permissions.test.mjs`、`security-review.test.mjs`、`business-recheck.test.mjs`                            |
-| 同位竞争、版本冲突、幂等及跨午夜     | `server/tests/multiprocess.test.mjs`、`version-guard.test.mjs`、`commit-date.test.mjs`                                  |
-| 电话、财务及取消退款                 | `server/tests/casework.test.mjs`、`casework-audit.test.mjs`、`tests/casework.spec.js`                                   |
-| 作废费用重开待办及内嵌表单互斥       | `server/tests/casework-void-queue.test.mjs`、`tests/nested-case-saving.spec.js`                                         |
-| 通信结果不确定、旧任务升级与人工核实 | `server/tests/delivery-outcomes.test.mjs`、`delivery-upgrade.test.mjs`、`delivery-concurrency.test.mjs`                 |
-| 备份配对、恢复与发布竞争             | `server/tests/backup-key-pairing.test.mjs`、`backup-publication.test.mjs`、`restore-publication.test.mjs`               |
-| 健康、维护失败、关闭排空及容量限制   | `server/tests/ops-review.test.mjs`、`lifecycle.test.mjs`、`runtime.test.mjs`                                            |
-| 低空间临时文件回收与并发告警         | `server/tests/backup-temp-cleanup.test.mjs`、`alert-concurrency.test.mjs`                                               |
-| 短信输入类型和外发副作用边界         | `server/tests/sms-input.test.mjs`                                                                                       |
-| 慢网、迟到响应、保存互斥与失败恢复   | `tests/auth-navigation.spec.js`、`dialog-saving.spec.js`、`requirements.spec.js`、`public-data-isolation.spec.js`       |
-| 桌面与手机排版                       | `tests/visual/interface.visual.js`，Windows 与固定 Linux 浏览器分别比较基线                                             |
-| 容器运行与持久化                     | `scripts/docker-smoke.mjs`，替换容器后核验账号、申请、设计图及 MFA                                                      |
+| 范围                                  | 主要证据                                                                                                                |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| 认证、验证码、MFA 与会话撤销          | `server/tests/api.test.mjs`、`session-rotation.test.mjs`、`challenge-concurrency.test.mjs`、`captcha-capacity.test.mjs` |
+| 跨来源、新挑战和多服务的 MFA 账号限流 | `server/tests/mfa-account-limit.test.mjs`                                                                               |
+| 企业归属、职责授权及写入时重新鉴权    | `server/tests/permissions.test.mjs`、`security-review.test.mjs`、`business-recheck.test.mjs`                            |
+| 同位竞争、版本冲突、幂等及跨午夜      | `server/tests/multiprocess.test.mjs`、`version-guard.test.mjs`、`commit-date.test.mjs`                                  |
+| 电话、财务及取消退款                  | `server/tests/casework.test.mjs`、`casework-audit.test.mjs`、`tests/casework.spec.js`                                   |
+| 作废费用重开待办及内嵌表单互斥        | `server/tests/casework-void-queue.test.mjs`、`tests/nested-case-saving.spec.js`                                         |
+| 办理队列保存时的导航互斥              | `tests/casework-navigation-saving.spec.js`                                                                              |
+| 通知页离开后迟到响应不打断当前办理    | `tests/notification-late-navigation.spec.js`、`tests/notification-target.spec.js`                                       |
+| 通信结果不确定、旧任务升级与人工核实  | `server/tests/delivery-outcomes.test.mjs`、`delivery-upgrade.test.mjs`、`delivery-concurrency.test.mjs`                 |
+| 备份配对、恢复与发布竞争              | `server/tests/backup-key-pairing.test.mjs`、`backup-publication.test.mjs`、`restore-publication.test.mjs`               |
+| 异机上传拒绝、中断及文件流释放        | `server/tests/offsite-streams.test.mjs`，本地 HTTP 服务与真实 S3 客户端                                                 |
+| 健康、维护失败、关闭排空及容量限制    | `server/tests/ops-review.test.mjs`、`lifecycle.test.mjs`、`runtime.test.mjs`                                            |
+| 低空间临时文件回收与并发告警          | `server/tests/backup-temp-cleanup.test.mjs`、`alert-concurrency.test.mjs`                                               |
+| 短信输入类型和外发副作用边界          | `server/tests/sms-input.test.mjs`                                                                                       |
+| 慢网、迟到响应、保存互斥与失败恢复    | `tests/auth-navigation.spec.js`、`dialog-saving.spec.js`、`requirements.spec.js`、`public-data-isolation.spec.js`       |
+| 桌面与手机排版                        | `tests/visual/interface.visual.js`，Windows 与固定 Linux 浏览器分别比较基线                                             |
+| 容器运行与持久化                      | `scripts/docker-smoke.mjs`，替换容器后核验账号、申请、设计图及 MFA                                                      |
 
 测试入口、环境隔离与视觉基线操作见[开发与测试](development.md)。代码变更历史见 [Git 提交](https://github.com/Crystalclear9/OutdoorsWeb/commits/main/)及[变更记录](../CHANGELOG.md)。
 

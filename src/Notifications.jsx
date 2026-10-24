@@ -11,7 +11,8 @@ export default function Notifications({
   notify,
 }) {
   const request = useRef(0),
-    pageRef = useRef(1);
+    pageRef = useRef(1),
+    mounted = useRef(true);
   const [data, setData] = useState({ items: [], unread: 0, pages: 1 }),
     [page, setPage] = useState(1),
     [error, setError] = useState(""),
@@ -19,12 +20,19 @@ export default function Notifications({
     [detail, setDetail] = useState(null),
     [loading, setLoading] = useState(true);
   pageRef.current = page;
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   async function load() {
+    if (!mounted.current) return;
     const id = ++request.current;
     setLoading(true);
     try {
       const r = await api("/notifications?page=" + pageRef.current);
-      if (id !== request.current) return;
+      if (!mounted.current || id !== request.current) return;
       if (r.page > r.pages) {
         setPage(r.pages);
         return;
@@ -32,9 +40,9 @@ export default function Notifications({
       setData(r);
       setError("");
     } catch (e) {
-      if (id === request.current) setError(e.message);
+      if (mounted.current && id === request.current) setError(e.message);
     } finally {
-      if (id === request.current) setLoading(false);
+      if (mounted.current && id === request.current) setLoading(false);
     }
   }
   useEffect(() => {
@@ -44,28 +52,34 @@ export default function Notifications({
     };
   }, [page, version]);
   async function read(item) {
+    if (!mounted.current) return;
     setBusy(true);
     try {
       await api("/notifications/read", {
         method: "POST",
         body: item ? { id: item.id } : {},
       });
+      // Marking a message read may finish after its page was left. Preserve the
+      // server result, but never navigate or open details from that old page.
+      if (!mounted.current) return;
       await load();
+      if (!mounted.current) return;
       if (
         item &&
         ((can(user, "payments.manage") && !can(user, "bookings.review")) ||
           item.title === "超时待办提醒")
       )
         onNavigate("casework", item.target || "");
-      else if (item?.target)
-        setDetail(
-          (await api("/bookings/" + encodeURIComponent(item.target))).booking,
+      else if (item?.target) {
+        const result = await api(
+          "/bookings/" + encodeURIComponent(item.target),
         );
-      else if (item) onNavigate("records");
+        if (mounted.current) setDetail(result.booking);
+      } else if (item) onNavigate("records");
     } catch (e) {
-      setError(e.message);
+      if (mounted.current) setError(e.message);
     } finally {
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   }
   return (

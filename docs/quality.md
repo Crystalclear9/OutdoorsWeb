@@ -15,6 +15,9 @@
 | 办理队列保存时的导航互斥                   | `tests/casework-navigation-saving.spec.js`                                                                              |
 | 通知页离开后迟到响应不打断当前办理         | `tests/notification-late-navigation.spec.js`、`tests/notification-target.spec.js`                                       |
 | 日志筛选、失败恢复与导出内容一致性         | `tests/audit-export-consistency.spec.js`                                                                                |
+| 账号回写代次、改密互斥及失败重试           | `tests/account-session-boundaries.spec.js`                                                                              |
+| 账号查询失败后暂停敏感操作及恢复目标核对   | `tests/account-query-recovery.spec.js`                                                                                  |
+| 维护轮询先后顺序及慢网下的状态更新         | `tests/operations-poll-order.spec.js`                                                                                   |
 | 审批队列查询失败、操作门禁与草稿恢复       | `tests/review-query-consistency.spec.js`                                                                                |
 | 通信结果不确定、旧任务升级与人工核实       | `server/tests/delivery-outcomes.test.mjs`、`delivery-upgrade.test.mjs`、`delivery-concurrency.test.mjs`                 |
 | 备份配对、恢复与发布竞争                   | `server/tests/backup-key-pairing.test.mjs`、`backup-publication.test.mjs`、`restore-publication.test.mjs`               |

@@ -59,6 +59,7 @@ export default function App() {
   const [user, setUser] = useState(null),
     [sessionLoading, setSessionLoading] = useState(true),
     [logoutBusy, setLogoutBusy] = useState(false),
+    [passwordBusy, setPasswordBusy] = useState(false),
     [connected, setConnected] = useState(false),
     [serviceError, setServiceError] = useState(""),
     [auth, setAuth] = useState(null),
@@ -84,6 +85,41 @@ export default function App() {
   const venueReady = connected && !venueLoading && venue.date === venueDate;
   const sessionGeneration = useRef(0);
   const logoutPending = useRef(false);
+  const passwordPending = useRef(null);
+  const accountGeneration = sessionGeneration.current;
+  // Account requests may settle after logout and a new login, including a login
+  // to the same ID. Only the originating authentication generation may act.
+  const guardAccount =
+    (callback) =>
+    (...args) => {
+      if (
+        accountGeneration === sessionGeneration.current &&
+        !logoutPending.current
+      )
+        return callback(...args);
+    };
+  function updateAccountUser(next) {
+    // Multiple profile saves can outlive a page visit in the same login. Their
+    // responses must not roll the visible account back to an older DB version.
+    setUser((current) =>
+      current?.id === next?.id && next?.version < current?.version
+        ? current
+        : next,
+    );
+  }
+  function beginPasswordChange() {
+    if (passwordPending.current || logoutPending.current) return null;
+    const operation = Symbol("password-change");
+    passwordPending.current = operation;
+    setPasswordBusy(true);
+    // Navigation can unmount/remount AccountPage. The App owns the operation,
+    // and only its claimant may release it, including failure and late finally.
+    return () => {
+      if (passwordPending.current !== operation) return;
+      passwordPending.current = null;
+      setPasswordBusy(false);
+    };
+  }
   const refresh = () => setVersion((v) => v + 1);
   const notify = (message) => setToast(message);
   const changeZone = (value) => {
@@ -207,7 +243,7 @@ export default function App() {
     const fn = () => {
       // Logout revokes the server session before its response may arrive. Other
       // reads must not reopen login while that response can still clear cookies.
-      if (logoutPending.current) return;
+      if (logoutPending.current || passwordPending.current) return;
       sessionGeneration.current++;
       setSessionLoading(false);
       setUser(null);
@@ -225,7 +261,7 @@ export default function App() {
     return () => clearTimeout(t);
   }, [toast]);
   async function logout() {
-    if (logoutPending.current) return;
+    if (logoutPending.current || passwordPending.current) return;
     logoutPending.current = true;
     setLogoutBusy(true);
     sessionGeneration.current++;
@@ -427,8 +463,8 @@ export default function App() {
                 <button
                   className="logout-button"
                   aria-label="退出登录"
-                  disabled={logoutBusy}
-                  aria-busy={logoutBusy}
+                  disabled={logoutBusy || passwordBusy}
+                  aria-busy={logoutBusy || passwordBusy}
                   onClick={logout}
                 >
                   <SignOut size={18} />
@@ -438,7 +474,7 @@ export default function App() {
               <Button
                 className="primary small"
                 onClick={() => setAuth("login")}
-                disabled={sessionLoading}
+                disabled={sessionLoading || passwordBusy}
               >
                 登录 / 注册
                 <ArrowUpRight size={15} />
@@ -769,10 +805,12 @@ export default function App() {
             <AccountPage
               key={user.id}
               user={user}
-              onUser={setUser}
-              onLogout={logout}
+              onUser={guardAccount(updateAccountUser)}
+              onLogout={guardAccount(logout)}
               logoutBusy={logoutBusy}
-              notify={notify}
+              passwordBusy={passwordBusy}
+              beginPasswordChange={guardAccount(beginPasswordChange)}
+              notify={guardAccount(notify)}
             />
           )}
           {page === "users" && can(user, "accounts.manage") && (

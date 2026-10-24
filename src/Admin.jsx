@@ -22,20 +22,29 @@ export function UsersPage({ notify }) {
     [error, setError] = useState(""),
     [query, setQuery] = useState(""),
     [modal, setModal] = useState(null),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [resultKey, setResultKey] = useState("");
+  const criteriaKey = JSON.stringify([page, query]);
+  const ready = !loading && !error && resultKey === criteriaKey;
   const criteria = useRef({ page, query });
   criteria.current = { page, query };
   async function load() {
     const id = ++request.current;
     setLoading(true);
+    setError("");
     try {
       const current = criteria.current;
       const r = await api(
         `/users?page=${current.page}&q=${encodeURIComponent(current.query)}`,
       );
       if (id !== request.current) return;
+      if (current.page > r.pages) {
+        setPage(r.pages);
+        return;
+      }
       setUsers(r.items);
       setPagination(r);
+      setResultKey(JSON.stringify([current.page, current.query]));
       setError("");
     } catch (e) {
       if (id === request.current) setError(e.message);
@@ -82,6 +91,11 @@ export function UsersPage({ notify }) {
       setBusy(false);
     }
   }
+  function open(type, user) {
+    if (!ready || busy) return;
+    setError("");
+    setModal({ type, user });
+  }
   const filtered = users;
   return (
     <>
@@ -89,26 +103,43 @@ export function UsersPage({ notify }) {
         <div className="card-header">
           <div>
             <h2>
-              账号管理 <span className="count-badge">{pagination.total}</span>
+              账号管理{" "}
+              <span className="count-badge">
+                {ready ? pagination.total : "—"}
+              </span>
             </h2>
             <p>管理企业账号的访问权限及密码恢复。</p>
           </div>
-          <label className="search-input">
-            <MagnifyingGlass size={18} />
-            <input
-              aria-label="搜索账号"
-              placeholder="搜索企业名称或邮箱"
-              value={query}
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setPage(1);
-              }}
-            />
-          </label>
+          <div className="row-actions">
+            <label className="search-input">
+              <MagnifyingGlass size={18} />
+              <input
+                aria-label="搜索账号"
+                placeholder="搜索企业名称或邮箱"
+                value={query}
+                disabled={busy}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  setPage(1);
+                }}
+              />
+            </label>
+            <Button
+              className="secondary small"
+              disabled={loading || busy}
+              onClick={load}
+            >
+              刷新账号
+            </Button>
+          </div>
         </div>
         <ErrorBox>{error}</ErrorBox>
-        {loading ? (
-          <div className="loading-block">正在加载账号…</div>
+        {!ready ? (
+          <div className="loading-block">
+            {error
+              ? "账号读取失败，请刷新重试；未显示旧筛选结果。"
+              : "正在加载账号…"}
+          </div>
         ) : (
           <div className="table-scroll">
             <table>
@@ -152,19 +183,15 @@ export function UsersPage({ notify }) {
                         <div className="row-actions">
                           <button
                             className="text-button"
-                            onClick={() => {
-                              setError("");
-                              setModal({ type: "reset", user: u });
-                            }}
+                            disabled={busy || !ready}
+                            onClick={() => open("reset", u)}
                           >
                             重置密码
                           </button>
                           <button
                             className={`text-button ${!u.disabled ? "danger-text" : ""}`}
-                            onClick={() => {
-                              setError("");
-                              setModal({ type: "status", user: u });
-                            }}
+                            disabled={busy || !ready}
+                            onClick={() => open("status", u)}
                           >
                             {u.disabled ? "启用" : "停用"}
                           </button>
@@ -185,12 +212,17 @@ export function UsersPage({ notify }) {
           </div>
         )}
       </section>
-      <Pagination
-        page={page}
-        pages={pagination.pages}
-        total={pagination.total}
-        onPage={setPage}
-      />
+      <fieldset
+        disabled={!ready || busy}
+        style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}
+      >
+        <Pagination
+          page={page}
+          pages={pagination.pages}
+          total={pagination.total}
+          onPage={setPage}
+        />
+      </fieldset>
       {modal && (
         <Modal
           title={

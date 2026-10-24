@@ -1,33 +1,64 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { api } from "./api.js";
 import { Button, ErrorBox } from "./components.jsx";
 export default function Operations({ notify }) {
   const [data, setData] = useState(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
+  const request = useRef(0),
+    mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      request.current++;
+    };
+  }, []);
   async function load() {
+    if (!mounted.current) return;
+    const generation = ++request.current;
     try {
-      setData(await api("/operations"));
+      const latest = await api("/operations");
+      if (!mounted.current || generation !== request.current) return;
+      setData(latest);
       setError("");
     } catch (e) {
-      setError(e.message);
+      if (mounted.current && generation === request.current)
+        setError(e.message);
     }
   }
   useEffect(() => {
-    load();
-    const timer = setInterval(load, data?.running ? 1500 : 10000);
-    return () => clearInterval(timer);
+    let active = true,
+      timer;
+    async function poll() {
+      await load();
+      // Schedule from settlement, so slow reads cannot continuously supersede
+      // one another and leave the running state stuck forever.
+      if (active) timer = setTimeout(poll, data?.running ? 1500 : 10000);
+    }
+    poll();
+    return () => {
+      active = false;
+      clearTimeout(timer);
+      request.current++;
+    };
   }, [data?.running]);
   async function run() {
+    if (busy || !data || data.running) return;
+    // A poll started before this write cannot describe its result, even if it
+    // completes before the follow-up read begins.
+    request.current++;
     setBusy(true);
+    setError("");
     try {
       await api("/operations/run", { method: "POST" });
+      if (!mounted.current) return;
       notify("备份和清理已在后台启动");
       await load();
     } catch (e) {
-      setError(e.message);
+      if (mounted.current) setError(e.message);
     } finally {
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   }
   const format = (v) =>

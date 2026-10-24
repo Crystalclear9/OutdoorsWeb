@@ -480,11 +480,20 @@ export function AuthPage({
   );
 }
 
-export function AccountPage({ user, onUser, onLogout, logoutBusy, notify }) {
+export function AccountPage({
+  user,
+  onUser,
+  onLogout,
+  logoutBusy,
+  passwordBusy,
+  beginPasswordChange,
+  notify,
+}) {
   const [busy, setBusy] = useState(""),
     [error, setError] = useState("");
   async function save(e) {
     e.preventDefault();
+    if (busy || logoutBusy || passwordBusy) return;
     const b = Object.fromEntries(new FormData(e.currentTarget));
     setBusy("profile");
     setError("");
@@ -500,17 +509,24 @@ export function AccountPage({ user, onUser, onLogout, logoutBusy, notify }) {
   }
   async function password(e) {
     e.preventDefault();
+    if (busy || logoutBusy || passwordBusy) return;
     const b = Object.fromEntries(new FormData(e.currentTarget));
     setError("");
     if (b.newPassword !== b.confirm) return setError("两次输入的新密码不一致");
+    const finish = beginPasswordChange();
+    if (!finish) return;
     setBusy("password");
     try {
       await api("/auth/password", { method: "POST", body: b });
+      // The password response clears the old cookie. Finish it before opening
+      // a new authentication flow; a late Set-Cookie must not clear a new login.
+      finish();
       notify("密码已修改，请重新登录");
-      onLogout();
+      await onLogout();
     } catch (e) {
       setError(e.message);
     } finally {
+      finish();
       setBusy("");
     }
   }
@@ -535,6 +551,7 @@ export function AccountPage({ user, onUser, onLogout, logoutBusy, notify }) {
           className="secondary full"
           onClick={onLogout}
           loading={logoutBusy}
+          disabled={passwordBusy}
         >
           安全退出登录
         </Button>
@@ -606,7 +623,11 @@ export function AccountPage({ user, onUser, onLogout, logoutBusy, notify }) {
                 <input value={user.email} disabled readOnly />
               </label>
               <div className="form-actions">
-                <Button className="primary" loading={busy === "profile"}>
+                <Button
+                  className="primary"
+                  loading={busy === "profile"}
+                  disabled={!!busy || logoutBusy || passwordBusy}
+                >
                   保存资料
                 </Button>
               </div>
@@ -637,7 +658,11 @@ export function AccountPage({ user, onUser, onLogout, logoutBusy, notify }) {
               <PasswordInput label="确认新密码" name="confirm" />
             </div>
             <div className="form-actions">
-              <Button className="primary" loading={busy === "password"}>
+              <Button
+                className="primary"
+                loading={busy === "password"}
+                disabled={!!busy || logoutBusy || passwordBusy}
+              >
                 更新密码
               </Button>
             </div>

@@ -54,18 +54,23 @@ export default function ReviewDesk({ user, notify, onChange, history }) {
     [order, setOrder] = useState("oldest");
   const [data, setData] = useState({ items: [], total: 0, pages: 1 }),
     [loading, setLoading] = useState(true),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [resultKey, setResultKey] = useState("");
   const [focused, setFocused] = useState(""),
     [selected, setSelected] = useState([]),
     [revision, setRevision] = useState(0),
     [batch, setBatch] = useState(null),
     [report, setReport] = useState(null),
     [busy, setBusy] = useState(false);
+  const criteriaKey = JSON.stringify([query, page, order]);
+  const snapshotVisible = resultKey === criteriaKey && !error;
+  const ready = snapshotVisible && !loading;
   const refresh = () => setRevision((v) => v + 1);
   useEffect(() => {
     if (mode !== "pending") return;
     let active = true;
     setLoading(true);
+    setError("");
     const timer = setTimeout(() => {
       api(
         `/bookings?status=${encodeURIComponent("待审核")}&q=${encodeURIComponent(query)}&page=${page}&order=${order}`,
@@ -77,12 +82,17 @@ export default function ReviewDesk({ user, notify, onChange, history }) {
             return;
           }
           setData(r);
+          setResultKey(criteriaKey);
           setError("");
           setFocused((id) =>
             r.items.some((b) => b.id === id) ? id : r.items[0]?.id || "",
           );
         })
-        .catch((e) => active && setError(e.message))
+        .catch((e) => {
+          if (!active) return;
+          setError(e.message);
+          setResultKey("");
+        })
         .finally(() => active && setLoading(false));
     }, 180);
     return () => {
@@ -138,7 +148,7 @@ export default function ReviewDesk({ user, notify, onChange, history }) {
             <ClipboardText size={27} />
             <div>
               <h2>
-                待办审批台 <strong>{data.total}</strong>
+                待办审批台 <strong>{snapshotVisible ? data.total : "—"}</strong>
               </h2>
               <p>
                 左侧选申请，右侧核对材料；确认后自动切换下一条。批量处理仅作用于勾选的记录。
@@ -206,14 +216,20 @@ export default function ReviewDesk({ user, notify, onChange, history }) {
                         selected.some((s) => s.id === b.id),
                       )
                     }
-                    disabled={loading || busy}
+                    disabled={!ready || busy}
                     onChange={(e) =>
                       setSelected(e.target.checked ? data.items : [])
                     }
                   />
                   本页全选
                 </label>
-                <span>{loading ? "正在同步…" : `共 ${data.total} 条`}</span>
+                <span>
+                  {loading
+                    ? "正在同步…"
+                    : ready
+                      ? `共 ${data.total} 条`
+                      : "请重新读取队列"}
+                </span>
               </div>
               <div className="review-queue-items">
                 <table>
@@ -228,7 +244,7 @@ export default function ReviewDesk({ user, notify, onChange, history }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {data.items.map((b) => (
+                    {(snapshotVisible ? data.items : []).map((b) => (
                       <tr
                         key={b.id}
                         className={focused === b.id ? "is-active" : ""}
@@ -237,7 +253,7 @@ export default function ReviewDesk({ user, notify, onChange, history }) {
                           <input
                             type="checkbox"
                             aria-label={`选择 ${b.company} ${b.id}`}
-                            disabled={loading || busy}
+                            disabled={!ready || busy}
                             checked={selected.some((s) => s.id === b.id)}
                             onChange={(e) =>
                               setSelected((rows) =>
@@ -253,7 +269,7 @@ export default function ReviewDesk({ user, notify, onChange, history }) {
                             className="review-queue-item"
                             aria-label={`审核申请 ${b.company}`}
                             aria-pressed={focused === b.id}
-                            disabled={busy || loading}
+                            disabled={busy || !ready}
                             onClick={() => setFocused(b.id)}
                           >
                             <strong>{b.company}</strong>
@@ -283,7 +299,7 @@ export default function ReviewDesk({ user, notify, onChange, history }) {
                     ))}
                   </tbody>
                 </table>
-                {!data.items.length && !loading && (
+                {!data.items.length && ready && (
                   <Empty icon={CheckCircle} title="暂无待办申请">
                     新的申请会进入此队列，可调整搜索或查看历史。
                   </Empty>
@@ -293,7 +309,7 @@ export default function ReviewDesk({ user, notify, onChange, history }) {
                 <span>已选 {selected.length} 条</span>
                 <Button
                   className="secondary small"
-                  disabled={!selected.length || loading || busy}
+                  disabled={!selected.length || !ready || busy}
                   onClick={() =>
                     setBatch({ rows: [...selected], status: "未通过" })
                   }
@@ -302,7 +318,7 @@ export default function ReviewDesk({ user, notify, onChange, history }) {
                 </Button>
                 <Button
                   className="primary small"
-                  disabled={!selected.length || loading || busy}
+                  disabled={!selected.length || !ready || busy}
                   onClick={() =>
                     setBatch({ rows: [...selected], status: "已通过" })
                   }
@@ -312,13 +328,15 @@ export default function ReviewDesk({ user, notify, onChange, history }) {
               </div>
               <div className="pagination">
                 <span>
-                  {page} / {data.pages} 页
+                  {snapshotVisible
+                    ? `${page} / ${data.pages} 页`
+                    : "等待队列同步"}
                 </span>
                 <div>
                   <Button
                     className="secondary small"
                     aria-label="上一页待办"
-                    disabled={page <= 1 || busy || loading}
+                    disabled={page <= 1 || busy || !ready}
                     onClick={() => {
                       setSelected([]);
                       setPage((p) => p - 1);
@@ -329,7 +347,7 @@ export default function ReviewDesk({ user, notify, onChange, history }) {
                   <Button
                     className="secondary small"
                     aria-label="下一页待办"
-                    disabled={page >= data.pages || busy || loading}
+                    disabled={page >= data.pages || busy || !ready}
                     onClick={() => {
                       setSelected([]);
                       setPage((p) => p + 1);
@@ -340,12 +358,13 @@ export default function ReviewDesk({ user, notify, onChange, history }) {
                 </div>
               </div>
             </section>
-            {active ? (
+            {active && (
               <ReviewDetail
                 key={active.id}
                 item={active}
                 user={user}
-                disabled={loading || busy}
+                disabled={!ready || busy}
+                hidden={!snapshotVisible}
                 setBusy={setBusy}
                 onProcessed={processed}
                 onRefresh={(message) => {
@@ -357,12 +376,21 @@ export default function ReviewDesk({ user, notify, onChange, history }) {
                 hasPrevious={index > 0}
                 hasNext={index < data.items.length - 1}
               />
-            ) : (
+            )}
+            {(!active || !snapshotVisible) && (
               <section className="card review-detail">
                 <Empty
-                  title={loading ? "正在加载审批队列" : "当前没有待审材料"}
+                  title={
+                    error
+                      ? "审批队列读取失败"
+                      : !ready
+                        ? "正在加载审批队列"
+                        : "当前没有待审材料"
+                  }
                 >
-                  选择申请后，这里将展示设计图、冲突检查和审批操作。
+                  {error
+                    ? "旧查询结果已暂停使用，请点击刷新重新核对后再审批。"
+                    : "选择申请后，这里将展示设计图、冲突检查和审批操作。"}
                 </Empty>
               </section>
             )}
@@ -397,6 +425,7 @@ function ReviewDetail({
   item,
   user,
   disabled,
+  hidden,
   setBusy,
   onProcessed,
   onRefresh,
@@ -426,6 +455,7 @@ function ReviewDetail({
     };
   }, [item.id]);
   async function decide(status) {
+    if (disabled || saving) return;
     if (status === "未通过" && !reason.trim()) {
       setError("请填写退回原因，或选择下方快捷意见");
       return;
@@ -453,7 +483,12 @@ function ReviewDetail({
     }
   }
   return (
-    <section className="card review-detail" aria-label="申请审阅区">
+    <section
+      className="card review-detail"
+      aria-label="申请审阅区"
+      hidden={hidden}
+      style={hidden ? { display: "none" } : undefined}
+    >
       <div
         className="review-material"
         tabIndex={0}

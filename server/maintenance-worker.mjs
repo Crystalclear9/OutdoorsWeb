@@ -18,6 +18,7 @@ import { overdueCases } from "./casework.mjs";
 import { offsiteConfigured, uploadOffsite } from "./offsite.mjs";
 import { alertExternal } from "./delivery.mjs";
 import { backupMfaKey, backupKeyFile, verifyMfaKey } from "./backup-key.mjs";
+import { assertSqliteTargetAvailable } from "./sqlite-target.mjs";
 
 const config = JSON.parse(process.argv[2]),
   db = new DatabaseSync(config.dbPath);
@@ -202,6 +203,7 @@ try {
       target = path.resolve(config.backupDir, file);
     if (path.dirname(target) !== path.resolve(config.backupDir))
       throw new Error("备份目录无效");
+    assertSqliteTargetAvailable(target, "备份");
     const mfaKey = backupMfaKey(config.dbPath);
     partial = target + ".part";
     db.exec(`VACUUM INTO '${partial.replaceAll("'", "''")}'`);
@@ -221,6 +223,7 @@ try {
     const keyIdentity = await lstat(partialKey);
     await link(partialKey, target + ".mfa-key");
     publishedKey = { file: target + ".mfa-key", identity: keyIdentity };
+    assertSqliteTargetAvailable(target, "备份");
     await link(partial, target);
     // A complete pair is useful even if a later status/rotation write fails.
     publishedKey = null;

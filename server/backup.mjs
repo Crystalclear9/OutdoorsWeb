@@ -10,6 +10,7 @@ import {
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { backupMfaKey, verifyMfaKey } from "./backup-key.mjs";
+import { assertSqliteTargetAvailable } from "./sqlite-target.mjs";
 
 const source = path.resolve(process.env.DB_PATH || "data/app.sqlite");
 const destination = path.resolve(
@@ -18,6 +19,7 @@ const destination = path.resolve(
 );
 if (source === destination) throw new Error("备份目标不能与数据库源文件相同");
 const key = backupMfaKey(source);
+assertSqliteTargetAvailable(destination, "备份");
 for (const file of [destination, destination + ".mfa-key"]) {
   try {
     lstatSync(file);
@@ -46,6 +48,7 @@ try {
   // Publish without overwriting targets created by another process during VACUUM.
   linkSync(partial + ".mfa-key", destination + ".mfa-key");
   publishedKey = keyIdentity;
+  assertSqliteTargetAvailable(destination, "备份");
   linkSync(partial, destination);
   // A complete pair must survive later failures such as writing CLI output.
   publishedKey = null;

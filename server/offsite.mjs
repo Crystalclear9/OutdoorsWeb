@@ -25,6 +25,7 @@ import { pipeline, finished } from "node:stream/promises";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { backupMfaKey, backupKeyFile, verifyMfaKey } from "./backup-key.mjs";
+import { assertSqliteTargetAvailable } from "./sqlite-target.mjs";
 
 const MAGIC = Buffer.from("HUSTBK01");
 function encryptionKey() {
@@ -167,12 +168,9 @@ export async function uploadOffsite(source, dbPath, clientOverride) {
 }
 
 export async function restoreEncrypted(source, target) {
-  try {
-    await lstat(target);
-    throw new Error("恢复目标已存在，请选择新的数据库路径");
-  } catch (e) {
-    if (e.code !== "ENOENT") throw e;
-  }
+  // A missing main file is not an empty SQLite target: an old WAL can replay
+  // successfully against the restored file and silently replace snapshot data.
+  assertSqliteTargetAvailable(target, "恢复");
   const key = encryptionKey(),
     size = (await stat(source)).size;
   if (size < 68) throw new Error("加密备份格式无效");
@@ -228,6 +226,9 @@ export async function restoreEncrypted(source, target) {
       await link(partialKey, keyPath);
       publishedKey = { file: keyPath, identity };
     }
+    // Decryption/key publication can take time. Reject sidecars that appeared
+    // meanwhile, preserving them for the operator rather than deleting them.
+    assertSqliteTargetAvailable(target, "恢复");
     await link(partial, target);
     publishedKey = null;
     return { target, mfaKeyRestored: true };

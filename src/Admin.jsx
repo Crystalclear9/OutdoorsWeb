@@ -492,25 +492,44 @@ export function AuditPage() {
     [to, setTo] = useState(""),
     [pagination, setPagination] = useState({ pages: 1, total: 0 });
   const [items, setItems] = useState([]),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [loading, setLoading] = useState(true),
+    [revision, setRevision] = useState(0),
+    [resultKey, setResultKey] = useState("");
+  const rangeError = from && to && from > to ? "日志日期范围无效" : "";
+  const criteriaKey = JSON.stringify([page, query, from, to, revision]);
+  const ready = !loading && !error && !rangeError && resultKey === criteriaKey;
   useEffect(() => {
     let active = true;
+    if (rangeError) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError("");
     api(
       `/audit?page=${page}&q=${encodeURIComponent(query)}&from=${from}&to=${to}`,
     )
       .then((r) => {
         if (active) {
+          if (page > r.pages) {
+            setPage(r.pages);
+            return;
+          }
           setItems(r.items);
           setPagination(r);
+          setResultKey(criteriaKey);
           setError("");
         }
       })
-      .catch((e) => setError(e.message));
+      .catch((e) => active && setError(e.message))
+      .finally(() => active && setLoading(false));
     return () => {
       active = false;
     };
-  }, [page, query, from, to]);
+  }, [page, query, from, to, revision, rangeError]);
   function download() {
+    if (!ready || !items.length) return;
     const cell = (v) =>
       '"' +
       String(v ?? "")
@@ -547,13 +566,22 @@ export function AuditPage() {
           <h2>操作日志</h2>
           <p>按日期、操作代码、邮箱或关联编号查询历史记录。</p>
         </div>
-        <Button
-          className="secondary small"
-          disabled={!items.length}
-          onClick={download}
-        >
-          导出本页
-        </Button>
+        <div className="row-actions">
+          <Button
+            className="secondary small"
+            disabled={loading || !!rangeError}
+            onClick={() => setRevision((value) => value + 1)}
+          >
+            刷新日志
+          </Button>
+          <Button
+            className="secondary small"
+            disabled={!ready || !items.length}
+            onClick={download}
+          >
+            导出本页
+          </Button>
+        </div>
       </div>
       <div className="audit-filters">
         <input
@@ -590,7 +618,7 @@ export function AuditPage() {
           />
         </label>
       </div>
-      <ErrorBox>{error}</ErrorBox>
+      <ErrorBox>{rangeError || error}</ErrorBox>
       <div className="table-scroll">
         <table>
           <thead>
@@ -602,7 +630,7 @@ export function AuditPage() {
             </tr>
           </thead>
           <tbody>
-            {items.map((a) => (
+            {(ready ? items : []).map((a) => (
               <tr key={a.id}>
                 <td>{a.email || "系统"}</td>
                 <td>
@@ -642,16 +670,27 @@ export function AuditPage() {
             ))}
           </tbody>
         </table>
-        {!items.length && !error && (
+        {ready && !items.length && (
           <Empty icon={ClipboardText} title="暂无操作日志" />
         )}
+        {!ready && (
+          <p className="loading-block">
+            {rangeError
+              ? "请调整日期范围后查询，未显示旧筛选结果。"
+              : error
+                ? "未能读取最新日志，请刷新重试；未显示旧筛选结果。"
+                : "正在读取操作日志…"}
+          </p>
+        )}
       </div>
-      <Pagination
-        page={page}
-        pages={pagination.pages}
-        total={pagination.total}
-        onPage={setPage}
-      />
+      <fieldset disabled={!ready} style={{ border: 0, margin: 0, padding: 0 }}>
+        <Pagination
+          page={page}
+          pages={pagination.pages}
+          total={pagination.total}
+          onPage={setPage}
+        />
+      </fieldset>
     </section>
   );
 }

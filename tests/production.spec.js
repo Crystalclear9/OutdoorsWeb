@@ -44,6 +44,30 @@ test.afterAll(async () => {
   await new Promise((resolve) => server.close(resolve));
 });
 
+test("正常完整服务不接受演示参数或浏览器身份数据，仍须真实登录", async ({
+  page,
+}) => {
+  await page.addInitScript(() =>
+    sessionStorage.setItem(
+      "outdoors-temporary-showcase-v1",
+      JSON.stringify({ schema: 1, role: "super", users: [], bookings: [] }),
+    ),
+  );
+  await page.goto("http://127.0.0.1:3101/?showcase=1&role=super");
+  await expect(page.getByLabel("切换演示身份", { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "登录 / 注册", exact: true }),
+  ).toBeEnabled();
+  await expect(
+    page
+      .getByRole("navigation")
+      .getByRole("button", { name: "授权管理", exact: true }),
+  ).toHaveCount(0);
+  expect(
+    (await page.request.get("http://127.0.0.1:3101/api/users")).status(),
+  ).toBe(401);
+});
+
 test("GitHub Pages 静态入口显示真实后端未连接状态，仍可打开登录页", async ({
   page,
 }) => {

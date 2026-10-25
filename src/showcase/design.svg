@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="600" viewBox="0 0 960 600">
+  <rect width="960" height="600" fill="#f7f4ef"/>
+  <rect x="45" y="45" width="870" height="510" rx="4" fill="white" stroke="#762e39" stroke-width="3"/>
+  <path d="M45 110H915M45 490H915" stroke="#762e39" stroke-width="2"/>
+  <g fill="#762e39" font-family="Microsoft YaHei,sans-serif" text-anchor="middle">
+    <text x="480" y="88" font-size="25">示例桁架设计图 · 阶段成果演示</text>
+    <text x="480" y="260" font-size="56" font-weight="bold">校园生涯交流日</text>
+    <text x="480" y="335" font-size="26">企业交流 / 生涯规划 / 主题分享</text>
+    <text x="480" y="445" font-size="22">虚构活动，非真实申报材料</text>
+    <text x="480" y="531" font-size="20">展示审批材料预览效果 · 实际尺寸与内容以正式审核为准</text>
+  </g>
+</svg>

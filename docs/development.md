@@ -66,6 +66,8 @@ docker run --rm -v "$PWD:/workspace" -v /workspace/node_modules -w /workspace -e
 
 ## GitHub Pages 与字体
 
+当前临时身份演示使用 `npm run build:pages` 发布，专用静态测试为 `npm run test:showcase`。普通完整服务和 Docker 仍用 `npm run build`。在当前阶段提交 Pages 成果前，最后执行 `build:pages` 同步静态入口；范围、隔离条件和待删除清单见[临时演示说明](temporary-showcase.md)。
+
 [Pages 入口](https://crystalclear9.github.io/OutdoorsWeb/)只提供静态页面；账号与预约需要 Node API 和 SQLite。`VITE_API_BASE_URL` 可在编译时指定 API，正式服务推荐 Docker 同域；跨站 Cookie 不能视为默认可用。
 
 源码入口为 `src/index.html`。构建生成 `dist/`，同步根目录 `index.html`、`assets/`，Pages 使用 `main / (root)`。同步跳过字节相同的文件，避免 Windows 已加载字体重复覆盖，清理旧哈希脚本和样式。不要手工修改哈希产物。

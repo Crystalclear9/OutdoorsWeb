@@ -21,6 +21,10 @@ jobs:
       - run: npm run test:e2e
         env:
           PLAYWRIGHT_CHANNEL: chromium
+      - name: Verify isolated temporary Pages showcase
+        run: npm run test:showcase
+        env:
+          PLAYWRIGHT_CHANNEL: chromium
       - run: docker build -t outdoorsweb:verify .
         timeout-minutes: 10
       - name: Verify complete Docker service and persistence
@@ -36,5 +40,6 @@ jobs:
           path: |
             test-results/
             tmp/visual-results-*/
+            tmp/showcase-results/
           if-no-files-found: ignore
           retention-days: 7

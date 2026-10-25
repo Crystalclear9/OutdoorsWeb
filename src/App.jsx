@@ -41,6 +41,8 @@ import LazyPageBoundary from "./LazyPageBoundary.jsx";
 const Casework = lazy(() => import("./Casework.jsx"));
 import { can } from "./permissions.js";
 import { VENUE_SEGMENTS, inSegment } from "./venue-layout.js";
+// TEMPORARY_PAGES_SHOWCASE: remove the preview-only account/login branches and initialPage prop with docs/temporary-showcase.md.
+import { showcaseEnabled } from "./showcase/gate.js";
 
 const titles = {
   casework: ["通知与缴费办理", "查看反馈时限、结果电话和线下缴费办理进度。"],
@@ -55,7 +57,7 @@ const titles = {
   audit: ["操作日志", "查看账号及业务操作记录。"],
   operations: ["运行维护", "查看备份、存储空间和日常维护结果。"],
 };
-export default function App() {
+export default function App({ initialPage = "overview" }) {
   const [user, setUser] = useState(null),
     [sessionLoading, setSessionLoading] = useState(true),
     [logoutBusy, setLogoutBusy] = useState(false),
@@ -65,7 +67,7 @@ export default function App() {
     [auth, setAuth] = useState(null),
     [oauthMfa, setOauthMfa] = useState(null),
     [externalSignup, setExternalSignup] = useState(null),
-    [page, setPage] = useState("overview"),
+    [page, setPage] = useState(initialPage),
     [caseTarget, setCaseTarget] = useState(""),
     [mobile, setMobile] = useState(false),
     [modal, setModal] = useState(null),
@@ -134,6 +136,7 @@ export default function App() {
     setMobile(false);
   };
   useEffect(() => {
+    if (showcaseEnabled) return;
     const hash = window.location.hash;
     if (/^#signup=[a-f0-9]{64}$/.test(hash)) {
       setExternalSignup(hash.slice(8));
@@ -291,6 +294,10 @@ export default function App() {
       return;
     }
     if (!user) {
+      if (showcaseEnabled) {
+        notify("请在顶部切换为企业身份体验申报。");
+        return;
+      }
       setAuth("login");
       return;
     }
@@ -473,7 +480,11 @@ export default function App() {
             ) : (
               <Button
                 className="primary small"
-                onClick={() => setAuth("login")}
+                onClick={() =>
+                  showcaseEnabled
+                    ? notify("请在顶部选择要查看的演示身份。")
+                    : setAuth("login")
+                }
                 disabled={sessionLoading || passwordBusy}
               >
                 登录 / 注册
@@ -801,18 +812,37 @@ export default function App() {
                 </Suspense>
               </LazyPageBoundary>
             )}
-          {page === "account" && user && (
-            <AccountPage
-              key={user.id}
-              user={user}
-              onUser={guardAccount(updateAccountUser)}
-              onLogout={guardAccount(logout)}
-              logoutBusy={logoutBusy}
-              passwordBusy={passwordBusy}
-              beginPasswordChange={guardAccount(beginPasswordChange)}
-              notify={guardAccount(notify)}
-            />
-          )}
+          {page === "account" &&
+            user &&
+            (showcaseEnabled ? (
+              <section className="card">
+                <div className="card-header">
+                  <div>
+                    <h2>演示账号资料</h2>
+                    <p>此身份仅用于页面展示，不是真实登录账号。</p>
+                  </div>
+                </div>
+                <div className="card-form">
+                  <p>名称：{user.company}</p>
+                  <p>联系人：{user.contact}</p>
+                  <p>示例邮箱：{user.email}</p>
+                  <p className="field-note">
+                    真实登录、密码、验证码与两步验证请在完整服务中使用。此处不收集任何账号凭据。
+                  </p>
+                </div>
+              </section>
+            ) : (
+              <AccountPage
+                key={user.id}
+                user={user}
+                onUser={guardAccount(updateAccountUser)}
+                onLogout={guardAccount(logout)}
+                logoutBusy={logoutBusy}
+                passwordBusy={passwordBusy}
+                beginPasswordChange={guardAccount(beginPasswordChange)}
+                notify={guardAccount(notify)}
+              />
+            ))}
           {page === "users" && can(user, "accounts.manage") && (
             <UsersPage notify={notify} />
           )}

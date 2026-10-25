@@ -1,0 +1,79 @@
+/* TEMPORARY_PAGES_SHOWCASE: keep all preview layout changes scoped. */
+.showcase-banner {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 12px max(20px, calc((100vw - 1320px) / 2));
+  background: #f2e9e6;
+  border-bottom: 1px solid #d9bebc;
+  color: #54202b;
+}
+.showcase-copy {
+  flex: 1;
+  min-width: 0;
+}
+.showcase-copy strong {
+  font-size: 14px;
+}
+.showcase-copy strong span {
+  font-size: 11px;
+  border: 1px solid #9c6570;
+  border-radius: 3px;
+  margin-left: 8px;
+  padding: 1px 5px;
+}
+.showcase-copy p {
+  font-size: 12px;
+  line-height: 1.6;
+  margin-top: 4px;
+}
+.showcase-role {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+}
+.showcase-role select {
+  margin: 0;
+  min-height: 38px;
+  width: 150px;
+  padding: 7px 10px;
+}
+.showcase-banner .button {
+  white-space: nowrap;
+  min-height: 38px;
+}
+.showcase-shell .topbar {
+  top: 0;
+}
+@media (max-width: 760px) {
+  .showcase-shell .topbar {
+    top: var(--showcase-height, 140px);
+  }
+}
+@media (max-width: 800px) {
+  .showcase-banner {
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    padding: 10px 16px;
+  }
+  .showcase-copy {
+    flex-basis: 100%;
+  }
+  .showcase-role {
+    flex: 1;
+  }
+  .showcase-role select {
+    flex: 1;
+    max-width: 220px;
+  }
+  .showcase-shell .sidebar.is-open {
+    top: calc(var(--showcase-height, 140px) + 70px);
+    max-height: calc(100dvh - var(--showcase-height, 140px) - 70px);
+    overflow: auto;
+  }
+}

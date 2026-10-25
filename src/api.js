@@ -1,4 +1,5 @@
 import { readResponse } from "./request.js";
+import { showcaseEnabled } from "./showcase/gate.js";
 
 const BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 let csrf = null;
@@ -9,6 +10,9 @@ export function setCsrf(value) {
   csrf = value;
 }
 export async function api(path, options = {}) {
+  // TEMPORARY_PAGES_SHOWCASE: explicit static build only; never catch/fallback.
+  if (import.meta.env.MODE === "pages" && showcaseEnabled)
+    return (await import("./showcase/runtime.js")).request(path, options);
   const generation = authGeneration;
   let res, data;
   try {
@@ -48,6 +52,8 @@ export async function api(path, options = {}) {
   return data;
 }
 export async function getDesign(id) {
+  if (import.meta.env.MODE === "pages" && showcaseEnabled)
+    return (await import("./showcase/runtime.js")).design(id);
   const generation = authGeneration;
   let res, blob;
   try {

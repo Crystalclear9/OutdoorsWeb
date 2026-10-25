@@ -2,6 +2,8 @@
 
 React 前端、Node.js 24 API 与 SQLite 数据库组成的完整应用。账号、申请、设计图、审批、公告、场地安排和操作日志保存在服务端。推荐通过 Docker 同域运行页面与 API。
 
+当前 [GitHub Pages](https://crystalclear9.github.io/OutdoorsWeb/) 提供临时成果演示：从顶部切换六种身份，查看虚构示例及本地交互，无须后端。此入口标记为**待删除**，正式服务仍须真实登录；范围、专用构建和移除步骤见[临时演示说明](docs/temporary-showcase.md)。
+
 ## 快速启动
 
 需要 Docker Desktop（Linux containers）或 Docker Engine + Compose。

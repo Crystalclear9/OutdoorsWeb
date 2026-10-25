@@ -71,7 +71,7 @@ SQLite 适用于单主机或多个进程共享同一个本地数据库文件，�
 
 常规构建直接使用已提交的字体，不需要额外下载或 Python 依赖。重建当前字体分包使用 `python scripts/prepare-ui-font.py <原字体路径>`，需要 `fonttools` 与 `brotli`；静态界面字符集中加载，其余字形按 `unicode-range` 按需获取。`src/fonts.css` 为生成文件，`src/typography.css` 统一排版。旧 Campus Heading 素材与生成脚本仍保留，已不作为当前标题字体。
 
-界面身份由真实服务端会话及权限决定，不接受预览参数切换角色。
+正常完整服务的界面身份由服务端会话及权限决定，不接受预览参数切换角色。当前独立 Pages 构建临时使用 `src/showcase/` 的虚构状态适配器，六种展示身份不连接业务 API，不作为真实授权。普通构建不输出演示运行模块；隔离与待删除清单见[临时演示说明](temporary-showcase.md)。
 
 ## 后端模块
 

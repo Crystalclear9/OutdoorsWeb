@@ -4,6 +4,8 @@
 
 ## 验证范围
 
+临时 Pages 身份展示另由 `tests/showcase/pages.showcase.js` 检查静态子路径、六种身份、手机及桌面、演示业务共享、申报及公告、重置与零 API 请求。`showcase-gate.test.mjs` 和 `tests/production.spec.js` 检查普通构建不可启用展示身份。这些样本交互不替代真实服务验收，见[临时演示说明](temporary-showcase.md)。
+
 | 范围                                       | 主要证据                                                                                                                |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
 | 认证、验证码、MFA 与会话撤销               | `server/tests/api.test.mjs`、`session-rotation.test.mjs`、`challenge-concurrency.test.mjs`、`captcha-capacity.test.mjs` |

@@ -63,6 +63,7 @@ function seed() {
       contact: user_id === "enterprise" ? "企业联系人" : "活动联系人",
       phone: "13800000000",
       created: new Date(Date.now() - (30 + Number(id)) * 3600000).toISOString(),
+      due: new Date(Date.now() + 86400000).toISOString(),
       reviewed: status === "待审核" ? null : now(),
       reason: status === "未通过" ? "请补充清晰的宣传内容及尺寸说明。" : "",
       reviewer: status === "待审核" ? null : "reviewer",
@@ -71,6 +72,7 @@ function seed() {
       version: 1,
       contactResult: {
         state: status === "已通过" ? "reached" : "pending",
+        attempts: status === "已通过" ? 1 : 0,
         reached_at: status === "已通过" ? now() : null,
         note: "演示电话记录",
         version: 1,
@@ -129,16 +131,159 @@ function seed() {
     preferences: { sms: 0, voice: 0 },
   };
 }
+const object = (value) =>
+  !!value && typeof value === "object" && !Array.isArray(value);
+const strings = (value, names) =>
+  object(value) && names.every((name) => typeof value[name] === "string");
+const timestamp = (value) =>
+  typeof value === "string" && Number.isFinite(Date.parse(value));
+const version = (value) => Number.isSafeInteger(value) && value > 0;
+const slot = (value) => Number.isInteger(value) && value >= 1 && value <= 29;
+const optionalStrings = (value, names) =>
+  names.every((name) => value[name] == null || typeof value[name] === "string");
+const dateOnly = (value) =>
+  typeof value === "string" &&
+  /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+  Number.isFinite(Date.parse(value)) &&
+  new Date(value).toISOString().slice(0, 10) === value;
+function validStoredState(saved) {
+  if (
+    !object(saved) ||
+    saved.schema !== 1 ||
+    !ROLES.some(([role]) => role === saved.role)
+  )
+    return false;
+  if (
+    ![
+      "users",
+      "bookings",
+      "notices",
+      "closures",
+      "onsite",
+      "calendar",
+      "audit",
+      "read",
+    ].every((key) => Array.isArray(saved[key]))
+  )
+    return false;
+  return (
+    ROLES.filter(([role]) => role !== "visitor").every(([role]) =>
+      saved.users.some((user) => user?.id === role),
+    ) &&
+    saved.users.every(
+      (user) =>
+        strings(user, ["id", "email", "company", "contact", "phone"]) &&
+        timestamp(user.created) &&
+        ["enterprise", "admin"].includes(user.role) &&
+        Array.isArray(user.permissions) &&
+        user.permissions.every(
+          (permission) => typeof permission === "string",
+        ) &&
+        version(user.version),
+    ) &&
+    saved.bookings.every(
+      (row) =>
+        strings(row, [
+          "id",
+          "user_id",
+          "company",
+          "contact",
+          "phone",
+          "start",
+          "end",
+        ]) &&
+        timestamp(row.created) &&
+        dateOnly(row.start) &&
+        dateOnly(row.end) &&
+        optionalStrings(row, [
+          "reason",
+          "reviewerName",
+          "cancel_reason",
+          "reschedule_of",
+        ]) &&
+        (row.reviewed == null || timestamp(row.reviewed)) &&
+        slot(row.slot) &&
+        version(row.version) &&
+        ["待审核", "已通过", "未通过", "已撤回"].includes(row.status) &&
+        object(row.contactResult) &&
+        ["pending", "unreachable", "reached"].includes(
+          row.contactResult.state,
+        ) &&
+        version(row.contactResult.version) &&
+        optionalStrings(row.contactResult, ["note"]) &&
+        (row.contactResult.reached_at == null ||
+          timestamp(row.contactResult.reached_at)) &&
+        (row.fee === null ||
+          (object(row.fee) &&
+            [
+              "due",
+              "submitted",
+              "paid",
+              "waived",
+              "void",
+              "reconcile",
+              "refunded",
+            ].includes(row.fee.state) &&
+            Number.isSafeInteger(row.fee.amount_fen) &&
+            row.fee.amount_fen >= 0 &&
+            optionalStrings(row.fee, ["instructions", "reference", "note"]) &&
+            version(row.fee.version))),
+    ) &&
+    saved.notices.every(
+      (row) =>
+        strings(row, ["id", "title", "content"]) &&
+        timestamp(row.created) &&
+        timestamp(row.updated) &&
+        version(row.version),
+    ) &&
+    saved.closures.every(
+      (row) =>
+        strings(row, ["id", "start", "end", "reason"]) &&
+        dateOnly(row.start) &&
+        dateOnly(row.end) &&
+        slot(row.slot),
+    ) &&
+    saved.onsite.every(
+      (row) =>
+        object(row) &&
+        slot(row.slot) &&
+        typeof row.present === "boolean" &&
+        typeof row.note === "string" &&
+        version(row.version),
+    ) &&
+    saved.calendar.every(
+      (row) =>
+        strings(row, ["date"]) &&
+        dateOnly(row.date) &&
+        [true, false, 0, 1].includes(row.working),
+    ) &&
+    saved.audit.every(
+      (row) =>
+        strings(row, ["id", "email", "action", "target", "details"]) &&
+        timestamp(row.created),
+    ) &&
+    saved.read.every((id) => typeof id === "string") &&
+    version(saved.calendarVersion) &&
+    object(saved.preferences)
+  );
+}
 function restore() {
   try {
     const saved = JSON.parse(sessionStorage.getItem(KEY));
-    if (
-      saved?.schema === 1 &&
-      ROLES.some(([r]) => r === saved.role) &&
-      Array.isArray(saved.bookings) &&
-      Array.isArray(saved.users)
-    )
+    if (validStoredState(saved)) {
+      // Preserve valid previous samples while adding newly displayed metadata.
+      for (const row of saved.bookings) {
+        if (!timestamp(row.due))
+          row.due = new Date(Date.now() + 86400000).toISOString();
+        if (
+          !Number.isSafeInteger(row.contactResult.attempts) ||
+          row.contactResult.attempts < 0
+        )
+          row.contactResult.attempts =
+            row.contactResult.state === "reached" ? 1 : 0;
+      }
       return saved;
+    }
   } catch {}
   return seed();
 }
@@ -150,6 +295,7 @@ function persist() {
     /* Preview remains usable in memory when storage is unavailable. */
   }
 }
+persist();
 export const getRole = () => state.role;
 export const getUser = () =>
   state.users.find((u) => u.id === state.role) || null;
@@ -266,7 +412,7 @@ function decorated(b) {
   return {
     ...b,
     reviewCheck: check(b),
-    due: new Date(Date.now() + 86400000).toISOString(),
+    due: b.due,
     overdue: false,
     fee:
       getUser()?.role === "enterprise" || can(getUser(), "payments.manage")
@@ -410,7 +556,7 @@ export async function request(path, options = {}) {
       result = {
         items: state.users
           .filter((u) => can(u, "bookings.review"))
-          .map(({ id, contact }) => ({ id, contact })),
+          .map(({ id, contact }) => ({ id, name: contact })),
       };
     } else if (p === "/bookings") {
       let rows = searchable(visibleBookings(), url);
@@ -555,9 +701,10 @@ export async function request(path, options = {}) {
         user_id: user.id,
         status: "待审核",
         created: now(),
+        due: new Date(Date.now() + 86400000).toISOString(),
         version: 1,
         cancelled: 0,
-        contactResult: { state: "pending", version: 1 },
+        contactResult: { state: "pending", attempts: 0, version: 1 },
         fee: null,
       };
       delete row.image;
@@ -586,6 +733,7 @@ export async function request(path, options = {}) {
         state: b.action === "reopen" ? "pending" : b.state,
         reached_at: b.state === "reached" ? now() : null,
         note: b.note,
+        attempts: row.contactResult.attempts + (b.action === "reopen" ? 0 : 1),
         version: row.contactResult.version + 1,
       };
       result = { ok: true };
@@ -645,6 +793,31 @@ export async function request(path, options = {}) {
       log("notice.saved", id || "showcase");
     } else if (p === "/closures" && m === "POST") {
       requireUser("venue.manage");
+      if (
+        !slot(Number(b.slot)) ||
+        !dateOnly(b.start) ||
+        !dateOnly(b.end) ||
+        b.start < day() ||
+        b.end < b.start ||
+        !String(b.reason || "").trim()
+      )
+        error("请选择有效位置、日期及暂停原因");
+      if (
+        state.bookings.some(
+          (row) =>
+            row.status === "已通过" &&
+            !row.cancelled &&
+            row.slot === Number(b.slot) &&
+            overlap(row, b),
+        )
+      )
+        error("该时段已有预约，不能暂停开放", 409);
+      if (
+        state.closures.some(
+          (row) => row.slot === Number(b.slot) && overlap(row, b),
+        )
+      )
+        error("该时段已有暂停安排，请核对后再操作", 409);
       state.closures.push({
         ...b,
         slot: Number(b.slot),
@@ -670,11 +843,9 @@ export async function request(path, options = {}) {
       result = { ok: true };
     } else if (p.startsWith("/casework/calendar/")) {
       requireUser("super");
-      const date = p.split("/").at(-1);
-      state.calendar = state.calendar.filter((r) => r.date !== date);
-      if (b.working !== null) state.calendar.push({ date, working: b.working });
-      state.calendarVersion++;
-      result = { ok: true };
+      error(
+        "临时演示仅供查看工作日历，不保存日历或重新计算办理时限；请在完整服务中调整。",
+      );
     } else
       error(
         "此功能仅展示界面。账号安全、授权、外发通知和系统维护须在完整服务中操作；请勿输入真实密码或资料。",

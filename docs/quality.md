@@ -6,6 +6,8 @@
 
 临时 Pages 身份展示另由 `tests/showcase/pages.showcase.js` 检查静态子路径、六种身份、手机及桌面、演示业务共享、申报及公告、重置与零 API 请求。`showcase-gate.test.mjs` 和 `tests/production.spec.js` 检查普通构建不可启用展示身份。这些样本交互不替代真实服务验收，见[临时演示说明](temporary-showcase.md)。
 
+`tests/showcase/review-gaps.showcase.js` 检查演示审批人筛选、已有预约的暂停冲突、损坏状态恢复和只读日历。静态测试构建独立输出 `tmp/showcase-build`，不覆盖普通服务的 `dist`。
+
 | 范围                                       | 主要证据                                                                                                                |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
 | 认证、验证码、MFA 与会话撤销               | `server/tests/api.test.mjs`、`session-rotation.test.mjs`、`challenge-concurrency.test.mjs`、`captcha-capacity.test.mjs` |
@@ -28,6 +30,7 @@
 | MFA 状态读取与账号同步失败恢复             | `tests/mfa-state-recovery.spec.js`，实际启用及一次性恢复码保留                                                          |
 | 首次验证码 Cookie 迟到与页面重开           | `tests/captcha-cookie-order.spec.js`，独立转发真实接口并实际登录                                                        |
 | 账号查询失败后暂停敏感操作及恢复目标核对   | `tests/account-query-recovery.spec.js`                                                                                  |
+| 授权读取恢复及一次性临时密码保留           | `tests/access-state-recovery.spec.js`，真实密码重置、读取故障及不重复写入的恢复                                         |
 | 维护轮询先后顺序及慢网下的状态更新         | `tests/operations-poll-order.spec.js`                                                                                   |
 | 审批队列查询失败、操作门禁与草稿恢复       | `tests/review-query-consistency.spec.js`                                                                                |
 | 通信结果不确定、旧任务升级与人工核实       | `server/tests/delivery-outcomes.test.mjs`、`delivery-upgrade.test.mjs`、`delivery-concurrency.test.mjs`                 |

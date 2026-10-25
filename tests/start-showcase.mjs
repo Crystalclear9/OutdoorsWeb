@@ -23,11 +23,12 @@ createServer(async (req, res) => {
     return;
   }
   try {
-    const file = path.join("dist", relative || "index.html");
+    const file = path.join("tmp/showcase-build", relative || "index.html");
+    const content = await readFile(file);
     res.writeHead(200, {
       "Content-Type": types[path.extname(file)] || "application/octet-stream",
     });
-    res.end(await readFile(file));
+    res.end(content);
   } catch {
     res.writeHead(404).end();
   }

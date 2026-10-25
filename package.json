@@ -9,7 +9,7 @@
     "start": "node --env-file-if-exists=.env server/index.mjs",
     "build": "vite build && node scripts/sync-pages.mjs",
     "build:pages": "vite build --mode pages && node scripts/sync-pages.mjs",
-    "test:showcase": "vite build --mode pages && playwright test --config playwright.showcase.config.js",
+    "test:showcase": "vite build --mode pages --outDir ../tmp/showcase-build && playwright test --config playwright.showcase.config.js",
     "preview": "vite preview --host 127.0.0.1",
     "test": "node --test server/tests/*.test.mjs && playwright test",
     "test:api": "node --test server/tests/*.test.mjs",

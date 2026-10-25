@@ -23,6 +23,19 @@
   --shadow-soft: none;
 }
 
+.access-card .card-header {
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.access-card .card-header > div:first-child {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.access-card .access-actions {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;

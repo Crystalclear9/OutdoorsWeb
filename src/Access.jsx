@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Plus, ShieldCheck, Key } from "@phosphor-icons/react";
 import { api } from "./api.js";
 import { PERMISSIONS } from "./permissions.js";
@@ -9,27 +9,53 @@ export default function Access({ notify }) {
     [error, setError] = useState(""),
     [modal, setModal] = useState(null),
     [busy, setBusy] = useState(false),
-    [grants, setGrants] = useState([]);
-  async function load() {
+    [grants, setGrants] = useState([]),
+    [loading, setLoading] = useState(true),
+    [readFailed, setReadFailed] = useState(false),
+    [readError, setReadError] = useState("");
+  const mounted = useRef(true),
+    request = useRef(0);
+  const ready = !loading && !readFailed;
+  async function load(saved = "") {
+    if (!mounted.current) return;
+    const generation = ++request.current;
+    setLoading(true);
+    setReadError("");
     try {
-      setItems((await api("/access")).items);
-      setError("");
+      const latest = await api("/access");
+      if (!mounted.current || generation !== request.current) return;
+      setItems(latest.items);
+      setReadFailed(false);
     } catch (e) {
-      setError(e.message);
+      if (!mounted.current || generation !== request.current) return;
+      setItems([]);
+      setReadFailed(true);
+      setReadError(
+        saved
+          ? `${saved}，但授权列表读取失败：${e.message}。请重新读取后核对。`
+          : e.message,
+      );
+    } finally {
+      if (mounted.current && generation === request.current) setLoading(false);
     }
   }
   useEffect(() => {
+    mounted.current = true;
     load();
+    return () => {
+      mounted.current = false;
+      request.current++;
+    };
   }, []);
   function open(type, user) {
-    if (busy) return;
+    if (busy || !ready) return;
     setError("");
     setGrants(user?.permissions || []);
     setModal({ type, user });
   }
   async function save(e) {
     e.preventDefault();
-    if (busy) return;
+    if (busy || !ready) return;
     const data = Object.fromEntries(new FormData(e.currentTarget));
     setBusy(true);
     setError("");
@@ -40,6 +66,7 @@ export default function Access({ notify }) {
           headers: edit ? { "If-Match": `"${modal.user.version}"` } : {},
           body: { ...data, permissions: grants },
         });
+      if (!mounted.current) return;
       if (edit) {
         setModal(null);
         notify("授权已更新，该账号的所有登录已撤销，需重新登录");
@@ -49,15 +76,15 @@ export default function Access({ notify }) {
           password: r.temporaryPassword,
           email: r.user.email,
         });
-      await load();
+      await load(edit ? "授权变更已保存" : "管理员创建已保存");
     } catch (e) {
-      setError(e.message);
+      if (mounted.current) setError(e.message);
     } finally {
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   }
   async function accountAction() {
-    if (busy) return;
+    if (busy || !ready) return;
     setBusy(true);
     setError("");
     try {
@@ -68,6 +95,7 @@ export default function Access({ notify }) {
           headers: { "If-Match": `"${u.version}"` },
           ...(reset ? {} : { body: { disabled: !u.disabled } }),
         });
+      if (!mounted.current) return;
       if (reset)
         setModal({
           type: "password",
@@ -78,31 +106,41 @@ export default function Access({ notify }) {
         setModal(null);
         notify("管理员状态已更新");
       }
-      await load();
+      await load(reset ? "密码重置已保存" : "管理员状态已保存");
     } catch (e) {
-      setError(e.message);
+      if (mounted.current) setError(e.message);
     } finally {
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   }
   return (
     <>
-      <section className="card">
+      <section className="card access-card">
         <div className="card-header">
           <div>
             <h2>管理员授权</h2>
             <p>按职责分配业务权限。授权变更后，该账号需重新登录。</p>
           </div>
-          <Button
-            className="primary"
-            disabled={busy}
-            onClick={() => open("create")}
-          >
-            <Plus size={18} />
-            新增管理员
-          </Button>
+          <div className="row-actions access-actions">
+            <Button
+              className="secondary small"
+              disabled={busy || loading || !!modal}
+              onClick={() => load()}
+            >
+              刷新授权列表
+            </Button>
+            <Button
+              className="primary"
+              disabled={busy || !ready}
+              onClick={() => open("create")}
+            >
+              <Plus size={18} />
+              新增管理员
+            </Button>
+          </div>
         </div>
-        <ErrorBox>{!modal && error}</ErrorBox>
+        <ErrorBox>{!modal && (error || readError)}</ErrorBox>
+        {loading && <p className="field-note">正在读取管理员授权…</p>}
         <div className="table-scroll">
           <table>
             <thead>
@@ -114,66 +152,70 @@ export default function Access({ notify }) {
               </tr>
             </thead>
             <tbody>
-              {items.map((u) => (
-                <tr key={u.id}>
-                  <td>
-                    <strong>{u.contact}</strong>
-                    <small>{u.email}</small>
-                  </td>
-                  <td>
-                    <div className="permission-tags">
-                      {u.isSuperAdmin ? (
-                        <span className="subtle-tag">
-                          超级管理员 · 全部权限
-                        </span>
-                      ) : u.permissions.length ? (
-                        PERMISSIONS.filter((p) =>
-                          u.permissions.includes(p.key),
-                        ).map((p) => (
-                          <span className="subtle-tag" key={p.key}>
-                            {p.label}
+              {ready &&
+                items.map((u) => (
+                  <tr key={u.id}>
+                    <td>
+                      <strong>{u.contact}</strong>
+                      <small>{u.email}</small>
+                    </td>
+                    <td>
+                      <div className="permission-tags">
+                        {u.isSuperAdmin ? (
+                          <span className="subtle-tag">
+                            超级管理员 · 全部权限
                           </span>
-                        ))
-                      ) : (
-                        <span className="muted">尚未授予业务权限</span>
-                      )}
-                    </div>
-                  </td>
-                  <td>
-                    {u.disabled
-                      ? "已停用"
-                      : u.mustChangePassword
-                        ? "待修改临时密码"
-                        : "正常"}
-                  </td>
-                  <td>
-                    {u.isSuperAdmin ? (
-                      <span className="muted">受保护账号</span>
-                    ) : (
-                      <div className="row-actions">
-                        <button
-                          className="text-button"
-                          onClick={() => open("edit", u)}
-                        >
-                          调整授权
-                        </button>
-                        <button
-                          className="text-button"
-                          onClick={() => open("reset", u)}
-                        >
-                          重置密码
-                        </button>
-                        <button
-                          className="text-button"
-                          onClick={() => open("status", u)}
-                        >
-                          {u.disabled ? "启用" : "停用"}
-                        </button>
+                        ) : u.permissions.length ? (
+                          PERMISSIONS.filter((p) =>
+                            u.permissions.includes(p.key),
+                          ).map((p) => (
+                            <span className="subtle-tag" key={p.key}>
+                              {p.label}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="muted">尚未授予业务权限</span>
+                        )}
                       </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td>
+                      {u.disabled
+                        ? "已停用"
+                        : u.mustChangePassword
+                          ? "待修改临时密码"
+                          : "正常"}
+                    </td>
+                    <td>
+                      {u.isSuperAdmin ? (
+                        <span className="muted">受保护账号</span>
+                      ) : (
+                        <div className="row-actions">
+                          <button
+                            className="text-button"
+                            disabled={busy || !ready}
+                            onClick={() => open("edit", u)}
+                          >
+                            调整授权
+                          </button>
+                          <button
+                            className="text-button"
+                            disabled={busy || !ready}
+                            onClick={() => open("reset", u)}
+                          >
+                            重置密码
+                          </button>
+                          <button
+                            className="text-button"
+                            disabled={busy || !ready}
+                            onClick={() => open("status", u)}
+                          >
+                            {u.disabled ? "启用" : "停用"}
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
             </tbody>
           </table>
         </div>
@@ -202,6 +244,16 @@ export default function Access({ notify }) {
                 首次登录必须修改临时密码。请通过核验后的渠道交付，此密码只显示一次。
               </p>
               <code className="temporary-password">{modal.password}</code>
+              <ErrorBox>{readError}</ErrorBox>
+              {readFailed && (
+                <Button
+                  className="secondary"
+                  disabled={busy || loading}
+                  onClick={() => load()}
+                >
+                  重新读取授权列表
+                </Button>
+              )}
               <div className="dialog-actions">
                 <Button
                   className="primary"

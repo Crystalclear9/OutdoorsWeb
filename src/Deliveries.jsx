@@ -15,13 +15,20 @@ export default function Deliveries({ notify }) {
     [page, setPage] = useState(1),
     [selected, setSelected] = useState(null),
     [error, setError] = useState(""),
+    [readError, setReadError] = useState(""),
+    [resultKey, setResultKey] = useState(""),
+    [refresh, setRefresh] = useState(0),
     [busy, setBusy] = useState(false),
     [loading, setLoading] = useState(true);
   const request = useRef(0);
-  const items = data.items;
+  const criteriaKey = JSON.stringify([scope, page]);
+  const ready = !loading && !readError && resultKey === criteriaKey;
+  const showSnapshot = !!selected || (!readError && resultKey === criteriaKey);
+  const items = showSnapshot ? data.items : [];
   async function load() {
     const generation = ++request.current;
     setLoading(true);
+    setReadError("");
     try {
       const result = await api(
         `/operations/deliveries?scope=${scope}&page=${page}`,
@@ -30,37 +37,48 @@ export default function Deliveries({ notify }) {
       if (generation !== request.current) return;
       setData(result);
       setPage(result.page);
-      setError("");
+      setResultKey(JSON.stringify([scope, result.page]));
+      setReadError("");
     } catch (e) {
-      if (generation === request.current) setError(e.message);
+      if (generation === request.current) setReadError(e.message);
     } finally {
       if (generation === request.current) setLoading(false);
     }
   }
   useEffect(() => {
-    load();
-    // Keep the reconciliation dialog and its errors stable while it is open.
-    const t = selected ? null : setInterval(load, 15000);
+    let stopped = false,
+      timer;
+    // Editing owns a stable snapshot. Neither a new read nor an old poll may
+    // replace it or clear the result of the reconciliation write.
+    if (selected) setLoading(false);
+    else {
+      const poll = async () => {
+        await load();
+        if (!stopped) timer = setTimeout(poll, 15000);
+      };
+      poll();
+    }
     return () => {
-      clearInterval(t);
+      stopped = true;
+      clearTimeout(timer);
       request.current++;
     };
-  }, [scope, page, !!selected]);
+  }, [scope, page, !!selected, refresh]);
   async function save(e) {
     e.preventDefault();
-    if (busy) return;
+    if (busy || !selected) return;
+    const values = Object.fromEntries(new FormData(e.currentTarget));
     setBusy(true);
     setError("");
     try {
       await api(`/operations/deliveries/${selected.id}`, {
         method: "POST",
         body: {
-          ...Object.fromEntries(new FormData(e.currentTarget)),
+          ...values,
           version: selected.version,
         },
       });
       setSelected(null);
-      load();
       notify("通知任务已更新");
     } catch (e) {
       setError(e.message);
@@ -96,11 +114,11 @@ export default function Deliveries({ notify }) {
       <Button
         className="secondary small"
         disabled={busy || loading || !!selected}
-        onClick={load}
+        onClick={() => setRefresh((value) => value + 1)}
       >
         刷新通知记录
       </Button>
-      <ErrorBox>{!selected && error}</ErrorBox>
+      <ErrorBox>{!selected && readError}</ErrorBox>
       <div className="table-scroll">
         <table>
           <thead>
@@ -130,9 +148,10 @@ export default function Deliveries({ notify }) {
                   {["failed", "uncertain"].includes(r.state) && (
                     <Button
                       className="secondary small"
-                      disabled={busy || loading}
+                      disabled={busy || !ready || !!selected}
                       onClick={() => {
-                        if (busy) return;
+                        if (busy || !ready || selected) return;
+                        request.current++;
                         setSelected(r);
                         setError("");
                       }}
@@ -149,7 +168,7 @@ export default function Deliveries({ notify }) {
           <p className="empty-state">
             {loading
               ? "正在读取通知记录…"
-              : error
+              : readError
                 ? "通知记录读取失败，请刷新重试"
                 : scope === "attention"
                   ? "暂无待处理通知"
@@ -157,17 +176,19 @@ export default function Deliveries({ notify }) {
           </p>
         )}
       </div>
-      <fieldset
-        disabled={busy || loading || !!selected}
-        style={{ border: 0, padding: 0 }}
-      >
-        <Pagination
-          page={data.page}
-          pages={data.pages}
-          total={data.total}
-          onPage={setPage}
-        />
-      </fieldset>
+      {showSnapshot && (
+        <fieldset
+          disabled={busy || !ready || !!selected}
+          style={{ border: 0, padding: 0 }}
+        >
+          <Pagination
+            page={data.page}
+            pages={data.pages}
+            total={data.total}
+            onPage={setPage}
+          />
+        </fieldset>
+      )}
       {selected && (
         <Modal
           title="核实通知发送结果"
@@ -198,6 +219,7 @@ export default function Deliveries({ notify }) {
             <div className="dialog-actions">
               <Button
                 className="secondary"
+                type="button"
                 disabled={busy}
                 onClick={() => !busy && setSelected(null)}
               >

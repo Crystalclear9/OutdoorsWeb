@@ -43,10 +43,10 @@ export default function Notices({ items, user, onSaved, readError }) {
   async function save(e) {
     e.preventDefault();
     if (busy) return;
+    const form = Object.fromEntries(new FormData(e.currentTarget));
     setBusy(true);
     setError("");
     try {
-      const form = Object.fromEntries(new FormData(e.currentTarget));
       await api(`/notices${modal.item ? "/" + modal.item.id : ""}`, {
         method: modal.item ? "PATCH" : "POST",
         headers: modal.item ? { "If-Match": `"${modal.item.version}"` } : {},
@@ -247,6 +247,7 @@ export default function Notices({ items, user, onSaved, readError }) {
                 公告标题
                 <input
                   name="title"
+                  disabled={busy}
                   required
                   maxLength={80}
                   defaultValue={modal.item?.title}
@@ -256,6 +257,7 @@ export default function Notices({ items, user, onSaved, readError }) {
                 正文内容
                 <textarea
                   name="content"
+                  disabled={busy}
                   rows={8}
                   required
                   maxLength={5000}
@@ -266,6 +268,7 @@ export default function Notices({ items, user, onSaved, readError }) {
                 <input
                   type="checkbox"
                   name="pinned"
+                  disabled={busy}
                   defaultChecked={!!modal.item?.pinned}
                 />
                 置顶显示此公告

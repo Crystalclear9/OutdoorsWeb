@@ -9,6 +9,8 @@
 | 认证、验证码、MFA 与会话撤销               | `server/tests/api.test.mjs`、`session-rotation.test.mjs`、`challenge-concurrency.test.mjs`、`captcha-capacity.test.mjs` |
 | 跨来源、新挑战和多服务的 MFA 账号限流      | `server/tests/mfa-account-limit.test.mjs`                                                                               |
 | MFA 登记前撤销本人设备的 CSRF 与归属       | `server/tests/admin-mfa-sessions.test.mjs`                                                                              |
+| 设备撤销后读取失败与原位恢复               | `tests/session-state-recovery.spec.js`，真实双设备登录、撤销生效及纯读恢复                                              |
+| 通知查询失败门禁与核实冲突提示保留         | `tests/delivery-query-recovery.spec.js`，独立数据库与真实登录、核实写入和版本冲突                                       |
 | 企业归属、职责授权及写入时重新鉴权         | `server/tests/permissions.test.mjs`、`security-review.test.mjs`、`business-recheck.test.mjs`                            |
 | 同位竞争、版本冲突、幂等及跨午夜           | `server/tests/multiprocess.test.mjs`、`version-guard.test.mjs`、`commit-date.test.mjs`                                  |
 | 电话、财务及取消退款                       | `server/tests/casework.test.mjs`、`casework-audit.test.mjs`、`tests/casework.spec.js`                                   |

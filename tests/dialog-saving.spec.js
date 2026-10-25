@@ -125,6 +125,9 @@ test("公告真实保存与删除失败的迟到响应均锁定当前弹窗", as
   await dialog.getByRole("button", { name: "保存公告" }).click();
   await saved.hit;
   await cannotDismiss(page);
+  await expect(dialog.getByLabel("公告标题")).toBeDisabled();
+  await expect(dialog.getByLabel("正文内容")).toBeDisabled();
+  await expect(dialog.getByLabel("置顶显示此公告")).toBeDisabled();
   saved.release();
   await expect(dialog).toHaveCount(0);
   await expect(article).toContainText("已保存的公告内容");

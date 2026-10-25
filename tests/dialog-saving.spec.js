@@ -163,6 +163,8 @@ test("场地暂停的真实保存和恢复开放期间禁止关闭弹窗", async
   await dialog.getByRole("button", { name: "保存安排" }).click();
   await saved.hit;
   await cannotDismiss(page, { cancel: false });
+  for (const name of ["slot", "start", "end", "reason"])
+    await expect(dialog.locator(`[name=${name}]`)).toBeDisabled();
   saved.release();
   await expect(dialog).toHaveCount(0);
   const row = page.getByRole("row").filter({ hasText: reason });

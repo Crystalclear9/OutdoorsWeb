@@ -285,51 +285,80 @@ export function ClosuresPage({ notify, onChange }) {
   const [items, setItems] = useState([]),
     [error, setError] = useState(""),
     [modal, setModal] = useState(null),
-    [busy, setBusy] = useState(false);
-  async function load() {
+    [busy, setBusy] = useState(false),
+    [loading, setLoading] = useState(true),
+    [readFailed, setReadFailed] = useState(false);
+  const mounted = useRef(true),
+    request = useRef(0);
+  const ready = !loading && !readFailed;
+  async function load(saved = "") {
+    if (!mounted.current) return;
+    const generation = ++request.current;
+    setLoading(true);
+    setError("");
     try {
-      setItems((await api("/closures")).items);
+      const result = await api("/closures");
+      if (!mounted.current || generation !== request.current) return;
+      setItems(result.items);
+      setReadFailed(false);
     } catch (e) {
-      setError(e.message);
+      if (!mounted.current || generation !== request.current) return;
+      setItems([]);
+      setReadFailed(true);
+      setError(
+        saved
+          ? `${saved}，但暂停安排读取失败：${e.message}。请重新读取后核对。`
+          : e.message,
+      );
+    } finally {
+      if (mounted.current && generation === request.current) setLoading(false);
     }
   }
   useEffect(() => {
+    mounted.current = true;
     load();
+    return () => {
+      mounted.current = false;
+      request.current++;
+    };
   }, []);
   async function save(e) {
     e.preventDefault();
-    if (busy) return;
+    if (busy || !ready) return;
+    const values = Object.fromEntries(new FormData(e.currentTarget));
     setBusy(true);
     setError("");
     try {
       await api("/closures", {
         method: "POST",
-        body: Object.fromEntries(new FormData(e.currentTarget)),
+        body: values,
       });
+      if (!mounted.current) return;
       setModal(null);
-      await load();
       onChange();
       notify("暂停开放安排已保存");
+      await load("暂停开放安排已保存");
     } catch (e) {
-      setError(e.message);
+      if (mounted.current) setError(e.message);
     } finally {
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   }
   async function remove() {
-    if (busy) return;
+    if (busy || !ready) return;
     setBusy(true);
     setError("");
     try {
       await api(`/closures/${modal.id}`, { method: "DELETE" });
+      if (!mounted.current) return;
       setModal(null);
-      await load();
       onChange();
       notify("该桁架位已恢复开放");
+      await load("该桁架位已恢复开放");
     } catch (e) {
-      setError(e.message);
+      if (mounted.current) setError(e.message);
     } finally {
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   }
   return (
@@ -342,6 +371,7 @@ export function ClosuresPage({ notify, onChange }) {
           </div>
           <Button
             className="primary"
+            disabled={busy || !ready}
             onClick={() => {
               setError("");
               setModal({ type: "create" });
@@ -352,7 +382,20 @@ export function ClosuresPage({ notify, onChange }) {
           </Button>
         </div>
         <ErrorBox>{!modal && error}</ErrorBox>
-        {items.length ? (
+        {readFailed && (
+          <Button
+            className="secondary small"
+            disabled={busy || loading}
+            onClick={() => load()}
+          >
+            重新读取暂停安排
+          </Button>
+        )}
+        {loading ? (
+          <p className="field-note">正在读取暂停开放安排…</p>
+        ) : readFailed ? (
+          <p className="field-note">暂停安排待核对，请重新读取后操作。</p>
+        ) : items.length ? (
           <div className="table-scroll">
             <table>
               <thead>
@@ -376,6 +419,7 @@ export function ClosuresPage({ notify, onChange }) {
                     <td>
                       <button
                         className="text-button"
+                        disabled={busy || !ready}
                         onClick={() => {
                           setError("");
                           setModal({ type: "remove", id: c.id });
@@ -405,7 +449,7 @@ export function ClosuresPage({ notify, onChange }) {
             <form onSubmit={save}>
               <label>
                 桁架位置
-                <select name="slot">
+                <select name="slot" disabled={busy}>
                   {Array.from({ length: 29 }, (_, i) => (
                     <option key={i} value={i + 1}>
                       {slotName(i + 1)}
@@ -419,6 +463,7 @@ export function ClosuresPage({ notify, onChange }) {
                   <input
                     type="date"
                     name="start"
+                    disabled={busy}
                     required
                     min={dateString()}
                     defaultValue={dateString()}
@@ -429,6 +474,7 @@ export function ClosuresPage({ notify, onChange }) {
                   <input
                     type="date"
                     name="end"
+                    disabled={busy}
                     required
                     min={dateString()}
                     defaultValue={dateString()}
@@ -439,6 +485,7 @@ export function ClosuresPage({ notify, onChange }) {
                 暂停原因
                 <textarea
                   name="reason"
+                  disabled={busy}
                   required
                   maxLength={200}
                   placeholder="例如：场地维护、校内活动占用"

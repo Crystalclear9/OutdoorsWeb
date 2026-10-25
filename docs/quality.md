@@ -18,6 +18,8 @@
 | 办理队列保存时的导航互斥                   | `tests/casework-navigation-saving.spec.js`                                                                              |
 | 通知页离开后迟到响应不打断当前办理         | `tests/notification-late-navigation.spec.js`、`tests/notification-target.spec.js`                                       |
 | 日志筛选、失败恢复与导出内容一致性         | `tests/audit-export-consistency.spec.js`                                                                                |
+| 审计归档读取失败恢复与分页下载一致性       | `tests/archive-state-recovery.spec.js`，真实登录、归档分页及下载内容校验                                                |
+| 开放安排未知状态、写入后读取失败及恢复     | `tests/closure-state-recovery.spec.js`、`tests/dialog-saving.spec.js`，真实暂停及恢复开放，纯读重试与保存字段互斥       |
 | 账号回写代次、改密互斥及失败重试           | `tests/account-session-boundaries.spec.js`                                                                              |
 | 通知偏好保存一致性、绑定互斥及读取恢复     | `tests/identity-preference-saving.spec.js`，隔离通信适配器、实际注册与绑定及真实偏好写入                                |
 | 初次申请提交字段互斥、失败保留与真实重试   | `tests/booking-form-saving.spec.js`                                                                                     |

@@ -74,7 +74,7 @@ export default function Dashboard({
             ClipboardText,
             admin ? "过期未审核" : "未通过",
           ],
-          [admin ? "累计申报" : "我的申请总数", total, Buildings, ""],
+          [admin ? "累计申报" : "我的申请总数", total, Buildings, "all"],
         ]
       : [];
   return (

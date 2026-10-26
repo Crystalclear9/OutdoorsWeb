@@ -26,7 +26,7 @@ async function metric(page, label, status) {
     .click();
   await response;
   await expect(page.locator(".records-card .tabs button.selected")).toHaveText(
-    status,
+    status || "全部申请",
   );
 }
 
@@ -46,6 +46,14 @@ test("管理员过期和已通过统计直达对应历史分类，待处理仍�
     .getByRole("button", { name: "服务工作台", exact: true })
     .click();
   await metric(page, "已通过", "已通过");
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "服务工作台", exact: true })
+    .click();
+  await metric(page, "累计申报", "");
+  await expect(page.locator(".review-topbar .tabs button.selected")).toHaveText(
+    "全部申请与历史",
+  );
   await page
     .getByRole("navigation")
     .getByRole("button", { name: "服务工作台", exact: true })
@@ -75,4 +83,9 @@ test("企业未通过统计直达本人未通过记录，不显示内部过期�
     .getByRole("button", { name: "服务工作台", exact: true })
     .click();
   await metric(page, "我的待审核", "待审核");
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "服务工作台", exact: true })
+    .click();
+  await metric(page, "我的申请总数", "");
 });

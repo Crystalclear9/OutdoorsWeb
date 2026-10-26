@@ -19,6 +19,7 @@ export default function Records({
   onChange,
   initialStatus = "",
 }) {
+  const filterStatus = initialStatus === "all" ? "" : initialStatus;
   return can(user, "bookings.review") ? (
     <ReviewDesk
       user={user}
@@ -32,7 +33,7 @@ export default function Records({
           user={user}
           notify={notify}
           onChange={onChange}
-          initialStatus={initialStatus}
+          initialStatus={filterStatus}
         />
       }
     />
@@ -41,7 +42,7 @@ export default function Records({
       user={user}
       notify={notify}
       onChange={onChange}
-      initialStatus={initialStatus}
+      initialStatus={filterStatus}
     />
   );
 }

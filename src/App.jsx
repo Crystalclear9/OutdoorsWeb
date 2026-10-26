@@ -114,6 +114,7 @@ export default function App({ initialPage = "overview" }) {
     if (p === "records")
       setRecordsStatus(
         [
+          "all",
           "待审核",
           "过期未审核",
           "已通过",

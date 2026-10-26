@@ -769,7 +769,7 @@ export default function App({ initialPage = "overview" }) {
       {modal?.type === "notice" && (
         <Modal
           title={modal.item.title}
-          description={`大学生活动中心 · ${modal.item.created.slice(0, 10)}`}
+          description={`大学生活动中心 · ${dateString(new Date(modal.item.created))}`}
           onClose={() => setModal(null)}
         >
           <div className="notice-full">{modal.item.content}</div>

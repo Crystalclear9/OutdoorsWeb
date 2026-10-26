@@ -448,6 +448,16 @@ function review(id, status, reason, options, version) {
   });
   log("booking.reviewed", id);
 }
+const clean = (value, length) =>
+  typeof value === "string" ? value.trim().slice(0, length) : "";
+function enterpriseFields(data) {
+  const company = clean(data.company, 80),
+    contact = clean(data.contact, 30),
+    phone = typeof data.phone === "string" ? data.phone.trim() : "";
+  if (!company || !contact || !/^1\d{10}$/.test(phone))
+    error("请填写企业名称、联系人和有效的 11 位手机号");
+  return { company, contact, phone };
+}
 function validateDates(b) {
   if (
     !dateOnly(b.start) ||
@@ -681,6 +691,7 @@ export async function request(path, options = {}) {
       result = { ok: true };
     } else if (p === "/bookings" && m === "POST") {
       const user = requireUser("enterprise");
+      const fields = enterpriseFields(b);
       validateDates(b);
       if (
         typeof b.builder_contact !== "string" ||
@@ -692,6 +703,7 @@ export async function request(path, options = {}) {
         error("请填写搭建方联系人和有效的搭建方联系电话");
       const row = {
         ...b,
+        ...fields,
         id: `SHOWCASE-${crypto.randomUUID().slice(0, 8)}`,
         slot: 1,
         content_only: 1,
@@ -772,19 +784,28 @@ export async function request(path, options = {}) {
       const id = p.split("/")[2];
       if (m === "DELETE")
         state.notices = state.notices.filter((r) => r.id !== id);
-      else if (id) {
-        const row =
-          state.notices.find((r) => r.id === id) || error("公告不存在");
-        matchVersion(row, options);
-        Object.assign(row, b, { updated: now(), version: row.version + 1 });
-      } else
-        state.notices.unshift({
-          ...b,
-          id: crypto.randomUUID(),
-          created: now(),
-          updated: now(),
-          version: 1,
-        });
+      else {
+        const title = clean(b.title, 80),
+          content = clean(b.content, 5000),
+          fields = { title, content, pinned: b.pinned ? 1 : 0 };
+        if (!title || !content) error("请填写公告标题和正文");
+        if (id) {
+          const row =
+            state.notices.find((r) => r.id === id) || error("公告不存在");
+          matchVersion(row, options);
+          Object.assign(row, fields, {
+            updated: now(),
+            version: row.version + 1,
+          });
+        } else
+          state.notices.unshift({
+            ...fields,
+            id: crypto.randomUUID(),
+            created: now(),
+            updated: now(),
+            version: 1,
+          });
+      }
       result = { ok: true };
       log("notice.saved", id || "showcase");
     } else if (p === "/closures" || p.startsWith("/closures/")) {

@@ -221,23 +221,6 @@ export default function Identity({ notify }) {
       request.current++;
     };
   }, []);
-  async function preferences(e) {
-    e.preventDefault();
-    if (busy || loading || !data) return;
-    setBusy(true);
-    setError("");
-    try {
-      await api("/auth/notifications", {
-        method: "POST",
-        body: { sms: !!data.preferences.sms, voice: !!data.preferences.voice },
-      });
-      if (mounted.current) notify("通知偏好已保存");
-    } catch (e) {
-      if (mounted.current) setError(e.message);
-    } finally {
-      if (mounted.current) setBusy(false);
-    }
-  }
   async function unlink(provider) {
     if (busy || loading || !data) return;
     setBusy(true);
@@ -256,7 +239,7 @@ export default function Identity({ notify }) {
     <section className="card">
       <div className="card-header">
         <div>
-          <h2>快捷登录与结果通知</h2>
+          <h2>快捷登录与账号绑定</h2>
           <p>验证并绑定本人手机号或第三方账号，避免重复注册。</p>
         </div>
       </div>
@@ -268,10 +251,10 @@ export default function Identity({ notify }) {
             disabled={busy || loading}
             onClick={() => load()}
           >
-            重新读取绑定与通知状态
+            重新读取绑定状态
           </Button>
         )}
-        {loading && <p className="field-note">正在读取绑定与通知状态…</p>}
+        {loading && <p className="field-note">正在读取绑定状态…</p>}
         {data && !loading && (
           <>
             <p>
@@ -305,7 +288,7 @@ export default function Identity({ notify }) {
                 )}
               </>
             ) : (
-              <p className="field-note">手机号快捷登录与电话通知暂未开放。</p>
+              <p className="field-note">手机号快捷登录暂未开放。</p>
             )}
             <div className="identity-actions">
               {["qq", "wechat"].map((p) => {
@@ -338,39 +321,6 @@ export default function Identity({ notify }) {
                 );
               })}
             </div>
-            {data.phone && data.configured.sms && (
-              <form onSubmit={preferences}>
-                <h3>审批结果通知</h3>
-                {[
-                  ["sms", "接收审批结果短信"],
-                  ["voice", "接收自动语音电话通知"],
-                ].map(([key, label]) => (
-                  <label key={key} className="check-label">
-                    <input
-                      type="checkbox"
-                      checked={!!data.preferences[key]}
-                      disabled={busy}
-                      onChange={(e) =>
-                        setData((d) => ({
-                          ...d,
-                          preferences: {
-                            ...d.preferences,
-                            [key]: +e.target.checked,
-                          },
-                        }))
-                      }
-                    />
-                    {label}
-                  </label>
-                ))}
-                <p className="field-note">
-                  仅向已验证号码发送，站内消息始终保留。勾选表示同意接收对应通知。
-                </p>
-                <Button className="secondary" loading={busy} type="submit">
-                  保存通知偏好
-                </Button>
-              </form>
-            )}
           </>
         )}
       </div>

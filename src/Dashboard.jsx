@@ -11,6 +11,7 @@ import {
   Buildings,
 } from "@phosphor-icons/react";
 import { api } from "./api.js";
+import { dateString } from "./utils.js";
 import { Button, Empty, ErrorBox, Status } from "./components.jsx";
 import { BookingDetail } from "./Booking.jsx";
 import { can } from "./permissions.js";
@@ -301,7 +302,7 @@ export default function Dashboard({
                     {n.title}
                   </strong>
                   <p>{n.content.slice(0, 85)}</p>
-                  <small>{n.created.slice(0, 10)}</small>
+                  <small>{dateString(new Date(n.created))}</small>
                 </button>
               ))}
             </div>

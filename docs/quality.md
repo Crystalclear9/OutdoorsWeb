@@ -8,6 +8,8 @@
 
 `tests/showcase/review-gaps.showcase.js` 检查演示审批人筛选、过期待审的身份差异、损坏状态恢复、北京时间的申请及日志日期筛选，以及只读日历。静态测试构建独立输出 `tmp/showcase-build`，不覆盖普通服务的 `dist`。
 
+`tests/showcase/input-contract.showcase.js` 检查企业名称、联系人及公告标题正文仅含空格时拒绝保存，修正输入后才新增或更新；`tests/notice-beijing-date.spec.js` 使用真实公告接口和非中国时区浏览器，检查北京时间午夜前后列表及阅读详情的日期一致。
+
 | 范围                                             | 主要证据                                                                                                                             |
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
 | 跨北京时间日期及恢复焦点后的状态核对             | `tests/expiry-day-refresh.spec.js`，企业及管理员历史、详情读取失败、暂停写入、草稿保留及纯读恢复                                     |
@@ -25,7 +27,7 @@
 | 日志筛选、失败恢复与导出内容一致性               | `tests/audit-export-consistency.spec.js`                                                                                             |
 | 审计归档读取失败恢复与分页下载一致性             | `tests/archive-state-recovery.spec.js`，真实登录、归档分页及下载内容校验                                                             |
 | 账号回写代次、改密互斥及失败重试                 | `tests/account-session-boundaries.spec.js`                                                                                           |
-| 通知偏好保存一致性、绑定互斥及读取恢复           | `tests/identity-preference-saving.spec.js`，隔离通信适配器、实际注册与绑定及真实偏好写入                                             |
+| 企业不含结果通知订阅、绑定互斥及读取恢复         | `tests/identity-binding-recovery.spec.js`，启用隔离短信适配器、已验证手机及实际注册换绑                                              |
 | 初次申请提交字段互斥、失败保留与真实重试         | `tests/booking-form-saving.spec.js`                                                                                                  |
 | MFA 状态读取与账号同步失败恢复                   | `tests/mfa-state-recovery.spec.js`，实际启用及一次性恢复码保留                                                                       |
 | 首次验证码 Cookie 迟到与页面重开                 | `tests/captcha-cookie-order.spec.js`，独立转发真实接口并实际登录                                                                     |

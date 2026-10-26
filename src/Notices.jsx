@@ -3,7 +3,7 @@ import { Plus, Megaphone, ArrowUpRight } from "@phosphor-icons/react";
 import { api } from "./api.js";
 import { can } from "./permissions.js";
 import { Button, ErrorBox, Empty, Modal } from "./components.jsx";
-import { formatDate } from "./utils.js";
+import { dateString, formatDate } from "./utils.js";
 
 export default function Notices({ items, user, onSaved, readError }) {
   const [modal, setModal] = useState(null),
@@ -150,7 +150,7 @@ export default function Notices({ items, user, onSaved, readError }) {
         {items.map((n) => (
           <article className="notice-article service-notice" key={n.id}>
             <time className="notice-published" dateTime={n.created}>
-              {n.created.slice(0, 10)}
+              {dateString(new Date(n.created))}
             </time>
             <div>
               <button

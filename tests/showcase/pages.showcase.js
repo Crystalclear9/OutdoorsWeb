@@ -10,13 +10,14 @@ async function role(page, key) {
 }
 async function navigate(page, name) {
   const button = page
-    .getByRole("navigation")
-    .getByRole("button", { name, exact: true });
+    .getByRole("navigation", { includeHidden: true })
+    .getByRole("button", { name, exact: true, includeHidden: true });
   // Role changes and reset remount App; its session read adds private menus.
   // Wait for that menu before distinguishing a collapsed mobile navigation.
   await expect(button).toBeAttached();
-  if (!(await button.isVisible()))
-    await page.getByRole("button", { name: "打开导航", exact: true }).click();
+  const toggle = page.getByRole("button", { name: "打开导航", exact: true });
+  if ((await toggle.isVisible()) && !(await button.isVisible()))
+    await toggle.click();
   await button.click();
 }
 

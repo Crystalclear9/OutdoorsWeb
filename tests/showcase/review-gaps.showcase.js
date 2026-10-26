@@ -9,6 +9,90 @@ async function role(page, key) {
   await expect(button).toHaveAttribute("aria-pressed", "true");
 }
 
+test("演示提交日期筛选按北京时间包含当日边界，不按UTC日期错分", async ({
+  page,
+}) => {
+  await page.goto("?showcase=1");
+  await page.evaluate(() => {
+    const key = "outdoors-temporary-showcase-v1",
+      saved = JSON.parse(sessionStorage.getItem(key)),
+      times = {
+        "SHOWCASE-01": "2026-10-25T16:00:00.000Z",
+        "SHOWCASE-03": "2026-10-26T15:59:59.999Z",
+        "SHOWCASE-05": "2026-10-25T15:59:59.999Z",
+        "SHOWCASE-06": "2026-10-26T16:00:00.000Z",
+      };
+    for (const row of saved.bookings)
+      row.created = times[row.id] || "2026-10-20T00:00:00.000Z";
+    sessionStorage.setItem(key, JSON.stringify(saved));
+  });
+  await page.reload();
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "我的申请", exact: true })
+    .click();
+  const from = page.getByLabel("提交开始日期（北京时间）", { exact: true }),
+    to = page.getByLabel("提交结束日期（北京时间）", { exact: true }),
+    rows = page.getByRole("table").locator("tbody tr");
+  await from.fill("2026-10-26");
+  await to.fill("2026-10-26");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.filter({ hasText: "SHOWCASE-01" })).toHaveCount(1);
+  await expect(rows.filter({ hasText: "SHOWCASE-03" })).toHaveCount(1);
+  await from.fill("2026-10-25");
+  await to.fill("2026-10-25");
+  await expect(rows).toHaveCount(1);
+  await expect(rows).toContainText(["SHOWCASE-05"]);
+  await to.fill("2026-10-27");
+  await from.fill("2026-10-27");
+  await expect(rows).toHaveCount(1);
+  await expect(rows).toContainText(["SHOWCASE-06"]);
+});
+
+test("演示操作日志日期筛选按北京时间排除前后相邻日期", async ({ page }) => {
+  await page.goto("?showcase=1");
+  await role(page, "super");
+  await page.evaluate(() => {
+    const key = "outdoors-temporary-showcase-v1",
+      saved = JSON.parse(sessionStorage.getItem(key));
+    saved.audit = [
+      ["BEFORE-DAY", "2026-10-25T15:59:59.999Z"],
+      ["DAY-START", "2026-10-25T16:00:00.000Z"],
+      ["DAY-END", "2026-10-26T15:59:59.999Z"],
+      ["AFTER-DAY", "2026-10-26T16:00:00.000Z"],
+    ].map(([target, created]) => ({
+      id: target,
+      email: "admin@showcase.invalid",
+      action: "notice.saved",
+      target,
+      details: "{}",
+      created,
+    }));
+    sessionStorage.setItem(key, JSON.stringify(saved));
+  });
+  await page.reload();
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "操作日志", exact: true })
+    .click();
+  const from = page.getByLabel("日志起始日期", { exact: true }),
+    to = page.getByLabel("日志结束日期", { exact: true }),
+    rows = page.getByRole("table").locator("tbody tr");
+  await from.fill("2026-10-26");
+  await to.fill("2026-10-26");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.filter({ hasText: "DAY-START" })).toHaveCount(1);
+  await expect(rows.filter({ hasText: "DAY-END" })).toHaveCount(1);
+  await from.fill("2026-10-25");
+  await to.fill("2026-10-25");
+  await expect(rows).toHaveCount(1);
+  await expect(rows).toContainText(["BEFORE-DAY"]);
+  await to.fill("2026-10-27");
+  await from.fill("2026-10-27");
+  await expect(rows).toHaveCount(1);
+  await expect(rows).toContainText(["AFTER-DAY"]);
+});
+
 test("演示审批历史的审批人选项显示真实可读姓名并可筛选", async ({ page }) => {
   await page.goto("?showcase=1");
   await role(page, "super");

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -45,8 +45,14 @@ function CheckSummary({ item }) {
   );
 }
 
-export default function ReviewDesk({ user, notify, onChange, history }) {
-  const [mode, setMode] = useState("pending"),
+export default function ReviewDesk({
+  user,
+  notify,
+  onChange,
+  history,
+  initialMode = "pending",
+}) {
+  const [mode, setMode] = useState(initialMode),
     [query, setQuery] = useState(""),
     [page, setPage] = useState(1),
     [order, setOrder] = useState("oldest");
@@ -428,29 +434,59 @@ function ReviewDetail({
   hasPrevious,
   hasNext,
 }) {
+  const imageSource = useRef(null);
   const [image, setImage] = useState(null),
     [imageError, setImageError] = useState(""),
+    [imageReady, setImageReady] = useState(false),
+    [imageLoading, setImageLoading] = useState(true),
+    [imageRevision, setImageRevision] = useState(0),
     [error, setError] = useState(""),
     [reason, setReason] = useState(""),
     [saving, setSaving] = useState(false);
   useEffect(() => {
     let active = true,
       blob;
+    imageSource.current = null;
+    setImage(null);
+    setImageError("");
+    setImageReady(false);
+    setImageLoading(true);
     getDesign(item.id)
       .then((url) => {
         blob = url;
-        if (active) setImage(url);
-        else URL.revokeObjectURL(url);
+        if (active) {
+          imageSource.current = url;
+          setImage(url);
+        } else URL.revokeObjectURL(url);
       })
-      .catch((e) => active && setImageError(e.message));
+      .catch((e) => {
+        if (active) {
+          setImageError(e.message);
+          setImageLoading(false);
+        }
+      });
     return () => {
       active = false;
+      if (imageSource.current === blob) imageSource.current = null;
       if (blob) URL.revokeObjectURL(blob);
     };
-  }, [item.id]);
+  }, [item.id, imageRevision]);
+  function retryDesign() {
+    if (disabled || saving || imageLoading) return;
+    imageSource.current = null;
+    setImage(null);
+    setImageReady(false);
+    setImageError("");
+    setImageLoading(true);
+    setImageRevision((value) => value + 1);
+  }
   const reviewable = item.status === "待审核" && !item.reviewExpired;
   async function decide(status) {
     if (disabled || saving || !reviewable) return;
+    if (status === "已通过" && (!imageReady || imageLoading)) {
+      setError("请先成功加载并核对桁架设计图后再通过审核");
+      return;
+    }
     if (status === "未通过" && !reason.trim()) {
       setError("请填写退回原因，或选择下方快捷意见");
       return;
@@ -569,11 +605,36 @@ function ReviewDetail({
           </div>
           {image ? (
             <a href={image} target="_blank" rel="noreferrer">
-              <img src={image} alt={`${item.company}的桁架设计图`} />
+              <img
+                src={image}
+                alt={`${item.company}的桁架设计图`}
+                onLoad={() => {
+                  if (imageSource.current !== image) return;
+                  setImageReady(true);
+                  setImageLoading(false);
+                }}
+                onError={() => {
+                  if (imageSource.current !== image) return;
+                  imageSource.current = null;
+                  setImage(null);
+                  setImageReady(false);
+                  setImageLoading(false);
+                  setImageError("设计图无法显示，请重新加载后再核对内容");
+                }}
+              />
             </a>
           ) : (
             <div className="image-placeholder">
-              {imageError || "正在加载设计图…"}
+              <p>{imageError || "正在加载设计图…"}</p>
+              {imageError && (
+                <Button
+                  className="secondary small"
+                  disabled={disabled || saving || imageLoading}
+                  onClick={retryDesign}
+                >
+                  重新加载设计图
+                </Button>
+              )}
             </div>
           )}
         </div>
@@ -617,7 +678,8 @@ function ReviewDetail({
             disabled={
               disabled ||
               !reviewable ||
-              !image ||
+              imageLoading ||
+              !imageReady ||
               !item.reviewCheck ||
               !!item.reviewCheck.blockers.length ||
               user.id === item.user_id

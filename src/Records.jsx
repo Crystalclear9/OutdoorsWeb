@@ -13,24 +13,42 @@ import { Empty, ErrorBox, Status, Button } from "./components.jsx";
 import { BookingDetail } from "./Booking.jsx";
 import ReviewDesk from "./ReviewDesk.jsx";
 
-export default function Records({ user, notify, onChange }) {
+export default function Records({
+  user,
+  notify,
+  onChange,
+  initialStatus = "",
+}) {
   return can(user, "bookings.review") ? (
     <ReviewDesk
       user={user}
       notify={notify}
       onChange={onChange}
+      initialMode={
+        initialStatus && initialStatus !== "待审核" ? "history" : "pending"
+      }
       history={
-        <ApplicationHistory user={user} notify={notify} onChange={onChange} />
+        <ApplicationHistory
+          user={user}
+          notify={notify}
+          onChange={onChange}
+          initialStatus={initialStatus}
+        />
       }
     />
   ) : (
-    <ApplicationHistory user={user} notify={notify} onChange={onChange} />
+    <ApplicationHistory
+      user={user}
+      notify={notify}
+      onChange={onChange}
+      initialStatus={initialStatus}
+    />
   );
 }
 
-function ApplicationHistory({ user, notify, onChange }) {
+function ApplicationHistory({ user, notify, onChange, initialStatus = "" }) {
   const reviewerAccess = can(user, "bookings.review");
-  const [filter, setFilter] = useState(""),
+  const [filter, setFilter] = useState(initialStatus),
     [query, setQuery] = useState(""),
     [from, setFrom] = useState(""),
     [to, setTo] = useState(""),

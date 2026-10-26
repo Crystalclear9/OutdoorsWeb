@@ -61,14 +61,20 @@ export default function Dashboard({
   const metrics =
     user && (!staff || admin)
       ? [
-          [admin ? "待处理申请" : "我的待审核", counts["待审核"] || 0, Clock],
-          ["已通过", counts["已通过"] || 0, CheckCircle],
+          [
+            admin ? "待处理申请" : "我的待审核",
+            counts["待审核"] || 0,
+            Clock,
+            "待审核",
+          ],
+          ["已通过", counts["已通过"] || 0, CheckCircle, "已通过"],
           [
             admin ? "过期未审核" : "未通过",
             counts[admin ? "过期未审核" : "未通过"] || 0,
             ClipboardText,
+            admin ? "过期未审核" : "未通过",
           ],
-          [admin ? "累计申报" : "我的申请总数", total, Buildings],
+          [admin ? "累计申报" : "我的申请总数", total, Buildings, ""],
         ]
       : [];
   return (
@@ -148,11 +154,11 @@ export default function Dashboard({
       </section>
       {!!metrics.length && (
         <div className="dashboard-metrics">
-          {metrics.map(([title, value, Icon]) => (
+          {metrics.map(([title, value, Icon, status]) => (
             <button
               key={title}
               className="card"
-              onClick={() => onNavigate("records")}
+              onClick={() => onNavigate("records", status)}
             >
               <Icon size={24} />
               <span>

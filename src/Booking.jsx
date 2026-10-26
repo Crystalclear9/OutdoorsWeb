@@ -290,8 +290,12 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
   const [cancelling, setCancelling] = useState(false),
     [cancelReason, setCancelReason] = useState(""),
     [cancelConfirmed, setCancelConfirmed] = useState(false);
+  const imageSource = useRef(null);
   const [image, setImage] = useState(null),
     [imageError, setImageError] = useState(""),
+    [imageLoading, setImageLoading] = useState(true),
+    [imageReady, setImageReady] = useState(false),
+    [imageRevision, setImageRevision] = useState(0),
     [reason, setReason] = useState(""),
     [error, setError] = useState(""),
     [busy, setBusy] = useState("");
@@ -299,20 +303,50 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
   useEffect(() => {
     let active = true,
       url;
+    imageSource.current = null;
+    setImage(null);
+    setImageError("");
+    setImageReady(false);
+    setImageLoading(true);
     getDesign(item.id)
       .then((value) => {
         url = value;
-        if (active) setImage(value);
-        else URL.revokeObjectURL(value);
+        if (active) {
+          imageSource.current = value;
+          setImage(value);
+        } else URL.revokeObjectURL(value);
       })
-      .catch((e) => active && setImageError(e.message));
+      .catch((e) => {
+        if (active) {
+          setImageError(e.message);
+          setImageLoading(false);
+        }
+      });
     return () => {
       active = false;
+      if (imageSource.current === url) imageSource.current = null;
       if (url) URL.revokeObjectURL(url);
     };
-  }, [item.id]);
+  }, [item.id, imageRevision]);
+  function retryDesign() {
+    if (blocked || imageLoading) return;
+    imageSource.current = null;
+    setImage(null);
+    setImageReady(false);
+    setImageError("");
+    setImageLoading(true);
+    setImageRevision((value) => value + 1);
+  }
   async function action(type, status) {
     if (blocked) return;
+    if (
+      type === "review" &&
+      status === "已通过" &&
+      (!imageReady || imageLoading)
+    ) {
+      setError("请先成功加载并核对桁架设计图后再通过审核");
+      return;
+    }
     setBusy(status || type);
     setError("");
     try {
@@ -488,7 +522,23 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
           {image ? (
             <>
               <a href={image} target="_blank" rel="noreferrer" title="打开原图">
-                <img src={image} alt="企业提交的桁架设计图" />
+                <img
+                  src={image}
+                  alt="企业提交的桁架设计图"
+                  onLoad={() => {
+                    if (imageSource.current !== image) return;
+                    setImageReady(true);
+                    setImageLoading(false);
+                  }}
+                  onError={() => {
+                    if (imageSource.current !== image) return;
+                    imageSource.current = null;
+                    setImage(null);
+                    setImageReady(false);
+                    setImageLoading(false);
+                    setImageError("设计图无法显示，请重新加载后再核对内容");
+                  }}
+                />
               </a>
               <a
                 className="text-button"
@@ -501,7 +551,16 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
             </>
           ) : (
             <div className="image-placeholder">
-              {imageError || "正在加载设计图…"}
+              <p>{imageError || "正在加载设计图…"}</p>
+              {imageError && (
+                <Button
+                  className="secondary small"
+                  disabled={blocked || imageLoading}
+                  onClick={retryDesign}
+                >
+                  重新加载设计图
+                </Button>
+              )}
             </div>
           )}
         </div>
@@ -658,7 +717,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
             <Button
               className="primary"
               loading={busy === "已通过"}
-              disabled={blocked}
+              disabled={blocked || imageLoading || !imageReady}
               onClick={() => action("review", "已通过")}
             >
               审核通过

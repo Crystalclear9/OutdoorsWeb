@@ -347,6 +347,23 @@ function searchable(items, url) {
       ),
   );
 }
+function createdRange(items, url, message) {
+  const from = url.searchParams.get("from"),
+    to = url.searchParams.get("to");
+  if (
+    (from && !dateOnly(from)) ||
+    (to && !dateOnly(to)) ||
+    (from && to && from > to)
+  )
+    error(message);
+  const submittedFrom = from ? Date.parse(`${from}T00:00:00+08:00`) : null,
+    submittedTo = to ? Date.parse(`${to}T23:59:59.999+08:00`) : null;
+  return items.filter(
+    (row) =>
+      (submittedFrom === null || Date.parse(row.created) >= submittedFrom) &&
+      (submittedTo === null || Date.parse(row.created) <= submittedTo),
+  );
+}
 function reviewExpired(row) {
   return row.status === "待审核" && !row.cancelled && row.start < day();
 }
@@ -500,6 +517,7 @@ export async function request(path, options = {}) {
         occupied: state.bookings
           .filter(
             (r) =>
+              r.content_only === 0 &&
               r.status === "已通过" &&
               !r.cancelled &&
               r.start <= date &&
@@ -541,13 +559,7 @@ export async function request(path, options = {}) {
                   : displayedStatus(r)
                 : r[key]) === url.searchParams.get(key),
           );
-      const from = url.searchParams.get("from"),
-        to = url.searchParams.get("to");
-      rows = rows.filter(
-        (r) =>
-          (!from || r.created.slice(0, 10) >= from) &&
-          (!to || r.created.slice(0, 10) <= to),
-      );
+      rows = createdRange(rows, url, "提交日期范围无效");
       rows.sort(
         (a, b) =>
           (url.searchParams.get("order") === "oldest" ? 1 : -1) *
@@ -577,6 +589,7 @@ export async function request(path, options = {}) {
         items: date === day() ? state.onsite : [],
         approved: state.bookings.filter(
           (r) =>
+            r.content_only === 0 &&
             !r.cancelled &&
             r.status === "已通过" &&
             r.start <= date &&
@@ -597,7 +610,10 @@ export async function request(path, options = {}) {
       result = { items: state.users.filter((u) => u.role === "admin") };
     } else if (p === "/audit") {
       requireUser("audit.read");
-      result = pageOf(searchable(state.audit, url), url);
+      result = pageOf(
+        createdRange(searchable(state.audit, url), url, "日志日期范围无效"),
+        url,
+      );
     } else if (p === "/archives") {
       requireUser("audit.read");
       result = pageOf([], url);

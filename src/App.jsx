@@ -61,6 +61,7 @@ export default function App({ initialPage = "overview" }) {
     [externalSignup, setExternalSignup] = useState(null),
     [page, setPage] = useState(initialPage),
     [caseTarget, setCaseTarget] = useState(""),
+    [recordsStatus, setRecordsStatus] = useState(""),
     [mobile, setMobile] = useState(false),
     [modal, setModal] = useState(null),
     [toast, setToast] = useState("");
@@ -110,6 +111,19 @@ export default function App({ initialPage = "overview" }) {
   const notify = (message) => setToast(message);
   const go = (p, caseId = "") => {
     if (p === "casework") setCaseTarget(caseId);
+    if (p === "records")
+      setRecordsStatus(
+        [
+          "待审核",
+          "过期未审核",
+          "已通过",
+          "未通过",
+          "已撤回",
+          "已取消",
+        ].includes(caseId)
+          ? caseId
+          : "",
+      );
     setPage(user?.mustChangePassword || user?.mfaRequired ? "account" : p);
     setMobile(false);
   };
@@ -556,8 +570,9 @@ export default function App({ initialPage = "overview" }) {
             !user.mustChangePassword &&
             (user.role === "enterprise" || can(user, "bookings.review")) && (
               <Records
-                key={user.id}
+                key={`${user.id}:${recordsStatus}`}
                 user={user}
+                initialStatus={recordsStatus}
                 notify={notify}
                 onChange={refresh}
               />

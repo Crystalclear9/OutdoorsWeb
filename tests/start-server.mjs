@@ -29,6 +29,20 @@ VALUES('EXPIRED-CONTENT-UI','completion-ui','过期待审界面固定企业','�
       "base64",
     ),
   );
+// Yesterday's pending record exercises midnight expiry without changing the server clock.
+const previousBeijingDay = new Date(Date.now() + 8 * 3600000 - 86400000)
+  .toISOString()
+  .slice(0, 10);
+app.db
+  .prepare(
+    `INSERT INTO bookings(id,user_id,company,contact,phone,builder_contact,builder_phone,content_only,start,end,slot,status,image,image_type,created)
+SELECT 'DAY-EXPIRY-UI',user_id,'跨日过期界面固定企业',contact,phone,builder_contact,builder_phone,1,?,?,1,'待审核',image,image_type,? FROM bookings WHERE id='EXPIRED-CONTENT-UI'`,
+  )
+  .run(
+    previousBeijingDay,
+    previousBeijingDay,
+    new Date(previousBeijingDay + "T00:00:00+08:00").toISOString(),
+  );
 // Verified-provider proofs are seeded only in this isolated test entry point.
 app.db
   .prepare(

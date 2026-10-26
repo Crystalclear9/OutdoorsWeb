@@ -10,6 +10,7 @@
 
 | 范围                                             | 主要证据                                                                                                                             |
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| 跨北京时间日期及恢复焦点后的状态核对             | `tests/expiry-day-refresh.spec.js`，企业及管理员历史、详情读取失败、暂停写入、草稿保留及纯读恢复                                     |
 | 身份读取独立恢复与审核保存导航保护               | `tests/session-read-recovery.spec.js`、`tests/review-navigation-saving.spec.js`，已有会话恢复、纯读取、单条及批量失败保存互斥        |
 | 详情及改期版本冲突后的纯读核对                   | `tests/booking-conflict-recovery.spec.js`，真实跨账号写入、409后读取503、草稿保留及关闭后的迟到响应                                  |
 | 工作台状态直达及设计图失败恢复                   | `tests/dashboard-status-navigation.spec.js`、`tests/booking-design-recovery.spec.js`，真实数据筛选、图片503及200损坏、重试和单次审批 |

@@ -12,6 +12,7 @@ import { can } from "./permissions.js";
 import { Empty, ErrorBox, Status, Button } from "./components.jsx";
 import { BookingDetail } from "./Booking.jsx";
 import ReviewDesk from "./ReviewDesk.jsx";
+import useBeijingDay from "./useBeijingDay.js";
 
 export default function Records({
   user,
@@ -51,6 +52,7 @@ export default function Records({
 
 function ApplicationHistory({ user, notify, onChange, initialStatus = "" }) {
   const reviewerAccess = can(user, "bookings.review");
+  const day = useBeijingDay();
   const [filter, setFilter] = useState(initialStatus),
     [query, setQuery] = useState(""),
     [from, setFrom] = useState(""),
@@ -67,7 +69,15 @@ function ApplicationHistory({ user, notify, onChange, initialStatus = "" }) {
     [resultKey, setResultKey] = useState("");
   const rangeError =
     from && to && from > to ? "提交开始日期不能晚于结束日期。" : "";
-  const criteriaKey = JSON.stringify([filter, query, from, to, reviewer, page]);
+  const criteriaKey = JSON.stringify([
+    filter,
+    query,
+    from,
+    to,
+    reviewer,
+    page,
+    day,
+  ]);
   useEffect(() => {
     if (!reviewerAccess) return;
     let active = true;
@@ -130,6 +140,7 @@ function ApplicationHistory({ user, notify, onChange, initialStatus = "" }) {
     user.id,
     reviewerAccess,
     rangeError,
+    day,
   ]);
   return (
     <>

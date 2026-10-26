@@ -14,6 +14,7 @@ import { can } from "./permissions.js";
 import { dateString, formatDate } from "./utils.js";
 import AllowedArea from "./AllowedArea.jsx";
 import { BUILDER_PHONE_PATTERN } from "../shared/booking-contact.js";
+import useBeijingDay from "./useBeijingDay.js";
 import LazyPageBoundary from "./LazyPageBoundary.jsx";
 const CasePanel = lazy(() =>
   import("./Casework.jsx").then((module) => ({ default: module.CasePanel })),
@@ -283,6 +284,11 @@ export function BookingForm({ user, date, onClose, onSaved }) {
 }
 
 export function BookingDetail({ item: initial, user, onClose, onSaved }) {
+  const day = useBeijingDay();
+  const [checkedDay, setCheckedDay] = useState(() =>
+    initial.status === "待审核" && initial.start < day ? "" : day,
+  );
+  const attemptedDay = useRef(checkedDay);
   const [caseOpen, setCaseOpen] = useState(false);
   const [caseBusy, setCaseBusy] = useState(false);
   const [rescheduling, setRescheduling] = useState(false);
@@ -307,7 +313,8 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
     [error, setError] = useState(""),
     [busy, setBusy] = useState("");
   const blocked = !!busy || caseBusy;
-  const writeBlocked = blocked || statusLoading || statusReadFailed;
+  const writeBlocked =
+    blocked || statusLoading || statusReadFailed || checkedDay !== day;
   const rescheduleAllowed =
     item.status === "已通过" && !item.cancelled && item.start >= dateString();
   useEffect(() => {
@@ -320,6 +327,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
   }, []);
   async function readBooking() {
     if (!mounted.current || statusReadPending.current) return;
+    attemptedDay.current = day;
     const request = ++statusReadRequest.current;
     statusReadPending.current = true;
     setStatusLoading(true);
@@ -329,6 +337,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
       const result = await api(`/bookings/${item.id}`);
       if (!mounted.current || request !== statusReadRequest.current) return;
       setItem(result.booking);
+      setCheckedDay(day);
       setStatusReadFailed(false);
       setStatusReadMessage(
         "最新申请状态已读取，请核对后再操作；原输入已保留。",
@@ -337,7 +346,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
       if (!mounted.current || request !== statusReadRequest.current) return;
       setStatusReadFailed(true);
       setStatusReadError(
-        `申请已变化，但重新读取当前状态失败：${e.message}。业务操作已暂停，请重新读取申请状态后核对。`,
+        `申请状态待核对，重新读取当前状态失败：${e.message}。业务操作已暂停，请重新读取申请状态后核对。`,
       );
     } finally {
       if (mounted.current && request === statusReadRequest.current) {
@@ -346,6 +355,16 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
       }
     }
   }
+  useEffect(() => {
+    if (
+      checkedDay !== day &&
+      attemptedDay.current !== day &&
+      !blocked &&
+      !statusLoading
+    ) {
+      void readBooking();
+    }
+  }, [day, checkedDay, blocked, statusLoading]);
   const statusFeedback = (
     <>
       <ErrorBox>{statusReadError || error}</ErrorBox>

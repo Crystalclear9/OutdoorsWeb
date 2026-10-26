@@ -17,6 +17,7 @@ export default function Records({
   user,
   notify,
   onChange,
+  onBusyChange,
   initialStatus = "",
 }) {
   const filterStatus = initialStatus === "all" ? "" : initialStatus;
@@ -25,6 +26,7 @@ export default function Records({
       user={user}
       notify={notify}
       onChange={onChange}
+      onBusyChange={onBusyChange}
       initialMode={
         initialStatus && initialStatus !== "待审核" ? "history" : "pending"
       }

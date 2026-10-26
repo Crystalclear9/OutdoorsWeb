@@ -52,8 +52,11 @@ const titles = {
 export default function App({ initialPage = "overview" }) {
   const [user, setUser] = useState(null),
     [sessionLoading, setSessionLoading] = useState(true),
+    [sessionError, setSessionError] = useState(""),
+    [sessionRevision, setSessionRevision] = useState(0),
     [logoutBusy, setLogoutBusy] = useState(false),
     [passwordBusy, setPasswordBusy] = useState(false),
+    [reviewBusy, setReviewBusy] = useState(false),
     [connected, setConnected] = useState(false),
     [serviceError, setServiceError] = useState(""),
     [auth, setAuth] = useState(null),
@@ -73,6 +76,7 @@ export default function App({ initialPage = "overview" }) {
   const sessionGeneration = useRef(0);
   const logoutPending = useRef(false);
   const passwordPending = useRef(null);
+  const reviewPending = useRef(false);
   const accountGeneration = sessionGeneration.current;
   // Account requests may settle after logout and a new login, including a login
   // to the same ID. Only the originating authentication generation may act.
@@ -109,7 +113,15 @@ export default function App({ initialPage = "overview" }) {
   }
   const refresh = () => setVersion((v) => v + 1);
   const notify = (message) => setToast(message);
+  function changeReviewBusy(value) {
+    reviewPending.current = value;
+    setReviewBusy(value);
+  }
   const go = (p, caseId = "") => {
+    if (reviewPending.current) {
+      notify("审批正在保存，请等待处理结果后再离开");
+      return;
+    }
     if (p === "casework") setCaseTarget(caseId);
     if (p === "records")
       setRecordsStatus(
@@ -153,11 +165,13 @@ export default function App({ initialPage = "overview" }) {
   useEffect(() => {
     let active = true;
     const generation = sessionGeneration.current;
+    setSessionLoading(true);
     api("/auth/session")
       .then((r) => {
         if (active && generation === sessionGeneration.current) {
           setCsrf(r.csrf);
           setUser(r.user);
+          setSessionError("");
           if (r.user?.mustChangePassword || r.user?.mfaRequired)
             setPage("account");
         }
@@ -166,7 +180,7 @@ export default function App({ initialPage = "overview" }) {
         (e) =>
           active &&
           generation === sessionGeneration.current &&
-          setServiceError(e.message),
+          setSessionError(e.message),
       )
       .finally(
         () =>
@@ -177,7 +191,7 @@ export default function App({ initialPage = "overview" }) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [sessionRevision]);
   useEffect(() => {
     let active = true;
     api("/health")
@@ -237,6 +251,8 @@ export default function App({ initialPage = "overview" }) {
       if (logoutPending.current || passwordPending.current) return;
       sessionGeneration.current++;
       setSessionLoading(false);
+      setSessionError("");
+      changeReviewBusy(false);
       setUser(null);
       setCsrf(null);
       setPage("overview");
@@ -252,7 +268,12 @@ export default function App({ initialPage = "overview" }) {
     return () => clearTimeout(t);
   }, [toast]);
   async function logout() {
-    if (logoutPending.current || passwordPending.current) return;
+    if (
+      logoutPending.current ||
+      passwordPending.current ||
+      reviewPending.current
+    )
+      return;
     logoutPending.current = true;
     setLogoutBusy(true);
     sessionGeneration.current++;
@@ -273,6 +294,14 @@ export default function App({ initialPage = "overview" }) {
     }
   }
   function beginBooking() {
+    if (sessionLoading || sessionError) {
+      notify(
+        sessionLoading
+          ? "正在核对登录状态，请稍后再试"
+          : "请先重新读取登录状态后再申报",
+      );
+      return;
+    }
     if (!connected) {
       notify("账号服务尚未连接，请使用 Docker 完整服务地址访问");
       return;
@@ -298,6 +327,8 @@ export default function App({ initialPage = "overview" }) {
   function onAuth(u) {
     sessionGeneration.current++;
     setSessionLoading(false);
+    setSessionError("");
+    changeReviewBusy(false);
     setExternalSignup(null);
     setOauthMfa(null);
     setUser(u);
@@ -365,6 +396,7 @@ export default function App({ initialPage = "overview" }) {
             <a
               href="#"
               className="brand-link"
+              aria-disabled={reviewBusy || undefined}
               onClick={(e) => {
                 e.preventDefault();
                 go("overview");
@@ -395,6 +427,7 @@ export default function App({ initialPage = "overview" }) {
                   aria-label={label}
                   aria-current={page === id ? "page" : undefined}
                   className={page === id ? "selected" : ""}
+                  disabled={reviewBusy}
                   onClick={() => go(id)}
                 >
                   <Icon size={18} weight={page === id ? "fill" : "regular"} />
@@ -437,7 +470,11 @@ export default function App({ initialPage = "overview" }) {
             </button>
             {user ? (
               <div className="user-bar">
-                <button className="account-link" onClick={() => go("account")}>
+                <button
+                  className="account-link"
+                  disabled={reviewBusy}
+                  onClick={() => go("account")}
+                >
                   <span className="avatar small">
                     {user.company.slice(0, 1)}
                   </span>
@@ -446,8 +483,8 @@ export default function App({ initialPage = "overview" }) {
                 <button
                   className="logout-button"
                   aria-label="退出登录"
-                  disabled={logoutBusy || passwordBusy}
-                  aria-busy={logoutBusy || passwordBusy}
+                  disabled={logoutBusy || passwordBusy || reviewBusy}
+                  aria-busy={logoutBusy || passwordBusy || reviewBusy}
                   onClick={logout}
                 >
                   <SignOut size={18} />
@@ -509,7 +546,7 @@ export default function App({ initialPage = "overview" }) {
                 <Button
                   className="primary"
                   onClick={beginBooking}
-                  disabled={!connected || sessionLoading}
+                  disabled={!connected || sessionLoading || !!sessionError}
                 >
                   {admin ? <ShieldCheck size={19} /> : <Plus size={20} />}{" "}
                   {admin ? "查看待审核申请" : "发起布展申请"}
@@ -533,6 +570,22 @@ export default function App({ initialPage = "overview" }) {
               </Button>
             </div>
           )}
+          {sessionError && (
+            <div className="service-warning" role="alert">
+              <WarningCircle size={23} />
+              <div>
+                <strong>登录状态待确认</strong>
+                <p>当前身份尚未确认，已有登录可能仍有效。{sessionError}</p>
+              </div>
+              <Button
+                className="secondary small"
+                loading={sessionLoading}
+                onClick={() => setSessionRevision((value) => value + 1)}
+              >
+                重新读取登录状态
+              </Button>
+            </div>
+          )}
           {page === "overview" && (
             <Dashboard
               user={user}
@@ -540,6 +593,7 @@ export default function App({ initialPage = "overview" }) {
               notices={notices}
               noticeError={noticeError}
               connected={connected}
+              sessionReady={!sessionLoading && !sessionError}
               version={version}
               onNavigate={go}
               onApply={beginBooking}
@@ -574,8 +628,9 @@ export default function App({ initialPage = "overview" }) {
                 key={`${user.id}:${recordsStatus}`}
                 user={user}
                 initialStatus={recordsStatus}
-                notify={notify}
-                onChange={refresh}
+                notify={guardAccount(notify)}
+                onChange={guardAccount(refresh)}
+                onBusyChange={guardAccount(changeReviewBusy)}
               />
             )}
           {page === "notices" && (

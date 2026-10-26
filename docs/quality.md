@@ -10,6 +10,8 @@
 
 | 范围                                             | 主要证据                                                                                                                             |
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| 身份读取独立恢复与审核保存导航保护               | `tests/session-read-recovery.spec.js`、`tests/review-navigation-saving.spec.js`，已有会话恢复、纯读取、单条及批量失败保存互斥        |
+| 详情及改期版本冲突后的纯读核对                   | `tests/booking-conflict-recovery.spec.js`，真实跨账号写入、409后读取503、草稿保留及关闭后的迟到响应                                  |
 | 工作台状态直达及设计图失败恢复                   | `tests/dashboard-status-navigation.spec.js`、`tests/booking-design-recovery.spec.js`，真实数据筛选、图片503及200损坏、重试和单次审批 |
 | 固定地点、搭建方校验、并发内容审核与过期身份差异 | `server/tests/content-review.test.mjs`、`tests/content-expiry.spec.js`、`tests/accounts.spec.js`                                     |
 | 认证、验证码、MFA 与会话撤销                     | `server/tests/api.test.mjs`、`session-rotation.test.mjs`、`challenge-concurrency.test.mjs`、`captcha-capacity.test.mjs`              |

@@ -50,6 +50,7 @@ export default function ReviewDesk({
   notify,
   onChange,
   history,
+  onBusyChange,
   initialMode = "pending",
 }) {
   const [mode, setMode] = useState(initialMode),
@@ -66,6 +67,12 @@ export default function ReviewDesk({
     [batch, setBatch] = useState(null),
     [report, setReport] = useState(null),
     [busy, setBusy] = useState(false);
+  function changeBusy(value) {
+    // The shell must block navigation before a request yields, including before
+    // React commits the local disabled controls.
+    onBusyChange?.(value);
+    setBusy(value);
+  }
   const criteriaKey = JSON.stringify([query, page, order]);
   const snapshotVisible = resultKey === criteriaKey && !error;
   const ready = snapshotVisible && !loading;
@@ -365,7 +372,7 @@ export default function ReviewDesk({
                 user={user}
                 disabled={!ready || busy}
                 hidden={!snapshotVisible}
-                setBusy={setBusy}
+                setBusy={changeBusy}
                 onProcessed={processed}
                 onRefresh={(message) => {
                   refresh();
@@ -401,7 +408,7 @@ export default function ReviewDesk({
         <BatchReview
           batch={batch}
           onClose={() => !busy && setBatch(null)}
-          onBusy={setBusy}
+          onBusy={changeBusy}
           onSaved={(results) => {
             setReport(
               results.map((r) => ({
@@ -435,6 +442,7 @@ function ReviewDetail({
   hasNext,
 }) {
   const imageSource = useRef(null);
+  const requestPending = useRef(false);
   const [image, setImage] = useState(null),
     [imageError, setImageError] = useState(""),
     [imageReady, setImageReady] = useState(false),
@@ -482,7 +490,7 @@ function ReviewDetail({
   }
   const reviewable = item.status === "待审核" && !item.reviewExpired;
   async function decide(status) {
-    if (disabled || saving || !reviewable) return;
+    if (requestPending.current || disabled || saving || !reviewable) return;
     if (status === "已通过" && (!imageReady || imageLoading)) {
       setError("请先成功加载并核对桁架设计图后再通过审核");
       return;
@@ -491,8 +499,9 @@ function ReviewDetail({
       setError("请填写退回原因，或选择下方快捷意见");
       return;
     }
-    setSaving(true);
+    requestPending.current = true;
     setBusy(true);
+    setSaving(true);
     setError("");
     try {
       await api(`/bookings/${item.id}/review`, {
@@ -509,6 +518,7 @@ function ReviewDetail({
       setError(e.message);
       if (e.status === 409) onRefresh(e.message);
     } finally {
+      requestPending.current = false;
       setSaving(false);
       setBusy(false);
     }
@@ -696,6 +706,7 @@ function ReviewDetail({
 }
 
 function BatchReview({ batch, onClose, onBusy, onSaved }) {
+  const requestPending = useRef(false);
   const [reason, setReason] = useState(""),
     [confirmed, setConfirmed] = useState(false),
     [error, setError] = useState(""),
@@ -709,8 +720,17 @@ function BatchReview({ batch, onClose, onBusy, onSaved }) {
     (approve && batch.rows.some((b) => b.reviewCheck?.blockers.length));
   async function submit(e) {
     e.preventDefault();
-    setBusy(true);
+    if (
+      requestPending.current ||
+      busy ||
+      blocked ||
+      !confirmed ||
+      (!approve && !reason.trim())
+    )
+      return;
+    requestPending.current = true;
     onBusy(true);
+    setBusy(true);
     setError("");
     try {
       const r = await api("/bookings/review-batch", {
@@ -727,6 +747,7 @@ function BatchReview({ batch, onClose, onBusy, onSaved }) {
         `${e.message}。若请求曾到达服务端，部分记录可能已处理，请刷新队列核对后再操作。`,
       );
     } finally {
+      requestPending.current = false;
       setBusy(false);
       onBusy(false);
     }

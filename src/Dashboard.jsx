@@ -22,6 +22,7 @@ export default function Dashboard({
   notices,
   noticeError,
   connected,
+  sessionReady = true,
   version,
   onNavigate,
   onApply,
@@ -106,7 +107,7 @@ export default function Dashboard({
         <div className="workspace-actions">
           <Button
             className="primary"
-            disabled={!connected}
+            disabled={!connected || !sessionReady}
             onClick={() =>
               admin
                 ? onNavigate("records")

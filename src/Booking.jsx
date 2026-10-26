@@ -291,6 +291,13 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
     [cancelReason, setCancelReason] = useState(""),
     [cancelConfirmed, setCancelConfirmed] = useState(false);
   const imageSource = useRef(null);
+  const mounted = useRef(true),
+    statusReadRequest = useRef(0),
+    statusReadPending = useRef(false);
+  const [statusLoading, setStatusLoading] = useState(false),
+    [statusReadFailed, setStatusReadFailed] = useState(false),
+    [statusReadError, setStatusReadError] = useState(""),
+    [statusReadMessage, setStatusReadMessage] = useState("");
   const [image, setImage] = useState(null),
     [imageError, setImageError] = useState(""),
     [imageLoading, setImageLoading] = useState(true),
@@ -300,6 +307,64 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
     [error, setError] = useState(""),
     [busy, setBusy] = useState("");
   const blocked = !!busy || caseBusy;
+  const writeBlocked = blocked || statusLoading || statusReadFailed;
+  const rescheduleAllowed =
+    item.status === "已通过" && !item.cancelled && item.start >= dateString();
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      statusReadRequest.current++;
+      statusReadPending.current = false;
+    };
+  }, []);
+  async function readBooking() {
+    if (!mounted.current || statusReadPending.current) return;
+    const request = ++statusReadRequest.current;
+    statusReadPending.current = true;
+    setStatusLoading(true);
+    setStatusReadError("");
+    setStatusReadMessage("");
+    try {
+      const result = await api(`/bookings/${item.id}`);
+      if (!mounted.current || request !== statusReadRequest.current) return;
+      setItem(result.booking);
+      setStatusReadFailed(false);
+      setStatusReadMessage(
+        "最新申请状态已读取，请核对后再操作；原输入已保留。",
+      );
+    } catch (e) {
+      if (!mounted.current || request !== statusReadRequest.current) return;
+      setStatusReadFailed(true);
+      setStatusReadError(
+        `申请已变化，但重新读取当前状态失败：${e.message}。业务操作已暂停，请重新读取申请状态后核对。`,
+      );
+    } finally {
+      if (mounted.current && request === statusReadRequest.current) {
+        statusReadPending.current = false;
+        setStatusLoading(false);
+      }
+    }
+  }
+  const statusFeedback = (
+    <>
+      <ErrorBox>{statusReadError || error}</ErrorBox>
+      {statusLoading && (
+        <p role="status">正在重新读取申请状态，业务操作已暂停…</p>
+      )}
+      {statusReadMessage && <p role="status">{statusReadMessage}</p>}
+      {(statusLoading || statusReadFailed || statusReadMessage) && (
+        <Button
+          type="button"
+          className="secondary small"
+          disabled={blocked || statusLoading}
+          onClick={readBooking}
+        >
+          重新读取申请状态
+        </Button>
+      )}
+    </>
+  );
   useEffect(() => {
     let active = true,
       url;
@@ -338,7 +403,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
     setImageRevision((value) => value + 1);
   }
   async function action(type, status) {
-    if (blocked) return;
+    if (writeBlocked) return;
     if (
       type === "review" &&
       status === "已通过" &&
@@ -349,6 +414,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
     }
     setBusy(status || type);
     setError("");
+    setStatusReadMessage("");
     try {
       await api(`/bookings/${item.id}/${type}`, {
         method: "POST",
@@ -359,6 +425,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
             ? { body: { reason: cancelReason } }
             : {}),
       });
+      if (!mounted.current) return;
       onSaved(
         type === "withdraw"
           ? "申请已撤回"
@@ -367,34 +434,38 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
             : `申请${status}`,
       );
     } catch (e) {
+      if (!mounted.current) return;
       setError(e.message);
       if (e.status === 409) {
-        try {
-          setItem((await api(`/bookings/${item.id}`)).booking);
-        } catch {
-          /* Authorization failures are handled globally. */
-        }
+        setBusy("");
+        await readBooking();
       }
     } finally {
-      setBusy("");
+      if (mounted.current) setBusy("");
     }
   }
   async function reschedule(e) {
     e.preventDefault();
-    if (blocked) return;
+    if (writeBlocked || !rescheduleAllowed) return;
     setBusy("reschedule");
     setError("");
+    setStatusReadMessage("");
     try {
       await api(`/bookings/${item.id}/reschedule`, {
         method: "POST",
         headers: { "If-Match": `"${item.version}"` },
         body: Object.fromEntries(new FormData(e.currentTarget)),
       });
-      onSaved("改期申请已提交，原预约继续保留至改期批准");
+      if (mounted.current) onSaved("改期申请已提交，原预约继续保留至改期批准");
     } catch (e) {
+      if (!mounted.current) return;
       setError(e.message);
+      if (e.status === 409) {
+        setBusy("");
+        await readBooking();
+      }
     } finally {
-      setBusy("");
+      if (mounted.current) setBusy("");
     }
   }
   if (rescheduling)
@@ -418,7 +489,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
                 name="start"
                 min={dateString()}
                 defaultValue={item.start}
-                disabled={blocked}
+                disabled={writeBlocked}
                 required
               />
             </label>
@@ -429,7 +500,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
                 name="end"
                 min={dateString()}
                 defaultValue={item.end}
-                disabled={blocked}
+                disabled={writeBlocked}
                 required
               />
             </label>
@@ -440,7 +511,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
               <input
                 name="builder_contact"
                 defaultValue={item.builder_contact || ""}
-                disabled={blocked}
+                disabled={writeBlocked}
                 required
                 maxLength={30}
               />
@@ -450,7 +521,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
               <input
                 name="builder_phone"
                 defaultValue={item.builder_phone || ""}
-                disabled={blocked}
+                disabled={writeBlocked}
                 type="tel"
                 pattern={BUILDER_PHONE_PATTERN}
                 maxLength={25}
@@ -462,16 +533,31 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
           <p className="field-note">
             布展地点：大活A座平台。请核对搭建方信息，改期沿用原桁架设计图。
           </p>
-          <ErrorBox>{error}</ErrorBox>
+          {statusFeedback}
+          {!rescheduleAllowed && !statusReadFailed && !statusLoading && (
+            <div className="info-box">
+              <p>
+                原申请当前状态：{item.status}
+                。当前申请无法继续改期，草稿已保留，请返回最新详情核对。
+              </p>
+            </div>
+          )}
           <div className="dialog-actions">
             <Button
               className="secondary"
               disabled={blocked}
               onClick={() => setRescheduling(false)}
             >
-              返回详情
+              {!rescheduleAllowed && !statusReadFailed && !statusLoading
+                ? "返回最新详情"
+                : "返回详情"}
             </Button>
-            <Button className="primary" loading={!!busy} type="submit">
+            <Button
+              className="primary"
+              loading={!!busy}
+              disabled={writeBlocked || !rescheduleAllowed}
+              type="submit"
+            >
               提交改期申请
             </Button>
           </div>
@@ -603,7 +689,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
             rows={3}
             maxLength={500}
             value={reason}
-            disabled={blocked}
+            disabled={writeBlocked}
             onChange={(e) => setReason(e.target.value)}
             placeholder="请说明审核结果或需要企业修改的内容"
           />
@@ -623,7 +709,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
                 <CasePanel
                   id={item.id}
                   user={user}
-                  disabled={!!busy}
+                  disabled={writeBlocked}
                   onBusyChange={setCaseBusy}
                 />
               </Suspense>
@@ -631,7 +717,17 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
           )}
         </details>
       )}
-      <ErrorBox>{error}</ErrorBox>
+      {statusFeedback}
+      {!!reason &&
+        !!statusReadMessage &&
+        (item.status !== "待审核" || item.reviewExpired) && (
+          <div className="info-box">
+            <div>
+              <strong>保留的审核意见草稿</strong>
+              <p>{reason}</p>
+            </div>
+          </div>
+        )}
       {item.cancel_reason && (
         <div className="info-box">
           <p>取消原因：{item.cancel_reason}</p>
@@ -645,7 +741,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
               aria-label="取消预约原因"
               maxLength={500}
               value={cancelReason}
-              disabled={blocked}
+              disabled={writeBlocked}
               onChange={(e) => setCancelReason(e.target.value)}
               rows={2}
             />
@@ -654,7 +750,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
             <input
               type="checkbox"
               checked={cancelConfirmed}
-              disabled={blocked}
+              disabled={writeBlocked}
               onChange={(e) => setCancelConfirmed(e.target.checked)}
             />
             确认取消本次布展申请，待审的改期申请也将撤回。
@@ -668,7 +764,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
           !cancelling && (
             <Button
               className="secondary"
-              disabled={blocked}
+              disabled={writeBlocked}
               onClick={() => setRescheduling(true)}
             >
               申请改期
@@ -690,7 +786,9 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
               <Button
                 className="danger-outline"
                 loading={busy === "cancel"}
-                disabled={!cancelConfirmed || !cancelReason.trim() || blocked}
+                disabled={
+                  !cancelConfirmed || !cancelReason.trim() || writeBlocked
+                }
                 onClick={() => action("cancel")}
               >
                 确认取消预约
@@ -699,7 +797,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
           ) : (
             <Button
               className="danger-outline"
-              disabled={blocked}
+              disabled={writeBlocked}
               onClick={() => setCancelling(true)}
             >
               取消已通过预约
@@ -709,7 +807,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
           <>
             <Button
               className="danger-outline"
-              disabled={blocked}
+              disabled={writeBlocked}
               onClick={() => action("review", "未通过")}
             >
               未通过
@@ -717,7 +815,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
             <Button
               className="primary"
               loading={busy === "已通过"}
-              disabled={blocked || imageLoading || !imageReady}
+              disabled={writeBlocked || imageLoading || !imageReady}
               onClick={() => action("review", "已通过")}
             >
               审核通过
@@ -730,7 +828,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
               <Button
                 className="danger-outline"
                 loading={!!busy}
-                disabled={blocked}
+                disabled={writeBlocked}
                 onClick={() => action("withdraw")}
               >
                 撤回申请

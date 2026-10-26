@@ -169,7 +169,9 @@ export default function Access({ notify }) {
                           <span className="subtle-tag">
                             超级管理员 · 全部权限
                           </span>
-                        ) : u.permissions.length ? (
+                        ) : PERMISSIONS.some((permission) =>
+                            u.permissions.includes(permission.key),
+                          ) ? (
                           PERMISSIONS.filter((p) =>
                             u.permissions.includes(p.key),
                           ).map((p) => (

@@ -54,6 +54,11 @@ test("旧场地授权账号可直接改为内容审核权限，不携带已退�
       )
       .run();
     await navigate(page);
+    await expect(
+      accessCard(page)
+        .getByRole("row")
+        .filter({ hasText: "retired-venue@test.local" }),
+    ).toContainText("尚未授予业务权限");
     await accessCard(page)
       .getByRole("row")
       .filter({ hasText: "retired-venue@test.local" })

@@ -108,7 +108,7 @@ export default function Notices({ items, user, onSaved, readError }) {
                 disabled={publishing}
                 required
                 maxLength={80}
-                placeholder="例如：本周场地开放安排"
+                placeholder="例如：本周桁架内容申报说明"
               />
             </label>
             <label>

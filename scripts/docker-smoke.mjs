@@ -229,7 +229,8 @@ try {
     company,
     contact: "验收联系人",
     phone: "13800138000",
-    slot: 29,
+    builder_contact: "搭建负责人",
+    builder_phone: "13900139000",
     start: date,
     end: date,
     image:
@@ -256,10 +257,12 @@ try {
   const imageDigest = createHash("sha256")
     .update(beforeImage.data)
     .digest("hex");
-  assert.ok(
-    (await owner.request(`/venue?date=${date}`)).data.occupied.some(
-      (r) => r.slot === 29,
-    ),
+  assert.equal(pending.data.booking.location, "大活A座平台");
+  assert.equal(pending.data.booking.builder_contact, "搭建负责人");
+  assert.equal(pending.data.booking.content_only, 1);
+  assert.equal(
+    (await owner.request(`/venue?date=${date}`)).data.occupied.length,
+    0,
   );
 
   await docker(["stop", "--time", "20", container], 30000);

@@ -12,6 +12,7 @@ import {
   tx,
 } from "./core.mjs";
 import { hashToken } from "./security.mjs";
+import { builderFields } from "./booking-policy.mjs";
 
 export function archiveHistory(db, days = 365) {
   fail(
@@ -26,9 +27,9 @@ export function archiveHistory(db, days = 365) {
   // same SQLite snapshot, so restoring a backup also restores archived materials.
   const rows = db
     .prepare(
-      "SELECT id FROM bookings WHERE end<? AND status<>'待审核' AND length(image)>0 LIMIT 20",
+      "SELECT id FROM bookings WHERE end<? AND (status<>'待审核' OR start<?) AND length(image)>0 LIMIT 20",
     )
-    .all(cutoff.slice(0, 10));
+    .all(cutoff.slice(0, 10), today());
   for (const { id } of rows)
     tx(db, () => {
       const row = db
@@ -188,7 +189,7 @@ export function businessRoutes(db, sec, send, notifyReviewers, maintenance) {
           .all(date),
         approved: db
           .prepare(
-            "SELECT id,company,slot FROM bookings WHERE status='已通过' AND cancelled=0 AND start<=? AND end>=?",
+            "SELECT id,company,slot FROM bookings WHERE content_only=0 AND status='已通过' AND cancelled=0 AND start<=? AND end>=?",
           )
           .all(date, date),
       });
@@ -261,9 +262,8 @@ export function businessRoutes(db, sec, send, notifyReviewers, maintenance) {
     if (match && m === "POST") {
       current(req, "enterprise");
       const b = await body(req),
-        slot = Number(b.slot);
+        slot = 1;
       dates(b.start, b.end, true);
-      fail(!Number.isInteger(slot) || slot < 1 || slot > 29, 400, "位置无效");
       const result = write(req, "enterprise", (u) => {
         dates(b.start, b.end, true);
         sec.limit(`reschedule:${u.id}`, 20, 3600000);
@@ -272,38 +272,24 @@ export function businessRoutes(db, sec, send, notifyReviewers, maintenance) {
           .get(match[1], u.id);
         fail(!old, 404, "预约不存在");
         versionCheck(req, old, true);
+        const builder = builderFields({
+          builder_contact: b.builder_contact ?? old.builder_contact,
+          builder_phone: b.builder_phone ?? old.builder_phone,
+        });
         fail(
           old.status !== "已通过" || old.cancelled || old.start < today(),
           409,
           "仅未开始的生效预约可以改期",
         );
-        fail(
-          old.slot === slot && old.start === b.start && old.end === b.end,
-          400,
-          "请选择新的日期或位置",
-        );
+        fail(old.start === b.start && old.end === b.end, 400, "请选择新的日期");
         fail(
           db
             .prepare(
-              "SELECT id FROM bookings WHERE reschedule_of=? AND status='待审核'",
+              "SELECT id FROM bookings WHERE reschedule_of=? AND status='待审核' AND start>=?",
             )
-            .get(old.id),
+            .get(old.id, today()),
           409,
           "已有待审核改期，请先撤回该改期申请",
-        );
-        fail(
-          db
-            .prepare(
-              "SELECT id FROM bookings WHERE id<>? AND slot=? AND status='已通过' AND cancelled=0 AND start<=? AND end>=?",
-            )
-            .get(old.id, slot, b.end, b.start) ||
-            db
-              .prepare(
-                "SELECT id FROM closures WHERE slot=? AND start<=? AND end>=?",
-              )
-              .get(slot, b.end, b.start),
-          409,
-          "新时段已占用或暂停开放",
         );
         const id = `HUST-${Date.now()}-${randomUUID().slice(0, 12)}`;
         fail(
@@ -325,13 +311,15 @@ export function businessRoutes(db, sec, send, notifyReviewers, maintenance) {
           "账号设计图存储已达上限，请联系管理员归档历史资料",
         );
         db.prepare(
-          "INSERT INTO bookings(id,user_id,company,contact,phone,start,end,slot,status,image,image_type,created,reschedule_of) VALUES(?,?,?,?,?,?,?,?,'待审核',?,?,?,?)",
+          "INSERT INTO bookings(id,user_id,company,contact,phone,builder_contact,builder_phone,content_only,start,end,slot,status,image,image_type,created,reschedule_of) VALUES(?,?,?,?,?,?,?,1,?,?,?,'待审核',?,?,?,?)",
         ).run(
           id,
           u.id,
           old.company,
           old.contact,
           old.phone,
+          builder.builder_contact,
+          builder.builder_phone,
           b.start,
           b.end,
           slot,

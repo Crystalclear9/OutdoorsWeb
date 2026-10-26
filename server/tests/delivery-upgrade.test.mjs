@@ -64,7 +64,7 @@ test("版本七升级隔离旧通信不确定重试，保留明确拒绝、人�
   for (let round = 0; round < 2; round++) {
     db = openStore(filename);
     try {
-      assert.equal(db.prepare("PRAGMA user_version").get().user_version, 7);
+      assert.equal(db.prepare("PRAGMA user_version").get().user_version, 8);
       for (const row of rows) {
         const saved = db
           .prepare("SELECT * FROM delivery_jobs WHERE id=?")

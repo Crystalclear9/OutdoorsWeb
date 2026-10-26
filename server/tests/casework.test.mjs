@@ -12,6 +12,7 @@ import {
   staff,
   booking,
   PASSWORD,
+  seedLegacyBooking,
 } from "./helpers.mjs";
 const ver = (n) => ({ "If-Match": `"${n}"` });
 async function setup(t) {
@@ -20,7 +21,7 @@ async function setup(t) {
     owner = f.client();
   await manager(root);
   await register(owner);
-  const id = (await owner.request("/bookings", "POST", booking())).data.id;
+  const id = (await seedLegacyBooking(f, owner, booking())).data.id;
   const approve = () =>
     root.request(
       `/bookings/${id}/review`,
@@ -395,7 +396,7 @@ test("版本六升级到七保留账号与业务，回填电话跟进表且重�
   );
   db.close();
   db = openStore(filename);
-  assert.equal(db.prepare("PRAGMA user_version").get().user_version, 7);
+  assert.equal(db.prepare("PRAGMA user_version").get().user_version, 8);
   assert.equal(
     db.prepare("SELECT company FROM bookings").get().company,
     "旧企业",

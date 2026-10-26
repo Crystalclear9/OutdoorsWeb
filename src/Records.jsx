@@ -10,7 +10,6 @@ import {
 import { api } from "./api.js";
 import { can } from "./permissions.js";
 import { Empty, ErrorBox, Status, Button } from "./components.jsx";
-import { slotName } from "./utils.js";
 import { BookingDetail } from "./Booking.jsx";
 import ReviewDesk from "./ReviewDesk.jsx";
 
@@ -116,7 +115,15 @@ function ApplicationHistory({ user, notify, onChange }) {
       <section className="card records-card">
         <div className="record-filters">
           <div className="tabs">
-            {["", "待审核", "已通过", "未通过", "已撤回", "已取消"].map((f) => (
+            {[
+              "",
+              "待审核",
+              ...(reviewerAccess ? ["过期未审核"] : []),
+              "已通过",
+              "未通过",
+              "已撤回",
+              "已取消",
+            ].map((f) => (
               <button
                 key={f}
                 className={filter === f ? "selected" : ""}
@@ -221,7 +228,7 @@ function ApplicationHistory({ user, notify, onChange }) {
                   <th>联系人</th>
                   <th>提交时间（北京时间）</th>
                   <th>布展时间</th>
-                  <th>桁架位</th>
+                  <th>布展地点 / 搭建方</th>
                   <th>状态</th>
                   {reviewerAccess && <th>审批人</th>}
                   <th>操作</th>
@@ -249,7 +256,11 @@ function ApplicationHistory({ user, notify, onChange }) {
                       <small>至 {b.end}</small>
                     </td>
                     <td>
-                      <span className="slot-label">{slotName(b.slot)}</span>
+                      <span>大活A座平台</span>
+                      <small>
+                        {b.builder_contact || "历史申请未提供搭建方"}
+                      </small>
+                      {b.builder_phone && <small>{b.builder_phone}</small>}
                     </td>
                     <td>
                       <Status value={b.status} />

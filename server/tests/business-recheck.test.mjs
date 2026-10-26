@@ -37,7 +37,10 @@ test("改期复制设计图遵守磁盘健康门禁，失败不创建半成品�
     probes.push(probe);
     return { ok: false, database: true, freeBytes: 0 };
   };
-  const payload = { start: booking().start, end: booking().end, slot: 2 };
+  const tomorrow = new Date(Date.parse(booking().start) + 86400000)
+    .toISOString()
+    .slice(0, 10);
+  const payload = { start: tomorrow, end: tomorrow };
   const failed = await owner.request(
     `/bookings/${id}/reschedule`,
     "POST",

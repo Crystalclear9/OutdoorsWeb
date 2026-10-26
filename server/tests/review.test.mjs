@@ -1,35 +1,37 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { fixture, manager, register, staff, booking } from "./helpers.mjs";
+import {
+  fixture,
+  manager,
+  register,
+  staff,
+  booking,
+  seedLegacyBooking,
+} from "./helpers.mjs";
 
-test("审批提示区分暂停、已占用、竞争待办；企业不获取管理员检查信息", async (t) => {
-  const { client } = await fixture(t),
+test("历史预约的审批检查保留暂停、已占用、竞争提示且企业不获取管理信息", async (t) => {
+  const { client, db } = await fixture(t),
     a = client(),
     c = client(),
     d = client();
   await manager(a);
   await register(c);
   await register(d, "second@test.local");
-  const first = (await c.request("/bookings", "POST", booking())).data;
-  await d.request("/bookings", "POST", booking());
+  const first = (await seedLegacyBooking({ db }, c)).data;
+  await seedLegacyBooking({ db }, d);
   let detail = (await a.request("/bookings/" + first.id)).data.booking;
   assert.deepEqual(detail.reviewCheck, { blockers: [], competing: 1 });
   assert.equal(
     (await c.request("/bookings/" + first.id)).data.booking.reviewCheck,
     undefined,
   );
-  await a.request("/closures", "POST", {
-    slot: 1,
-    start: booking().start,
-    end: booking().end,
-    reason: "维护",
-  });
+  db.prepare(
+    "INSERT INTO closures VALUES('legacy-closure',1,?,?,'维护',?)",
+  ).run(booking().start, booking().end, new Date().toISOString());
   detail = (await a.request("/bookings/" + first.id)).data.booking;
   assert.deepEqual(detail.reviewCheck.blockers, ["所选时段暂停开放"]);
-  const other = (await c.request("/bookings", "POST", booking({ slot: 2 })))
-    .data;
-  const pending = (await d.request("/bookings", "POST", booking({ slot: 2 })))
-    .data;
+  const other = (await seedLegacyBooking({ db }, c, { slot: 2 })).data;
+  const pending = (await seedLegacyBooking({ db }, d, { slot: 2 })).data;
   await a.request(
     "/bookings/" + other.id + "/review",
     "POST",
@@ -45,7 +47,7 @@ test("审批提示区分暂停、已占用、竞争待办；企业不获取管�
   );
 });
 
-test("批量审批逐条鉴别版本与冲突，成功记录仅写一次审计", async (t) => {
+test("内容批量审批逐条鉴别版本，同日申请均可通过且审计仅写一次", async (t) => {
   const { client, db } = await fixture(t),
     a = client(),
     c = client(),
@@ -73,9 +75,8 @@ test("批量审批逐条鉴别版本与冲突，成功记录仅写一次审计",
   assert.equal(r.status, 200);
   assert.deepEqual(
     r.data.results.map((r) => r.ok),
-    [true, false, true, false],
+    [true, true, true, false],
   );
-  assert.match(r.data.results[1].error, /冲突/);
   assert.match(r.data.results[3].error, /修改/);
   assert.equal(
     db
@@ -83,7 +84,7 @@ test("批量审批逐条鉴别版本与冲突，成功记录仅写一次审计",
         "SELECT COUNT(*) AS n FROM audit WHERE action='booking.approved'",
       )
       .get().n,
-    2,
+    3,
   );
   const retry = await a.request("/bookings/review-batch", "POST", payload);
   assert.ok(retry.data.results.every((r) => !r.ok));
@@ -93,7 +94,7 @@ test("批量审批逐条鉴别版本与冲突，成功记录仅写一次审计",
         "SELECT COUNT(*) AS n FROM audit WHERE action='booking.approved'",
       )
       .get().n,
-    2,
+    3,
   );
 });
 

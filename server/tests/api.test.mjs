@@ -77,6 +77,8 @@ async function register(c, email = "one@test.local") {
   return r.data.user;
 }
 const booking = (overrides = {}) => ({
+  builder_contact: "搭建负责人",
+  builder_phone: "13900139000",
   company: "接口测试企业",
   contact: "张老师",
   phone: "13800138000",
@@ -291,7 +293,7 @@ test("企业数据与设计图隔离，公开场地不泄漏联系人", async (t
   const venue = await guest.request("/venue");
   assert.ok(!JSON.stringify(venue.data).includes("13800138000"));
 });
-test("申报日期、图片校验和重复提交均在服务端执行", async (t) => {
+test("申报日期、图片和搭建方在服务端校验，具体位置参数不参与内容申请", async (t) => {
   const { client } = await fixture(t),
     c = client();
   await register(c);
@@ -318,13 +320,17 @@ test("申报日期、图片校验和重复提交均在服务端执行", async (t
     400,
   );
   assert.equal(
-    (await c.request("/bookings", "POST", booking({ slot: 30 }))).status,
+    (await c.request("/bookings", "POST", booking({ builder_phone: "bad" })))
+      .status,
     400,
   );
   assert.equal((await c.request("/bookings", "POST", booking())).status, 201);
-  assert.equal((await c.request("/bookings", "POST", booking())).status, 409);
+  assert.equal(
+    (await c.request("/bookings", "POST", booking({ slot: 30 }))).status,
+    201,
+  );
 });
-test("并发审核同一位置只有一条能够通过", async (t) => {
+test("不同企业同日在固定平台的内容申请可以并发通过且不占用编号位置", async (t) => {
   const { client } = await fixture(t),
     a = client(),
     b = client(),
@@ -359,8 +365,8 @@ test("并发审核同一位置只有一条能够通过", async (t) => {
       { "If-Match": '"1"' },
     ),
   ]);
-  assert.deepEqual(results.map((r) => r.status).sort(), [200, 409]);
-  assert.equal((await client().request("/venue")).data.occupied.length, 1);
+  assert.deepEqual(results.map((r) => r.status).sort(), [200, 200]);
+  assert.equal((await client().request("/venue")).data.occupied.length, 0);
 });
 test("退回原因必填，撤回与状态流转受保护", async (t) => {
   const { client } = await fixture(t),
@@ -423,7 +429,7 @@ test("退回原因必填，撤回与状态流转受保护", async (t) => {
     409,
   );
 });
-test("暂停开放、公告及审计均需管理员权限", async (t) => {
+test("场地开放写操作已停用，公告及审计仍需管理员权限", async (t) => {
   const { client } = await fixture(t),
     a = client(),
     m = client();
@@ -459,16 +465,24 @@ test("暂停开放、公告及审计均需管理员权限", async (t) => {
   );
   await m.request(`/notices/${id}`, "DELETE", undefined, { "If-Match": '"2"' });
   assert.equal((await client().request("/notices")).data.items.length, 0);
-  await m.request("/closures", "POST", {
-    slot: 1,
-    start: today(),
-    end: today(),
-    reason: "场地维护",
-  });
-  assert.equal((await a.request("/bookings", "POST", booking())).status, 409);
+  assert.equal(
+    (
+      await m.request("/closures", "POST", {
+        slot: 1,
+        start: today(),
+        end: today(),
+        reason: "场地维护",
+      })
+    ).status,
+    410,
+  );
+  assert.equal((await a.request("/bookings", "POST", booking())).status, 201);
   const closures = (await m.request("/closures")).data.items;
-  assert.equal(closures.length, 1);
-  await m.request(`/closures/${closures[0].id}`, "DELETE");
+  assert.equal(closures.length, 0);
+  assert.equal(
+    (await m.request("/closures/old-arrangement", "DELETE")).status,
+    410,
+  );
   assert.equal((await a.request("/bookings", "POST", booking())).status, 201);
   assert.equal((await a.request("/audit")).status, 403);
   assert.ok((await m.request("/audit")).data.items.length > 3);

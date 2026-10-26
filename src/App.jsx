@@ -4,55 +4,47 @@ import {
   MapTrifold,
   ClipboardText,
   Megaphone,
-  ArrowRight,
   ArrowUpRight,
   Plus,
   CaretRight,
   ShieldCheck,
   Users,
-  UserCircle,
   SignOut,
   List,
-  MapPin,
   CalendarBlank,
   CheckCircle,
-  Clock,
   ArrowsClockwise,
   Question,
   WarningCircle,
-  Buildings,
 } from "@phosphor-icons/react";
 import { api, setCsrf } from "./api.js";
-import { dateString, slotName, zoneName } from "./utils.js";
+import { dateString } from "./utils.js";
 import { Button, Brand, Modal, AuthPage, AccountPage } from "./components.jsx";
 import { BookingForm } from "./Booking.jsx";
-import { UsersPage, ClosuresPage, AuditPage } from "./Admin.jsx";
-import VenueMap from "./VenueMap.jsx";
+import { UsersPage, AuditPage } from "./Admin.jsx";
+import AllowedArea from "./AllowedArea.jsx";
 import Records from "./Records.jsx";
 import Notices from "./Notices.jsx";
 import Dashboard from "./Dashboard.jsx";
 import Access from "./Access.jsx";
 import Operations from "./Operations.jsx";
-import Onsite from "./Onsite.jsx";
 import Archives from "./Archives.jsx";
 import Deliveries from "./Deliveries.jsx";
 import AccessCode from "./AccessCode.jsx";
 import LazyPageBoundary from "./LazyPageBoundary.jsx";
 const Casework = lazy(() => import("./Casework.jsx"));
 import { can } from "./permissions.js";
-import { VENUE_SEGMENTS, inSegment } from "./venue-layout.js";
 // TEMPORARY_PAGES_SHOWCASE: remove the preview-only account/login branches and initialPage prop with docs/temporary-showcase.md.
 import { showcaseEnabled } from "./showcase/gate.js";
 
 const titles = {
   casework: ["通知与缴费办理", "查看反馈时限、结果电话和线下缴费办理进度。"],
-  overview: ["服务工作台", "查询场地开放情况，提交布展申请并跟进办理进度。"],
-  venue: ["场地查询", "按日期与区域，查看户外广场的桁架开放情况。"],
+  overview: ["服务工作台", "提交桁架内容申请，查看审核结果与活动公告。"],
+  venue: ["摆放区域示意", "统一摆放地点为大活A座平台，无需申请具体桁架位置。"],
   records: ["我的申请", "统一管理布展申请，及时查看审核意见。"],
   notices: ["通知公告", "查看场地使用说明及最新服务通知。"],
   account: ["账号设置", "维护企业资料与账号安全。"],
   users: ["账号管理", "管理企业访问权限、账号状态与密码恢复。"],
-  closures: ["场地开放安排", "统一维护桁架开放与暂停安排。"],
   access: ["授权管理", "管理工作人员授权与账号访问范围。"],
   audit: ["操作日志", "查看账号及业务操作记录。"],
   operations: ["运行维护", "查看备份、存储空间和日常维护结果。"],
@@ -72,19 +64,11 @@ export default function App({ initialPage = "overview" }) {
     [mobile, setMobile] = useState(false),
     [modal, setModal] = useState(null),
     [toast, setToast] = useState("");
-  const [date, setDate] = useState(dateString()),
-    [zone, setZone] = useState("all"),
-    [selected, setSelected] = useState(1),
-    [view, setView] = useState("map"),
-    [venue, setVenue] = useState({ occupied: [], closed: [], total: 29 }),
-    [venueLoading, setVenueLoading] = useState(true),
-    [notices, setNotices] = useState([]),
+  const [notices, setNotices] = useState([]),
     [noticeError, setNoticeError] = useState(""),
     [counts, setCounts] = useState({}),
     [version, setVersion] = useState(0);
   const admin = user?.role === "admin";
-  const venueDate = page === "venue" ? date : dateString();
-  const venueReady = connected && !venueLoading && venue.date === venueDate;
   const sessionGeneration = useRef(0);
   const logoutPending = useRef(false);
   const passwordPending = useRef(null);
@@ -124,12 +108,6 @@ export default function App({ initialPage = "overview" }) {
   }
   const refresh = () => setVersion((v) => v + 1);
   const notify = (message) => setToast(message);
-  const changeZone = (value) => {
-    setZone(value);
-    if (!inSegment(selected, value)) {
-      setSelected(VENUE_SEGMENTS.find((s) => s.id === value)?.first || 1);
-    }
-  };
   const go = (p, caseId = "") => {
     if (p === "casework") setCaseTarget(caseId);
     setPage(user?.mustChangePassword || user?.mfaRequired ? "account" : p);
@@ -187,24 +165,19 @@ export default function App({ initialPage = "overview" }) {
   }, []);
   useEffect(() => {
     let active = true;
-    setVenueLoading(true);
-    api(`/venue?date=${venueDate}`)
-      .then((v) => {
+    api("/health")
+      .then(() => {
         if (active) {
-          setVenue(v);
           setConnected(true);
           setServiceError("");
         }
       })
-      .catch((e) => {
+      .catch((error) => {
         if (active) {
           setConnected(false);
-          setServiceError(e.message);
+          setServiceError(error.message);
         }
-      })
-      .finally(() => active && setVenueLoading(false));
-    // Public announcements are independent of venue availability: a failed or
-    // slow announcement read must not block an otherwise healthy reservation.
+      });
     api("/notices")
       .then((n) => {
         if (active) {
@@ -221,7 +194,7 @@ export default function App({ initialPage = "overview" }) {
     return () => {
       active = false;
     };
-  }, [date, version, page]);
+  }, [version, page]);
   useEffect(() => {
     let active = true;
     if (
@@ -285,10 +258,6 @@ export default function App({ initialPage = "overview" }) {
     }
   }
   function beginBooking() {
-    if (page === "venue" && !venueReady) {
-      notify("请等待所选日期的场地状态同步后再申请");
-      return;
-    }
     if (!connected) {
       notify("账号服务尚未连接，请使用 Docker 完整服务地址访问");
       return;
@@ -324,14 +293,11 @@ export default function App({ initialPage = "overview" }) {
   }
   const nav = [
     ["overview", "服务工作台", SquaresFour],
-    ["venue", "场地查询", MapTrifold],
+    ["venue", "摆放区域示意", MapTrifold],
     ...(user?.role === "enterprise" || can(user, "bookings.review")
       ? [["records", admin ? "企业申报审核" : "我的申请", ClipboardText]]
       : []),
     ["notices", "通知公告", Megaphone],
-    ...(can(user, "venue.manage")
-      ? [["closures", "场地开放安排", CalendarBlank]]
-      : []),
     ...(can(user, "accounts.manage") ? [["users", "账号管理", Users]] : []),
     ...(can(user, "audit.read") ? [["audit", "操作日志", ShieldCheck]] : []),
     ...(user?.isSuperAdmin ? [["access", "授权管理", ShieldCheck]] : []),
@@ -339,11 +305,6 @@ export default function App({ initialPage = "overview" }) {
       ? [["operations", "运行维护", ArrowsClockwise]]
       : []),
   ];
-  const busy = venueReady && venue.occupied.find((b) => b.slot === selected),
-    closed = venueReady && venue.closed.find((b) => b.slot === selected),
-    unavailable = new Set(
-      [...venue.occupied, ...venue.closed].map((b) => b.slot),
-    ).size;
   if (auth)
     return (
       <>
@@ -523,7 +484,7 @@ export default function App({ initialPage = "overview" }) {
               </h1>
               <p>
                 {page === "records" && can(user, "bookings.review")
-                  ? "先核对冲突与材料，再确认结果；处理后自动进入下一条。"
+                  ? "核对宣传内容、设计图及搭建方信息；处理后自动进入下一条。"
                   : titles[page]?.[1]}
               </p>
             </div>
@@ -533,11 +494,7 @@ export default function App({ initialPage = "overview" }) {
                 <Button
                   className="primary"
                   onClick={beginBooking}
-                  disabled={
-                    !connected ||
-                    sessionLoading ||
-                    (page === "venue" && !venueReady)
-                  }
+                  disabled={!connected || sessionLoading}
                 >
                   {admin ? <ShieldCheck size={19} /> : <Plus size={20} />}{" "}
                   {admin ? "查看待审核申请" : "发起布展申请"}
@@ -576,203 +533,23 @@ export default function App({ initialPage = "overview" }) {
             />
           )}
           {page === "venue" && (
-            <>
-              <div className="venue-layout">
-                <section className="card venue-card">
-                  <div className="card-header">
-                    <div>
-                      <h2>桁架位置</h2>
-                      <p>
-                        <MapPin size={15} />
-                        大学生活动中心户外广场
-                      </p>
-                    </div>
-                    <div className="segmented">
-                      <button
-                        className={view === "map" ? "selected" : ""}
-                        onClick={() => setView("map")}
-                      >
-                        分布图
-                      </button>
-                      <button
-                        className={view === "list" ? "selected" : ""}
-                        onClick={() => setView("list")}
-                      >
-                        位置列表
-                      </button>
-                    </div>
-                  </div>
-                  <div className="venue-toolbar">
-                    <div className="field-inline">
-                      <CalendarBlank size={18} />
-                      <input
-                        type="date"
-                        aria-label="查询日期"
-                        value={date}
-                        onChange={(e) =>
-                          e.target.value && setDate(e.target.value)
-                        }
-                      />
-                    </div>
-                    <select
-                      aria-label="筛选区域"
-                      value={zone}
-                      onChange={(e) => changeZone(e.target.value)}
-                    >
-                      <option value="all">全部位置（29）</option>
-                      {VENUE_SEGMENTS.map((z) => (
-                        <option key={z.id} value={z.id}>
-                          {z.label}（{z.last - z.first + 1}）
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  {view === "map" ? (
-                    <div
-                      className={`venue-map ${!venueReady ? "disconnected" : ""}`}
-                    >
-                      <VenueMap
-                        occupied={
-                          venueReady ? [...venue.occupied, ...venue.closed] : []
-                        }
-                        closed={venueReady ? venue.closed : []}
-                        selected={selected}
-                        onSelect={setSelected}
-                        zone={zone}
-                        connected={venueReady}
-                      />
-                    </div>
-                  ) : (
-                    <div className="slot-grid">
-                      {Array.from({ length: 29 }, (_, i) => i + 1)
-                        .filter((n) => inSegment(n, zone))
-                        .map((n) => {
-                          const b =
-                              venueReady &&
-                              venue.occupied.some((s) => s.slot === n),
-                            c =
-                              venueReady &&
-                              venue.closed.some((s) => s.slot === n);
-                          return (
-                            <button
-                              key={n}
-                              onClick={() => setSelected(n)}
-                              className={`${selected === n ? "selected" : ""} ${b ? "occupied" : c ? "closed" : ""}`}
-                            >
-                              <strong>{slotName(n)}</strong>
-                              <small>
-                                {!venueReady
-                                  ? "待同步"
-                                  : c
-                                    ? "暂停开放"
-                                    : b
-                                      ? "已占用"
-                                      : "可预约"}
-                              </small>
-                            </button>
-                          );
-                        })}
-                    </div>
-                  )}
-                  <div className="venue-bottom">
-                    <span>
-                      <ShieldCheck size={16} />
-                      {venueLoading
-                        ? "正在同步所选日期的场地状态…"
-                        : venueReady
-                          ? "预约状态自动更新"
-                          : "暂时无法获取预约状态"}
-                    </span>
-                    <span>{date}</span>
-                  </div>
-                  <p className="map-source-note">
-                    绿地边缘 6 个 · B 座通道 4 个 · A 座通道 4 个 · 东侧直线 7
-                    个 · 南侧直线 8 个。
+            <section className="card allowed-area-card">
+              <div className="card-header">
+                <div>
+                  <h2>大活A座平台</h2>
+                  <p>
+                    以下示意图用于了解允许摆放范围，无需选位或查询空闲情况。
                   </p>
-                  <p
-                    className="map-source-note venue-onsite-summary"
-                    role="status"
-                  >
-                    {venueLoading
-                      ? `${date} 现场登记数据正在同步，请稍候。`
-                      : !venueReady
-                        ? "现场登记数据待同步。"
-                        : venue.onsite?.length
-                          ? `${date} 现场登记：已摆放 ${venue.actualPlaced} / 29，已登记 ${venue.onsite.length} 个位置。未登记位置不计入；实际摆放不等于批准占位。`
-                          : `${date} 尚无现场登记，不能据此判断实际摆放数量。`}
-                  </p>
-                </section>
-                <div className="venue-side">
-                  <section className="card position-card">
-                    <div className="position-header">
-                      <span>已选桁架位</span>
-                      <span
-                        className={`subtle-tag ${busy || closed ? "tag-amber" : ""}`}
-                      >
-                        {!venueReady
-                          ? "状态待同步"
-                          : closed
-                            ? "暂停开放"
-                            : busy
-                              ? "已占用"
-                              : "可预约"}
-                      </span>
-                    </div>
-                    <div className="position-number">
-                      <span>{slotName(selected)}</span>
-                      <MapPin size={40} weight="light" />
-                    </div>
-                    <p>{zoneName(selected)}</p>
-                    <div className="position-details">
-                      <div>
-                        <span>选择日期</span>
-                        <strong>{date}</strong>
-                      </div>
-                      <div>
-                        <span>所在场地</span>
-                        <strong>户外广场</strong>
-                      </div>
-                      <div>
-                        <span>最长申报</span>
-                        <strong>3 天（含起止日期）</strong>
-                      </div>
-                      <div>
-                        <span>现场登记</span>
-                        <strong>
-                          {!venueReady
-                            ? "待同步"
-                            : venue.onsite?.some((row) => row.slot === selected)
-                              ? venue.onsite.find(
-                                  (row) => row.slot === selected,
-                                ).present
-                                ? "已摆放"
-                                : "已登记未摆放"
-                              : "尚未登记"}
-                        </strong>
-                      </div>
-                    </div>
-                    {closed ? (
-                      <div className="info-box">
-                        <p>{closed.reason}</p>
-                      </div>
-                    ) : busy ? (
-                      <div className="info-box">
-                        <p>该日期已有活动安排，请选择其他位置或日期。</p>
-                      </div>
-                    ) : (
-                      <Button
-                        className="primary full"
-                        disabled={!venueReady || sessionLoading}
-                        onClick={beginBooking}
-                      >
-                        {user ? "申请此位置" : "登录后预约"}
-                        <ArrowRight size={19} />
-                      </Button>
-                    )}
-                  </section>
                 </div>
               </div>
-            </>
+              <AllowedArea />
+              <div className="allowed-area-guidance">
+                <h3>搭建前请核对</h3>
+                <p>
+                  仅在指定平台范围内摆放，保持消防与日常通道畅通。审核重点为桁架宣传内容及设计方案；活动日期和搭建方联系方式应准确。
+                </p>
+              </div>
+            </section>
           )}
           {page === "records" &&
             user &&
@@ -798,9 +575,8 @@ export default function App({ initialPage = "overview" }) {
           )}
           {page === "casework" &&
             user &&
-            (user.role === "enterprise" ||
-              can(user, "bookings.review") ||
-              can(user, "payments.manage")) && (
+            user.role === "admin" &&
+            (can(user, "bookings.review") || can(user, "payments.manage")) && (
               <LazyPageBoundary key={user.id}>
                 <Suspense fallback={<p>正在加载办理界面…</p>}>
                   <Casework
@@ -846,12 +622,6 @@ export default function App({ initialPage = "overview" }) {
           {page === "users" && can(user, "accounts.manage") && (
             <UsersPage notify={notify} />
           )}
-          {page === "closures" && can(user, "venue.manage") && (
-            <>
-              <Onsite notify={notify} onChange={refresh} />
-              <ClosuresPage notify={notify} onChange={refresh} />
-            </>
-          )}
           {page === "audit" && can(user, "audit.read") && (
             <>
               <AuditPage />
@@ -882,8 +652,7 @@ export default function App({ initialPage = "overview" }) {
       {modal?.type === "booking" && user && (
         <BookingForm
           user={user}
-          slot={selected}
-          date={date}
+          date={dateString()}
           onClose={() => setModal(null)}
           onSaved={() => {
             setModal(null);
@@ -904,15 +673,15 @@ export default function App({ initialPage = "overview" }) {
             <p>
               注册企业账号后，完善企业名称、联系人及手机号。请确保信息真实、联系方式畅通。
             </p>
-            <h3>02 · 日期与桁架位</h3>
+            <h3>02 · 日期与摆放区域</h3>
             <p>
               每次申报不可超过 3
-              天，包含起止日期。请根据场地查询结果选择位置；待审核申请不代表预约成功，以审核通过后的安排为准。
+              天，包含起止日期。地点固定为大活A座平台，无需选择具体桁架位。请先查看摆放区域示意，并填写搭建方联系人及联系电话。
             </p>
             <h3>03 · 设计图与审核</h3>
             <p>
               上传 3 MB 以内的 JPG、PNG 或 WebP
-              设计图。审核结果在“我的申请”中查看；未通过时请根据审核意见重新申报。待审核的申请可以撤回。
+              设计图。审核结果在“我的申请”中查看；未通过时请根据审核意见重新申报。待审核的申请可以撤回。开始日期已过仍未审核的申请自动显示未通过，不能继续批准。
             </p>
             <h3>04 · 账号恢复</h3>
             <p>
@@ -920,8 +689,7 @@ export default function App({ initialPage = "overview" }) {
             </p>
             <h3>05 · 现场使用</h3>
             <p>
-              遵守现场管理要求，保持环境整洁，活动结束后及时撤除设备。场地图按需求
-              PDF 第 11 页对齐；A 座、B 座为建筑名称，位置编号为系统标识。
+              仅在大活A座平台指定范围内搭建，遵守现场管理要求，保持环境整洁，活动结束后及时撤除设备。区域示意不按实际比例绘制，具体边界以现场标识为准。
             </p>
             <AccessCode connected={connected} />
           </div>

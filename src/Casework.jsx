@@ -3,7 +3,7 @@ import { api } from "./api.js";
 import { can } from "./permissions.js";
 import { Button, Empty, ErrorBox, Pagination } from "./components.jsx";
 import { bookingNextStep } from "./booking-next-step.js";
-import { dateString, slotName } from "./utils.js";
+import { dateString } from "./utils.js";
 const formatDate = (value) =>
   new Intl.DateTimeFormat("zh-CN", {
     timeZone: "Asia/Shanghai",
@@ -114,7 +114,7 @@ export function CasePanel({
           <h2>{owner ? "申请办理" : "办理与缴费记录"}</h2>
           <p>
             {item
-              ? `${item.company} · ${slotName(item.slot)} · ${item.status}${item.cancelled ? "（已取消）" : ""}`
+              ? `${item.company} · ${item.location || "大活A座平台"} · ${item.status}${item.cancelled ? "（已取消）" : ""}`
               : "正在读取办理记录…"}
           </p>
         </div>
@@ -151,7 +151,7 @@ export function CasePanel({
             {!loading && !readError && item && (
               <>
                 <p className="case-booking-facts">
-                  {item.start} 至 {item.end} · {slotName(item.slot)}位置
+                  {item.start} 至 {item.end} · {item.location || "大活A座平台"}
                 </p>
                 {active && fee?.state === "due" && (
                   <div className="case-next-action">
@@ -737,7 +737,7 @@ export default function Casework({ user, notify, initialId = "" }) {
                 <span>
                   <strong>{r.company}</strong>
                   <small>
-                    {r.id} · {slotName(r.slot)} · {r.status}
+                    {r.id} · {r.location || "大活A座平台"} · {r.status}
                     {r.cancelled ? "（已取消）" : ""}
                   </small>
                 </span>

@@ -7,6 +7,7 @@ import {
   manager,
   staff,
   booking,
+  seedLegacyBooking,
   PASSWORD,
 } from "./helpers.mjs";
 
@@ -60,8 +61,14 @@ test("同一请求并发重试返回同一申请，不重复写入或重复审�
     1,
   );
   assert.equal(
-    (await c.request("/bookings", "POST", booking({ slot: 2 }), headers))
-      .status,
+    (
+      await c.request(
+        "/bookings",
+        "POST",
+        booking({ builder_contact: "另一搭建方" }),
+        headers,
+      )
+    ).status,
     409,
   );
   assert.equal(
@@ -70,7 +77,7 @@ test("同一请求并发重试返回同一申请，不重复写入或重复审�
         "Idempotency-Key": "different-request-0002",
       })
     ).status,
-    409,
+    201,
   );
 });
 test("绕过接口直接写数据库仍不能造成预约与暂停安排重叠", async (t) => {
@@ -79,7 +86,7 @@ test("绕过接口直接写数据库仍不能造成预约与暂停安排重叠",
     m = client();
   await register(c);
   await manager(m);
-  const id = (await c.request("/bookings", "POST", booking())).data.id;
+  const id = (await seedLegacyBooking({ db }, c)).data.id;
   await m.request(
     `/bookings/${id}/review`,
     "POST",
@@ -239,7 +246,7 @@ test("授权需要超级管理员密码与最新版本，变更立即撤销已�
       await root.request(
         `/access/${u.id}`,
         "PATCH",
-        { permissions: ["venue.manage"], currentPassword: "wrong" },
+        { permissions: ["accounts.manage"], currentPassword: "wrong" },
         { "If-Match": `"${u.version}"` },
       )
     ).status,
@@ -272,7 +279,7 @@ test("授权需要超级管理员密码与最新版本，变更立即撤销已�
       await root.request(
         `/access/${u.id}`,
         "PATCH",
-        { permissions: ["venue.manage"], currentPassword: PASSWORD },
+        { permissions: ["accounts.manage"], currentPassword: PASSWORD },
         { "If-Match": `"${u.version}"` },
       )
     ).status,
@@ -299,7 +306,7 @@ test("授权需要超级管理员密码与最新版本，变更立即撤销已�
     password: PASSWORD,
   });
   assert.deepEqual((await c.request("/auth/session")).data.user.permissions, [
-    "venue.manage",
+    "accounts.manage",
   ]);
   assert.equal(
     (

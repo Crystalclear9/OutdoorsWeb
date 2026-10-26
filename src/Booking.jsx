@@ -11,13 +11,15 @@ import {
 import { Button, ErrorBox, Modal, Status } from "./components.jsx";
 import { api, getDesign } from "./api.js";
 import { can } from "./permissions.js";
-import { dateString, slotName, zoneName, formatDate } from "./utils.js";
+import { dateString, formatDate } from "./utils.js";
+import AllowedArea from "./AllowedArea.jsx";
+import { BUILDER_PHONE_PATTERN } from "../shared/booking-contact.js";
 import LazyPageBoundary from "./LazyPageBoundary.jsx";
 const CasePanel = lazy(() =>
   import("./Casework.jsx").then((module) => ({ default: module.CasePanel })),
 );
 
-export function BookingForm({ user, slot, date, onClose, onSaved }) {
+export function BookingForm({ user, date, onClose, onSaved }) {
   const request = useRef(null);
   const currentReader = useRef(null);
   const [image, setImage] = useState(null),
@@ -151,7 +153,7 @@ export function BookingForm({ user, slot, date, onClose, onSaved }) {
               </label>
             </div>
             <h3 className="form-section-title">
-              <span>02</span>布展时间与位置
+              <span>02</span>布展日期与搭建方
             </h3>
             <div className="form-columns">
               <label>
@@ -180,16 +182,33 @@ export function BookingForm({ user, slot, date, onClose, onSaved }) {
             <p className="field-note">
               每次申请最多 3 天，包含开始和结束日期。
             </p>
-            <label>
-              桁架位置
-              <select name="slot" defaultValue={slot} disabled={busy}>
-                {Array.from({ length: 29 }, (_, i) => (
-                  <option key={i} value={i + 1}>
-                    {slotName(i + 1)} · {zoneName(i + 1)}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="form-columns">
+              <label>
+                搭建方联系人
+                <input
+                  name="builder_contact"
+                  disabled={busy}
+                  required
+                  maxLength={30}
+                />
+              </label>
+              <label>
+                搭建方联系电话
+                <input
+                  name="builder_phone"
+                  disabled={busy}
+                  type="tel"
+                  pattern={BUILDER_PHONE_PATTERN}
+                  maxLength={25}
+                  title="手机号或区号-座机号（可选分机）"
+                  required
+                />
+              </label>
+            </div>
+            <p className="field-note">
+              布展地点统一为大活A座平台，无需申请具体桁架位置。请在下方示意区域内摆放，并保持出入口和通道畅通。
+            </p>
+            <AllowedArea compact />
           </div>
           <div>
             <h3 className="form-section-title">
@@ -310,7 +329,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
         type === "withdraw"
           ? "申请已撤回"
           : type === "cancel"
-            ? "预约已取消，桁架位置已释放"
+            ? "布展申请已取消"
             : `申请${status}`,
       );
     } catch (e) {
@@ -347,8 +366,8 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
   if (rescheduling)
     return (
       <Modal
-        title="申请改期或更换位置"
-        description={`原预约：${item.start} 至 ${item.end} · ${slotName(item.slot)}`}
+        title="申请改期"
+        description={`原申请：${item.start} 至 ${item.end} · 大活A座平台`}
         onClose={() => !blocked && setRescheduling(false)}
       >
         <form onSubmit={reschedule}>
@@ -381,16 +400,34 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
               />
             </label>
           </div>
-          <label>
-            新桁架位置
-            <select name="slot" defaultValue={item.slot} disabled={blocked}>
-              {Array.from({ length: 29 }, (_, i) => (
-                <option key={i} value={i + 1}>
-                  {slotName(i + 1)} · {zoneName(i + 1)}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="form-columns">
+            <label>
+              搭建方联系人
+              <input
+                name="builder_contact"
+                defaultValue={item.builder_contact || ""}
+                disabled={blocked}
+                required
+                maxLength={30}
+              />
+            </label>
+            <label>
+              搭建方联系电话
+              <input
+                name="builder_phone"
+                defaultValue={item.builder_phone || ""}
+                disabled={blocked}
+                type="tel"
+                pattern={BUILDER_PHONE_PATTERN}
+                maxLength={25}
+                title="手机号或区号-座机号（可选分机）"
+                required
+              />
+            </label>
+          </div>
+          <p className="field-note">
+            布展地点：大活A座平台。请核对搭建方信息，改期沿用原桁架设计图。
+          </p>
           <ErrorBox>{error}</ErrorBox>
           <div className="dialog-actions">
             <Button
@@ -418,18 +455,6 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
       onClose={() => !blocked && onClose()}
       wide
     >
-      {user.role === "enterprise" && (
-        <LazyPageBoundary key={item.id}>
-          <Suspense fallback={<p>正在读取办理进度与下一步…</p>}>
-            <CasePanel
-              id={item.id}
-              user={user}
-              disabled={!!busy}
-              onBusyChange={setCaseBusy}
-            />
-          </Suspense>
-        </LazyPageBoundary>
-      )}
       <div className="detail-layout">
         <div>
           <Status value={item.status} />
@@ -446,7 +471,9 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
               ["联系人", item.contact],
               ["联系电话", item.phone],
               ["申报时间", `${item.start} 至 ${item.end}`],
-              ["桁架位置", `${slotName(item.slot)} · ${zoneName(item.slot)}`],
+              ["布展地点", "大活A座平台"],
+              ["搭建方联系人", item.builder_contact || "历史申请未提供"],
+              ["搭建方联系电话", item.builder_phone || "历史申请未提供"],
               ["提交时间", formatDate(item.created)],
             ].map(([k, v]) => (
               <div key={k}>
@@ -487,7 +514,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
         <span>
           {item.status === "待审核" ? (
             <Clock size={18} />
-          ) : item.status === "未通过" ? (
+          ) : ["未通过", "过期未审核"].includes(item.status) ? (
             <XCircle size={18} />
           ) : (
             <CheckCircle size={18} />
@@ -497,9 +524,15 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
         </span>
       </div>
       {item.reason && (
-        <div className={item.status === "未通过" ? "error-box" : "info-box"}>
+        <div
+          className={
+            ["未通过", "过期未审核"].includes(item.status)
+              ? "error-box"
+              : "info-box"
+          }
+        >
           <div>
-            <strong>审核意见</strong>
+            <strong>{item.reviewExpired ? "过期说明" : "审核意见"}</strong>
             <p>{item.reason}</p>
           </div>
         </div>
@@ -517,7 +550,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
           />
         </label>
       )}
-      {user.role !== "enterprise" && (
+      {user.role !== "enterprise" && !item.content_only && (
         <details
           className="case-details"
           onToggle={(e) => setCaseOpen(e.currentTarget.open)}
@@ -565,7 +598,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
               disabled={blocked}
               onChange={(e) => setCancelConfirmed(e.target.checked)}
             />
-            确认取消并释放位置，待审的改期申请也将撤回。
+            确认取消本次布展申请，待审的改期申请也将撤回。
           </label>
         </div>
       )}
@@ -579,7 +612,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
               disabled={blocked}
               onClick={() => setRescheduling(true)}
             >
-              申请改期 / 换位
+              申请改期
             </Button>
           )}
         {item.status === "已通过" &&

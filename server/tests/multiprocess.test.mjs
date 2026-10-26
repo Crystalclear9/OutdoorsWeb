@@ -14,7 +14,7 @@ import {
   PASSWORD,
 } from "./helpers.mjs";
 
-test("两个独立服务进程共享数据库：竞争审批、重复提交、撤回与暂停冲突", async (t) => {
+test("共享数据库多进程：同日内容审核、幂等重试与审核撤回竞争", async (t) => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "outdoor-concurrency-")),
     dbPath = path.join(dir, "app.sqlite"),
     children = [];
@@ -83,9 +83,9 @@ test("两个独立服务进程共享数据库：竞争审批、重复提交、�
       ),
     ),
   );
-  assert.equal(approvals.filter((r) => r.status === 200).length, 1);
-  assert.equal(approvals.filter((r) => r.status === 409).length, 5);
-  assert.equal((await a.request("/venue")).data.occupied.length, 1);
+  assert.equal(approvals.filter((r) => r.status === 200).length, 6);
+  assert.equal(approvals.filter((r) => r.status === 409).length, 0);
+  assert.equal((await a.request("/venue")).data.occupied.length, 0);
   const c = enterprises[0],
     second = client(originB);
   await second.request("/auth/login", "POST", {
@@ -93,10 +93,15 @@ test("两个独立服务进程共享数据库：竞争审批、重复提交、�
     password: PASSWORD,
   });
   const duplicate = await Promise.all([
-    c.request("/bookings", "POST", booking({ slot: 2 })),
-    second.request("/bookings", "POST", booking({ slot: 2 })),
+    c.request("/bookings", "POST", booking(), {
+      "Idempotency-Key": "multiprocess-content-001",
+    }),
+    second.request("/bookings", "POST", booking(), {
+      "Idempotency-Key": "multiprocess-content-001",
+    }),
   ]);
-  assert.deepEqual(duplicate.map((r) => r.status).sort(), [201, 409]);
+  assert.deepEqual(duplicate.map((r) => r.status).sort(), [201, 201]);
+  assert.equal(duplicate[0].data.id, duplicate[1].data.id);
   const pending = duplicate.find((r) => r.status === 201).data.id;
   const race = await Promise.all([
     a.request(
@@ -130,11 +135,11 @@ test("两个独立服务进程共享数据库：竞争审批、重复提交、�
     closureRace.filter((r) => r.status === 200 || r.status === 201).length,
     1,
   );
-  assert.equal(closureRace.filter((r) => r.status === 409).length, 1);
+  assert.equal(closureRace.filter((r) => r.status === 410).length, 1);
   const venue = (await a.request("/venue")).data;
   assert.equal(
     venue.occupied.filter((v) => v.slot === 3).length +
       venue.closed.filter((v) => v.slot === 3).length,
-    1,
+    0,
   );
 });

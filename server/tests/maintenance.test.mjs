@@ -290,7 +290,7 @@ test("后台备份可恢复账号与申请；清理临时数据不删除业务�
         "SELECT COUNT(*) AS n FROM notifications WHERE title='超时待办提醒'",
       )
       .get().n,
-    1,
+    0,
   );
   assert.equal((await root.request("/operations")).data.pendingOver24, 1);
   assert.equal((await c.request("/operations")).status, 403);

@@ -8,6 +8,7 @@ import {
   versionCheck,
 } from "./core.mjs";
 import { can } from "../shared/permissions.js";
+import { bookingView, expiredReview } from "./booking-policy.mjs";
 
 // One working day means the same Beijing time on the next working date.
 // Calendar exceptions are explicitly maintained by the institution, never guessed.
@@ -33,11 +34,12 @@ export const calendarMap = (db) =>
   );
 export function overdueCases(db, at = Date.now()) {
   const calendar = calendarMap(db);
+  const date = new Date(at + 8 * 3600000).toISOString().slice(0, 10);
   return db
     .prepare(
-      "SELECT b.id,b.created FROM bookings b JOIN case_contacts c ON c.booking_id=b.id WHERE b.cancelled=0 AND b.status IN ('待审核','已通过','未通过') AND c.state<>'reached'",
+      "SELECT b.id,b.created FROM bookings b JOIN case_contacts c ON c.booking_id=b.id WHERE b.content_only=0 AND b.cancelled=0 AND b.status IN ('待审核','已通过','未通过') AND (b.status<>'待审核' OR b.start>=?) AND c.state<>'reached'",
     )
-    .all()
+    .all(date)
     .filter(
       (r) => workingDeadline(r.created, calendar) <= new Date(at).toISOString(),
     ).length;
@@ -60,7 +62,7 @@ export function caseworkRoutes(db, sec, send, notify) {
   const getBooking = (id, u) => {
     const b = db
       .prepare(
-        "SELECT id,user_id,company,contact,phone,slot,start,end,status,cancelled,created FROM bookings WHERE id=?",
+        "SELECT id,user_id,company,contact,phone,builder_contact,builder_phone,content_only,slot,start,end,status,cancelled,created FROM bookings WHERE id=?",
       )
       .get(id);
     fail(
@@ -79,6 +81,11 @@ export function caseworkRoutes(db, sec, send, notify) {
       403,
       "当前账号没有此申请的办理权限",
     );
+    fail(
+      b.content_only,
+      410,
+      "内容审核申请无需通知与缴费办理，请在申请记录中查看审核结果",
+    );
     return b;
   };
   const decorate = (b, u, calendar) => {
@@ -88,10 +95,11 @@ export function caseworkRoutes(db, sec, send, notify) {
       .get(b.id);
     const due = workingDeadline(b.created, calendar);
     return {
-      ...b,
+      ...bookingView(b, u.role === "admin"),
       due,
       overdue:
         !b.cancelled &&
+        !expiredReview(b) &&
         ["待审核", "已通过", "未通过"].includes(b.status) &&
         c.state !== "reached" &&
         due < now(),
@@ -161,7 +169,7 @@ export function caseworkRoutes(db, sec, send, notify) {
       const q = clean(url.searchParams.get("q"), 80),
         scope = url.searchParams.get("scope") || "open";
       fail(!["open", "all"].includes(scope), 400, "筛选条件无效");
-      const conditions = [],
+      const conditions = ["b.content_only=0"],
         params = [];
       if (u.role === "enterprise") {
         conditions.push("b.user_id=?");
@@ -173,6 +181,8 @@ export function caseworkRoutes(db, sec, send, notify) {
         params.push(q, q);
       }
       if (scope === "open") {
+        conditions.push("(b.status<>'待审核' OR b.start>=?)");
+        params.push(today());
         const tasks = [];
         if (u.role === "enterprise" || can(present(u), "bookings.review"))
           tasks.push(
@@ -195,7 +205,7 @@ export function caseworkRoutes(db, sec, send, notify) {
       const calendar = calendarMap(db);
       const rows = db
         .prepare(
-          "SELECT b.id,b.user_id,b.company,b.contact,b.phone,b.slot,b.start,b.end,b.status,b.cancelled,b.created" +
+          "SELECT b.id,b.user_id,b.company,b.contact,b.phone,b.builder_contact,b.builder_phone,b.content_only,b.slot,b.start,b.end,b.status,b.cancelled,b.created" +
             from +
             where +
             " ORDER BY b.created ASC,b.id ASC LIMIT 15 OFFSET ?",

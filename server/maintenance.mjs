@@ -1,7 +1,7 @@
 import { fork } from "node:child_process";
 import { statfsSync, statSync } from "node:fs";
 import path from "node:path";
-import { tx } from "./core.mjs";
+import { tx, today } from "./core.mjs";
 import { offsiteConfigured } from "./offsite.mjs";
 import { transportConfigured } from "./integrations.mjs";
 import { randomUUID } from "node:crypto";
@@ -246,9 +246,14 @@ export function createMaintenance(db, dbPath, options = {}) {
         pendingWorkdayOverdue: overdueCases(db),
         pendingOver24: db
           .prepare(
-            "SELECT COUNT(*) AS n FROM bookings WHERE status='待审核' AND created<?",
+            "SELECT COUNT(*) AS n FROM bookings WHERE status='待审核' AND start>=? AND created<?",
           )
-          .get(new Date(Date.now() - 86400000).toISOString()).n,
+          .get(today(), new Date(Date.now() - 86400000).toISOString()).n,
+        expiredUnreviewed: db
+          .prepare(
+            "SELECT COUNT(*) AS n FROM bookings WHERE status='待审核' AND cancelled=0 AND start<?",
+          )
+          .get(today()).n,
       };
     },
     start() {

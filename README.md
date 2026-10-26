@@ -1,8 +1,8 @@
 # 华中科技大学户外广场企业布展预约系统
 
-React 前端、Node.js 24 API 与 SQLite 数据库组成的完整应用。账号、申请、设计图、审批、公告、场地安排和操作日志保存在服务端。推荐通过 Docker 同域运行页面与 API。
+React 前端、Node.js 24 API 与 SQLite 数据库组成的完整应用。账号、申请、设计图、审批、公告和操作日志保存在服务端。推荐通过 Docker 同域运行页面与 API。
 
-当前 [GitHub Pages](https://crystalclear9.github.io/OutdoorsWeb/) 提供临时成果演示：从顶部切换六种身份，查看虚构示例及本地交互，无须后端。此入口标记为**待删除**，正式服务仍须真实登录；范围、专用构建和移除步骤见[临时演示说明](docs/temporary-showcase.md)。
+当前 [GitHub Pages](https://crystalclear9.github.io/OutdoorsWeb/) 提供临时成果演示：从顶部切换企业、管理员、游客三种身份，查看虚构示例及本地交互，无须后端。此入口标记为**待删除**，正式服务仍须真实登录；范围、专用构建和移除步骤见[临时演示说明](docs/temporary-showcase.md)。
 
 ## 快速启动
 
@@ -28,10 +28,10 @@ docker compose logs --tail=100 app
 ## 功能概览
 
 - 企业账号、图片验证码、两步验证、资料维护与登录设备管理。
-- 按原图对应的 29 个桁架位查询场地，提交最长 3 天的布展申请。
-- 连续审阅、冲突提示、批量审批、取消预约和保留原位的改期审批。
-- 按职责授权工作人员，管理公告、暂停开放、现场实际摆放和审计日志。
-- 工作日反馈时限、人工电话跟进、独立财务核对、线下缴费与退款登记。
+- 统一在大活A座平台申报桁架内容，提供允许摆放区域示意；填写搭建方联系人和联系电话，提交最长 3 天的申请。
+- 连续审阅、批量审批、取消和改期；过期待审在管理员端显示“过期未审核”，企业端显示“未通过”。
+- 按职责授权工作人员，管理企业账号、公告和审计日志；不提供场地开放安排。
+- 企业端仅跟进申请与审核结果，不提供通知与缴费办理；内部保留旧预约的财务与电话历史。
 - 自动备份、历史归档、空间检查；可配置短信、语音、QQ/微信、加密异机备份及独立告警。
 
 ## 文档
@@ -62,4 +62,4 @@ docker compose logs --tail=100 app
 - SQLite 适用于单机，或多个进程共享同一个本地数据库文件。多台服务器需改用集中式数据库，不能靠复制数据卷保证全局互斥。
 - [GitHub Pages 入口](https://crystalclear9.github.io/OutdoorsWeb/)仅提供静态页面，无法独立运行账号和业务 API。完整功能使用 Docker 服务地址。
 
-数据库结构版本为 **7**。升级前备份数据库及匹配密钥，回滚须匹配程序与数据库版本。验证方法见[开发与测试](docs/development.md)，目标提交结果见 [CI](https://github.com/Crystalclear9/OutdoorsWeb/actions/workflows/verify.yml)。费用流程为审批通过后由财务核定金额或免缴并通知企业；真实收费、通信、外部接入及恢复能力按[验收清单](docs/release-checklist.md)确认。
+数据库结构版本为 **8**。升级前备份数据库及匹配密钥，回滚须匹配程序与数据库版本。验证方法见[开发与测试](docs/development.md)，目标提交结果见 [CI](https://github.com/Crystalclear9/OutdoorsWeb/actions/workflows/verify.yml)。新申请不生成费用或结果电话待办，旧预约的内部财务和电话记录保留；真实外部接入及恢复能力按[验收清单](docs/release-checklist.md)确认。

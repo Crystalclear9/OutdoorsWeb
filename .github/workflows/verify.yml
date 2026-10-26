@@ -41,5 +41,6 @@ jobs:
             test-results/
             tmp/visual-results-*/
             tmp/showcase-results/
+            tests/visual/snapshots/linux/
           if-no-files-found: ignore
           retention-days: 7

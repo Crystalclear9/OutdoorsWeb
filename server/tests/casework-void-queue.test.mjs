@@ -1,6 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fixture, register, manager, staff, booking } from "./helpers.mjs";
+import {
+  fixture,
+  register,
+  manager,
+  staff,
+  booking,
+  seedLegacyBooking,
+} from "./helpers.mjs";
 
 const version = (n) => ({ "If-Match": `"${n}"` });
 const successful = (response, status = 200) =>
@@ -29,9 +36,9 @@ test("生效预约作废重开费用期间保留财务和企业待办，已结�
     "void",
     "cancelledVoid",
   ].entries()) {
-    const made = await owner.request(
-      "/bookings",
-      "POST",
+    const made = await seedLegacyBooking(
+      f,
+      owner,
       booking({ slot: index + 1 }),
     );
     successful(made, 201);

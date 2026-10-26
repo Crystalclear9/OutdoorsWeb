@@ -35,7 +35,7 @@ npm audit --omit=dev
 
 测试使用独立临时数据库，不连接正式 `.env` 或业务卷。固定验证码和第三方模拟响应仅用于隔离入口。`tests/browser-fixtures.js` 为上下文分配测试来源，只有 `tests/start-server.mjs` 信任该本机代理；正式来源校验与限流不变。
 
-不要同时启动多个使用同一 `test-results/` 的 Playwright 进程。单步断言默认 5 秒、普通场景总预算 30 秒；完整三角色费用闭环使用 60 秒，包含额外上下文的关闭，无自动重试。接口测试会重新分配被 Fetch 禁止的随机端口，绑定失败仍报错。
+不要同时启动多个使用同一 `test-results/` 的 Playwright 进程。单步断言默认 5 秒、普通场景总预算 30 秒，无自动重试。接口测试会重新分配被 Fetch 禁止的随机端口，绑定失败仍报错。
 
 CI 在 Ubuntu 执行构建、后端、并发和 Chromium 浏览器回归，再验证 Docker 业务与持久化、固定环境视觉；失败诊断保留 7 天。目标提交见 [Verify application](https://github.com/Crystalclear9/OutdoorsWeb/actions/workflows/verify.yml)。依赖审计是当时结果，需要定期执行。
 
@@ -58,9 +58,9 @@ docker run --rm -v "$PWD:/workspace" -v /workspace/node_modules -w /workspace -e
 
 ## 压测与视觉基线
 
-`npm run test:load` 在临时 SQLite WAL 数据库执行 32 客户端、1000 次公开读取及 32 条同位竞争审批，要求无读取错误且仅一次批准。报告为 `tmp/load-report.json`；默认读取 P95 上限 2000 ms，可用 `LOAD_MAX_P95_MS` 调整。上线前使用目标机器和实际数据量复测。
+`npm run test:load` 在临时 SQLite WAL 数据库执行 32 客户端、1000 次公开读取及 32 条独立内容并发审批，要求无读取错误且 32 条均可批准；同一记录的并发审批互斥由 API 回归另行检查。报告为 `tmp/load-report.json`；默认读取 P95 上限 2000 ms，可用 `LOAD_MAX_P95_MS` 调整。上线前使用目标机器和实际数据量复测。
 
-视觉测试比较登录、现场登记和审批台的桌面/手机截图，固定时钟与种子数据，遮盖随机验证码。Windows Edge 与 Playwright 1.64.1 Noble Linux Chromium 基线分别在 `tests/visual/snapshots/`；任一截图差异均导致失败，软断言仅用于收集完整诊断。
+视觉测试比较登录、允许摆放区域和内容审批台的桌面/手机截图，固定时钟与种子数据，遮盖随机验证码。Windows Edge 与 Playwright 1.64.1 Noble Linux Chromium 基线分别在 `tests/visual/snapshots/`；任一截图差异均导致失败，软断言仅用于收集完整诊断。
 
 只有有意修改界面并逐张核对后才执行 `npm run test:visual -- --update-snapshots`。不要用更新基线或扩大容差掩盖布局问题。
 

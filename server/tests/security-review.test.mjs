@@ -1,6 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fixture, manager, register, staff, booking } from "./helpers.mjs";
+import {
+  fixture,
+  manager,
+  register,
+  staff,
+  booking,
+  seedLegacyBooking,
+} from "./helpers.mjs";
 
 const ver = (n) => ({ "If-Match": `"${n}"` });
 
@@ -26,10 +33,9 @@ test("独立财务不能读取或操作未审批与退回申请，审核与企�
     ["bookings.review"],
     "security-reviewer@test.local",
   );
-  const pending = (await owner.request("/bookings", "POST", booking())).data.id;
-  const rejected = (
-    await owner.request("/bookings", "POST", booking({ slot: 2 }))
-  ).data.id;
+  const pending = (await seedLegacyBooking(f, owner, booking())).data.id;
+  const rejected = (await seedLegacyBooking(f, owner, booking({ slot: 2 })))
+    .data.id;
   assert.equal(
     (
       await reviewer.request(
@@ -82,7 +88,7 @@ test("独立财务保留已批准、取消及退款费用的完整追溯权限",
     ["payments.manage"],
     "security-finance@test.local",
   );
-  const id = (await owner.request("/bookings", "POST", booking())).data.id;
+  const id = (await seedLegacyBooking(f, owner, booking())).data.id;
   assert.equal(
     (
       await root.request(

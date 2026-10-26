@@ -44,7 +44,7 @@ async function midnight(t) {
   };
 }
 
-for (const action of ["booking", "closure", "onsite", "reschedule"]) {
+for (const action of ["booking", "onsite", "reschedule"]) {
   test(`等待写事务跨越北京时间午夜后重新校验${action}日期`, async (t) => {
     const f = await midnight(t);
     let original;

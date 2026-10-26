@@ -36,10 +36,14 @@ async function adminLogin(page) {
     page.getByRole("button", { name: "账号管理", exact: true }),
   ).toBeVisible();
 }
-async function submit(page, slot = "3") {
+async function submit(page) {
   await page.getByRole("button", { name: "发起布展申请", exact: true }).click();
   const dialog = page.getByRole("dialog");
-  await dialog.locator("[name=slot]").selectOption(slot);
+  await expect(dialog.locator("[name=slot]")).toHaveCount(0);
+  await dialog.getByLabel("搭建方联系人", { exact: true }).fill("搭建张师傅");
+  await dialog
+    .getByLabel("搭建方联系电话", { exact: true })
+    .fill("13900139000");
   await dialog.getByLabel("上传桁架设计图").setInputFiles(design);
   await dialog.getByRole("checkbox").check();
   await dialog.getByRole("button", { name: "提交申请", exact: true }).click();
@@ -54,7 +58,7 @@ test("注册、真实跨账号审核、刷新、退出与登录", async ({ page,
   page.on("pageerror", (e) => errors.push(e.message));
   const company = `完整流程企业-${Date.now()}`;
   const email = await register(page, company);
-  await submit(page, "3");
+  await submit(page);
   const context = await browser.newContext();
   const manager = await context.newPage();
   const summaryResponse = manager.waitForResponse(
@@ -97,10 +101,18 @@ test("注册、真实跨账号审核、刷新、退出与登录", async ({ page,
   await expect(
     page.getByRole("row").filter({ hasText: company }),
   ).toContainText("已通过");
-  await page.getByRole("button", { name: "场地查询", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "03号 已占用", exact: true }),
-  ).toBeVisible();
+    page.getByRole("button", { name: "场地查询", exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("row")
+    .filter({ hasText: company })
+    .getByRole("button", { name: "查看详情" })
+    .click();
+  await expect(page.getByRole("dialog")).toContainText("搭建张师傅");
+  await expect(page.getByRole("dialog")).toContainText("大活A座平台");
+  await expect(page.locator(".case-panel")).toHaveCount(0);
+  await page.getByRole("dialog").getByLabel("关闭", { exact: true }).click();
   await page.getByRole("button", { name: "退出登录", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "登录您的账号" }),
@@ -138,7 +150,7 @@ test("企业资料修改与密码更新后会话失效", async ({ page }) => {
   await page.getByRole("button", { name: "登录账号", exact: true }).click();
   await expect(page.getByRole("heading", { name: "服务工作台" })).toBeVisible();
 });
-test("管理员发布公告、场地安排、停用与密码恢复界面", async ({
+test("管理员发布公告、停用与密码恢复界面，不提供场地开放安排", async ({
   page,
   browser,
 }) => {
@@ -154,16 +166,9 @@ test("管理员发布公告、场地安排、停用与密码恢复界面", async
   await expect(
     manager.locator("article").filter({ hasText: "预约管理通知" }),
   ).toBeVisible();
-  await manager
-    .getByRole("button", { name: "场地开放安排", exact: true })
-    .click();
-  await manager.getByRole("button", { name: "新增暂停安排" }).click();
-  await manager.locator("[name=slot]").selectOption("29");
-  await manager.locator("[name=reason]").fill("设备维护");
-  await manager.getByRole("button", { name: "保存安排" }).click();
   await expect(
-    manager.getByRole("row").filter({ hasText: "设备维护" }),
-  ).toBeVisible();
+    manager.getByRole("button", { name: "场地开放安排", exact: true }),
+  ).toHaveCount(0);
   await manager.getByRole("button", { name: "账号管理", exact: true }).click();
   let row = manager.getByRole("row").filter({ hasText: company });
   await row.getByRole("button", { name: "停用", exact: true }).click();
@@ -240,79 +245,38 @@ test("完整服务桌面视觉与登录页面", async ({ page }) => {
   ).toBe(true);
 });
 
-test("工作台独立于场地查询，原图五段桁架与区域筛选一致", async ({ page }) => {
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.setViewportSize({ width: 1512, height: 1050 });
+test("企业与游客仅查看固定允许区域示意图，不出现位置查询或桁架选择", async ({
+  page,
+}) => {
   await page.goto("/");
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "摆放区域示意", exact: true })
+    .click();
   await expect(
-    page.getByRole("heading", { name: "预约办理指引" }),
+    page.getByRole("img", { name: "大活A座平台允许摆放区域示意图" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("group", { name: "按 PDF 原图对齐的29个桁架位置" }),
+    page.getByRole("button", { name: "场地查询", exact: true }),
   ).toHaveCount(0);
   await expect(page.getByLabel("查询日期")).toHaveCount(0);
-  await page
-    .getByRole("navigation")
-    .getByRole("button", { name: "场地查询", exact: true })
-    .click();
-  const map = page.getByRole("group", {
-    name: "按 PDF 原图对齐的29个桁架位置",
-  });
-  await expect(map.getByRole("button")).toHaveCount(29);
-  await expect(page.getByRole("heading", { name: "预约办理指引" })).toHaveCount(
-    0,
-  );
-  for (const [zone, count] of [
-    ["绿地边缘", 6],
-    ["B 座通道", 4],
-    ["A 座通道", 4],
-    ["东侧直线", 7],
-    ["南侧直线", 8],
-  ]) {
-    await expect(map.locator(`[data-segment="${zone}"]`)).toHaveCount(count);
-  }
-  await map.getByRole("button", { name: "11号 可预约", exact: true }).click();
-  await expect(page.locator(".position-card>p")).toHaveText("A 座通道");
-  await page.screenshot({
-    path: "tmp/corrected-venue-desktop.png",
-    fullPage: true,
-  });
-  await page.getByRole("button", { name: "位置列表", exact: true }).click();
-  for (const [value, count, label] of [
-    ["green", 6, "绿地边缘"],
-    ["b-passage", 4, "B 座通道"],
-    ["a-passage", 4, "A 座通道"],
-    ["east", 7, "东侧直线"],
-    ["south", 8, "南侧直线"],
-  ]) {
-    await page.getByLabel("筛选区域").selectOption(value);
-    await expect(page.locator(".slot-grid>button")).toHaveCount(count);
-    await expect(page.locator(".position-card>p")).toHaveText(label);
-  }
-  await page
-    .getByRole("navigation")
-    .getByRole("button", { name: "服务工作台", exact: true })
-    .click();
-  await expect(page.getByLabel("查询日期")).toHaveCount(0);
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("button", { name: "打开导航" }).click();
-  await page
-    .getByRole("navigation")
-    .getByRole("button", { name: "场地查询", exact: true })
-    .click();
-  await page.getByRole("button", { name: "分布图", exact: true }).click();
-  await page.getByLabel("筛选区域").selectOption("all");
-  await page.getByRole("button", { name: "放大场地图" }).click();
-  await page.getByRole("button", { name: "重置场地图" }).click();
+  await register(page);
+  await page.getByRole("button", { name: "发起布展申请", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.locator("[name=slot]")).toHaveCount(0);
+  await expect(
+    dialog.getByLabel("搭建方联系人", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByLabel("搭建方联系电话", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByRole("img", { name: "大活A座平台允许摆放区域示意图" }),
+  ).toBeVisible();
+  await page.setViewportSize({ width: 320, height: 844 });
   expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
-    ),
-  ).toBe(true);
-  await page.screenshot({
-    path: "tmp/corrected-venue-mobile.png",
-    fullPage: true,
-  });
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(320);
 });
 
 test("管理员在工作台直接处理待办，不必通过场地查询", async ({
@@ -321,7 +285,7 @@ test("管理员在工作台直接处理待办，不必通过场地查询", async
 }) => {
   const company = `工作台待办-${Date.now()}`;
   await register(page, company);
-  await submit(page, "20");
+  await submit(page);
   const context = await browser.newContext(),
     manager = await context.newPage();
   await adminLogin(manager);
@@ -469,7 +433,7 @@ test("超级管理员创建工作人员、按职责授权并即时撤销旧登�
     .uncheck();
   await page
     .getByRole("dialog")
-    .getByRole("checkbox", { name: /场地开放管理/ })
+    .getByRole("checkbox", { name: /企业申请审核/ })
     .check();
   await page
     .getByRole("dialog")
@@ -491,7 +455,7 @@ test("超级管理员创建工作人员、按职责授权并即时撤销旧登�
   await expect(
     staff
       .getByRole("navigation")
-      .getByRole("button", { name: "场地开放安排", exact: true }),
+      .getByRole("button", { name: "企业申报审核", exact: true }),
   ).toBeVisible();
   await staff
     .getByRole("navigation")
@@ -527,7 +491,7 @@ test("账号可查看登录设备，并退出其他设备", async ({ page, brows
   await context.close();
 });
 
-async function seedPending(page, company, slot, offset = 30) {
+async function seedPending(page, company, offset = 30) {
   const session = await (await page.request.get("/api/auth/session")).json();
   const date = new Date(Date.now() + offset * 86400000)
     .toISOString()
@@ -538,7 +502,8 @@ async function seedPending(page, company, slot, offset = 30) {
       company,
       contact: "张老师",
       phone: "13800138000",
-      slot,
+      builder_contact: "搭建张师傅",
+      builder_phone: "13900139000",
       start: date,
       end: date,
       image: "data:image/png;base64," + design.buffer.toString("base64"),
@@ -554,8 +519,8 @@ test("连续审阅自动进入下一条，快捷原因退回，手机端无溢�
 }) => {
   const prefix = "连续审阅-" + Date.now();
   await register(page, prefix);
-  await seedPending(page, prefix + "-A", 21);
-  await seedPending(page, prefix + "-B", 22);
+  await seedPending(page, prefix + "-A");
+  await seedPending(page, prefix + "-B");
   const context = await browser.newContext({
       viewport: { width: 1440, height: 1000 },
     }),
@@ -571,7 +536,7 @@ test("连续审阅自动进入下一条，快捷原因退回，手机端无溢�
     detail.getByRole("heading", { name: prefix + "-A", exact: true }),
   ).toBeVisible();
   await expect(detail.locator("img")).toBeVisible();
-  await expect(detail).toContainText("日期与占用检查通过");
+  await expect(detail).toContainText("日期检查通过");
   await manager.screenshot({
     path: "tmp/review-desk-desktop.png",
     fullPage: true,
@@ -616,108 +581,53 @@ test("连续审阅自动进入下一条，快捷原因退回，手机端无溢�
   await context.close();
 });
 
-test("批量操作需确认，冲突逐条返回，剩余待办可统一退回", async ({
+test("批量内容审核需要确认，同日不同企业不因默认地点互相冲突", async ({
   page,
   browser,
 }) => {
-  const prefix = "批量审阅-" + Date.now();
+  const prefix = "批量内容审阅-" + Date.now();
   await register(page, prefix);
-  await seedPending(page, prefix + "-A", 25, 35);
-  await seedPending(page, prefix + "-B", 26, 35);
-  const enterpriseContext = await browser.newContext(),
-    other = await enterpriseContext.newPage();
-  await register(other, prefix + "竞争");
-  await seedPending(other, prefix + "-C", 25, 35);
-  const context = await browser.newContext({
-      viewport: { width: 1440, height: 1000 },
-    }),
-    manager = await context.newPage();
-  await adminLogin(manager);
-  await manager
-    .getByRole("navigation")
-    .getByRole("button", { name: "企业申报审核", exact: true })
-    .click();
-  await manager.getByLabel("搜索待办申请").fill(prefix);
-  await expect(manager.locator(".review-queue-item")).toHaveCount(3);
-  await manager.getByLabel("选择本页全部申请").check();
-  await manager.getByRole("button", { name: "批量通过", exact: true }).click();
-  const dialog = manager.getByRole("dialog");
-  await expect(
-    dialog.getByRole("button", { name: "确认通过 3 条" }),
-  ).toBeDisabled();
-  await dialog.getByRole("checkbox").check();
-  await manager.screenshot({
-    path: "tmp/review-batch-confirm.png",
-    fullPage: true,
-    animations: "disabled",
-  });
-  await dialog.getByRole("button", { name: "确认通过 3 条" }).click();
-  await expect(manager.locator(".review-report")).toContainText(
-    "成功 2 条，未完成 1 条",
-  );
-  await expect(manager.locator(".review-queue-item")).toHaveCount(1);
-  await expect(
-    manager.getByRole("region", { name: "申请审阅区" }),
-  ).toContainText("与已通过预约冲突");
-  await expect(
-    manager.getByRole("button", { name: "通过并审阅下一条", exact: true }),
-  ).toBeDisabled();
-  await manager.getByLabel("选择本页全部申请").check();
-  await manager.getByRole("button", { name: "批量退回", exact: true }).click();
-  await dialog.getByRole("button", { name: "时段冲突", exact: true }).click();
-  await dialog.getByRole("checkbox").check();
-  await dialog.getByRole("button", { name: "确认退回 1 条" }).click();
-  await expect(manager.locator(".review-report")).toContainText(
-    "成功 1 条，未完成 0 条",
-  );
-  await expect(
-    manager.getByRole("heading", { name: "暂无待办申请" }),
-  ).toBeVisible();
-  await enterpriseContext.close();
-  await context.close();
-});
-
-test("地图适配屏幕、比例缩放、展开与退出保持原图纵横比", async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.goto("/");
-  await page
-    .getByRole("navigation")
-    .getByRole("button", { name: "场地查询", exact: true })
-    .click();
-  const map = page.locator(".reference-map"),
-    svg = map.locator("svg.venue-svg");
-  await expect(page.getByLabel("地图缩放比例")).toHaveText("100%");
-  const size = await svg.boundingBox();
-  expect(size.height).toBeLessThanOrEqual(600);
-  expect(Math.abs(size.width / size.height - 1350 / 1185)).toBeLessThan(0.01);
-  await page.getByRole("button", { name: "放大场地图" }).click();
-  await expect(page.getByLabel("地图缩放比例")).toHaveText("125%");
-  await page.getByRole("button", { name: "重置场地图" }).click();
-  await page.getByRole("button", { name: "展开场地图" }).click();
-  await expect(map).toHaveClass(/map-expanded/);
-  await page.screenshot({
-    path: "tmp/map-expanded.png",
-    fullPage: true,
-    animations: "disabled",
-  });
-  await page.keyboard.press("Escape");
-  await expect(map).not.toHaveClass(/map-expanded/);
-  await page.screenshot({
-    path: "tmp/map-fit-desktop.png",
-    fullPage: true,
-    animations: "disabled",
-  });
-  await page.setViewportSize({ width: 390, height: 844 });
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
-    ),
-  ).toBe(true);
-  await page.screenshot({
-    path: "tmp/map-fit-mobile.png",
-    fullPage: true,
-    animations: "disabled",
-  });
+  const first = await seedPending(page, prefix + "-A", 35);
+  const enterpriseContext = await browser.newContext();
+  const other = await enterpriseContext.newPage();
+  await register(other, prefix + "另一企业");
+  const second = await seedPending(other, prefix + "-B", 35);
+  const context = await browser.newContext();
+  try {
+    const manager = await context.newPage();
+    await adminLogin(manager);
+    await manager
+      .getByRole("navigation")
+      .getByRole("button", { name: "企业申报审核", exact: true })
+      .click();
+    await manager.getByLabel("搜索待办申请").fill(prefix);
+    await expect(manager.locator(".review-queue-item")).toHaveCount(2);
+    await manager.getByLabel("选择本页全部申请").check();
+    await manager
+      .getByRole("button", { name: "批量通过", exact: true })
+      .click();
+    const dialog = manager.getByRole("dialog");
+    await expect(
+      dialog.getByRole("button", { name: "确认通过 2 条" }),
+    ).toBeDisabled();
+    await dialog.getByRole("checkbox").check();
+    await dialog.getByRole("button", { name: "确认通过 2 条" }).click();
+    await expect(manager.locator(".review-report")).toContainText(
+      "成功 2 条，未完成 0 条",
+    );
+    await expect(manager.locator(".review-queue-item")).toHaveCount(0);
+    expect(
+      (await (await page.request.get(`/api/bookings/${first}`)).json()).booking
+        .status,
+    ).toBe("已通过");
+    expect(
+      (await (await other.request.get(`/api/bookings/${second}`)).json())
+        .booking.status,
+    ).toBe("已通过");
+  } finally {
+    await context.close();
+    await enterpriseContext.close();
+  }
 });
 
 test("验证码错误后自动刷新且保留账号输入，手机端可使用", async ({ page }) => {
@@ -754,13 +664,13 @@ test("验证码错误后自动刷新且保留账号输入，手机端可使用",
   await expect(page.getByRole("button", { name: "打开导航" })).toBeVisible();
 });
 
-test("已通过预约可从界面确认取消并释放位置，工作台收到消息", async ({
+test("已通过内容申请可从界面确认取消，企业只查看申请状态", async ({
   page,
   browser,
 }) => {
   const company = "取消流程-" + Date.now();
   await register(page, company);
-  const id = await seedPending(page, company, 29, 60);
+  const id = await seedPending(page, company, 60);
   const context = await browser.newContext(),
     manager = await context.newPage();
   await adminLogin(manager);
@@ -801,21 +711,10 @@ test("已通过预约可从界面确认取消并释放位置，工作台收到�
     .getByRole("navigation")
     .getByRole("button", { name: "服务工作台", exact: true })
     .click();
-  await expect(page.locator(".notification-items")).toContainText(
-    "布展预约已取消",
-  );
-  await page
-    .locator(".notification-items button")
-    .filter({ hasText: "布展预约已取消" })
-    .click();
-  await expect(page.getByRole("dialog")).toContainText(id);
-  await expect(page.getByRole("dialog")).toContainText("活动计划调整");
-  await page.getByRole("dialog").getByLabel("关闭", { exact: true }).click();
-  await page.screenshot({
-    path: "tmp/notifications-desktop.png",
-    fullPage: true,
-    animations: "disabled",
-  });
+  await expect(page.locator(".notification-items")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "通知与缴费办理", exact: true }),
+  ).toHaveCount(0);
   await context.close();
 });
 

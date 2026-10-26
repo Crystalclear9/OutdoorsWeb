@@ -1,6 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fixture, manager, register, staff, booking } from "./helpers.mjs";
+import {
+  fixture,
+  manager,
+  register,
+  staff,
+  booking,
+  seedLegacyBooking,
+} from "./helpers.mjs";
 
 const version = (n) => ({ "If-Match": `"${n}"` });
 const future = (days) =>
@@ -49,9 +56,9 @@ async function setup(t) {
   return { ...f, root, owner, finance, admin, fin, stopped, other };
 }
 async function apply(f, slot) {
-  const made = await f.owner.request(
-    "/bookings",
-    "POST",
+  const made = await seedLegacyBooking(
+    f,
+    f.owner,
     booking({ slot, start: future(30), end: future(30) }),
   );
   assert.equal(made.status, 201);
@@ -144,7 +151,7 @@ test("批量通过逐条生成财务待办，重复批次不增加通知", async
   ids.forEach((id) => assertTask(f, id));
 });
 
-test("改期批准为新预约提醒财务，不转移原费用或重复旧单待办", async (t) => {
+test("历史预约改期转为内容审核，不再创建新财务待办且保留旧单历史", async (t) => {
   const f = await setup(t),
     original = await apply(f, 5);
   assert.equal(
@@ -178,13 +185,10 @@ test("改期批准为新预约提醒财务，不转移原费用或重复旧单�
     200,
   );
   assertTask(f, original);
-  assertTask(f, id);
+  assert.deepEqual(recipients(f, id), []);
   assert.equal(
     (await f.owner.request(`/bookings/${original}`)).data.booking.status,
     "已取消",
   );
-  assert.equal(
-    (await f.finance.request(`/casework/${id}`)).data.item.fee,
-    null,
-  );
+  assert.equal((await f.finance.request(`/casework/${id}`)).status, 410);
 });

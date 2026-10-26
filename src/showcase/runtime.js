@@ -1,16 +1,14 @@
 // TEMPORARY_PAGES_SHOWCASE: synthetic, tab-local data; never a backend fallback.
 import { can } from "../../shared/permissions.js";
+import { validBuilderPhone } from "../../shared/booking-contact.js";
 import { dateString } from "../utils.js";
 import designUrl from "./design.svg?url";
 
 const KEY = "outdoors-temporary-showcase-v1";
 export const ROLES = [
   ["enterprise", "企业", "overview"],
-  ["reviewer", "审核人员", "records"],
-  ["finance", "财务人员", "casework"],
-  ["venue", "场地工作人员", "closures"],
-  ["super", "超级管理员", "overview"],
-  ["visitor", "游客", "venue"],
+  ["super", "管理员", "overview"],
+  ["visitor", "游客", "overview"],
 ];
 const now = () => new Date().toISOString();
 const day = (offset = 0) =>
@@ -36,7 +34,6 @@ function seed() {
     profile("enterprise", "企业联系人"),
     profile("reviewer", "审核老师", ["bookings.review"]),
     profile("finance", "财务老师", ["payments.manage"]),
-    profile("venue", "场地老师", ["venue.manage"]),
     profile("super", "系统管理员", [], true),
   ];
   const rows = [
@@ -46,14 +43,19 @@ function seed() {
     ["04", 18, 0, "已通过", "other"],
     ["05", 12, 9, "未通过", "enterprise"],
     ["06", 17, 2, "已通过", "enterprise"],
+    ["07", 1, -1, "待审核", "enterprise"],
   ];
   return {
-    schema: 1,
+    schema: 2,
     role: "enterprise",
     users,
-    bookings: rows.map(([id, slot, offset, status, user_id]) => ({
+    bookings: rows.map(([id, _slot, offset, status, user_id]) => ({
       id: `SHOWCASE-${id}`,
-      slot,
+      slot: 1,
+      content_only: 1,
+      location: "大活A座平台",
+      builder_contact: "搭建方联系人",
+      builder_phone: "13900000000",
       start: day(offset),
       end: day(offset),
       status,
@@ -67,7 +69,7 @@ function seed() {
       reviewed: status === "待审核" ? null : now(),
       reason: status === "未通过" ? "请补充清晰的宣传内容及尺寸说明。" : "",
       reviewer: status === "待审核" ? null : "reviewer",
-      reviewerName: "审核老师",
+      reviewerName: status === "待审核" ? null : "审核老师",
       cancelled: 0,
       version: 1,
       contactResult: {
@@ -77,24 +79,14 @@ function seed() {
         note: "演示电话记录",
         version: 1,
       },
-      fee:
-        id === "03" || id === "06"
-          ? {
-              state: id === "03" ? "due" : "submitted",
-              amount_fen: 30000,
-              instructions: "演示收款说明，请勿实际付款。",
-              reference: id === "06" ? "DEMO-流水-001" : "",
-              note: "仅展示线下核款流程",
-              version: 1,
-            }
-          : null,
+      fee: null,
     })),
     notices: [
       {
         id: "notice-1",
         title: "户外广场布展申请与材料说明",
         content:
-          "本页面为阶段成果演示。请从顶部切换身份，查看企业申报、工作人员审核、财务核对及场地登记。所有企业、申请和费用均为虚构示例，不构成真实预约或收费通知。",
+          "本页面为阶段成果演示。顶部仅提供企业、管理员和游客三种身份。企业提交桁架内容供管理员审核，所有企业、申请及设计图均为虚构示例。",
         pinned: 1,
         created: now(),
         updated: now(),
@@ -104,26 +96,15 @@ function seed() {
         id: "notice-2",
         title: "桁架布展安全与现场核对",
         content:
-          "申报前请查看桁架位置和开放安排，准备清晰的设计图。现场摆放与审批占位分别登记。",
+          "布展地点统一为大活A座平台。请先阅读允许摆放区域示意图，提交清晰的桁架设计图和搭建方联系方式；无需申请具体桁架位置。",
         pinned: 0,
         created: now(),
         updated: now(),
         version: 1,
       },
     ],
-    closures: [
-      {
-        id: "closure-1",
-        slot: 22,
-        start: day(),
-        end: day(1),
-        reason: "示例：场地设施维护",
-        created: now(),
-      },
-    ],
-    onsite: [
-      { slot: 3, present: true, note: "示例：已按批准方案摆放", version: 1 },
-    ],
+    closures: [],
+    onsite: [],
     calendar: [],
     calendarVersion: 1,
     audit: [],
@@ -149,7 +130,7 @@ const dateOnly = (value) =>
 function validStoredState(saved) {
   if (
     !object(saved) ||
-    saved.schema !== 1 ||
+    saved.schema !== 2 ||
     !ROLES.some(([role]) => role === saved.role)
   )
     return false;
@@ -189,6 +170,8 @@ function validStoredState(saved) {
           "company",
           "contact",
           "phone",
+          "builder_contact",
+          "builder_phone",
           "start",
           "end",
         ]) &&
@@ -202,6 +185,8 @@ function validStoredState(saved) {
           "reschedule_of",
         ]) &&
         (row.reviewed == null || timestamp(row.reviewed)) &&
+        row.content_only === 1 &&
+        row.location === "大活A座平台" &&
         slot(row.slot) &&
         version(row.version) &&
         ["待审核", "已通过", "未通过", "已撤回"].includes(row.status) &&
@@ -362,36 +347,20 @@ function searchable(items, url) {
       ),
   );
 }
-const overlap = (a, b) => a.start <= b.end && a.end >= b.start;
+function reviewExpired(row) {
+  return row.status === "待审核" && !row.cancelled && row.start < day();
+}
+function displayedStatus(row) {
+  return reviewExpired(row)
+    ? getUser()?.role === "enterprise"
+      ? "未通过"
+      : "过期未审核"
+    : row.status;
+}
 function check(row) {
-  const blockers = [];
-  if (row.start < day()) blockers.push("申请日期已过期");
-  if (
-    state.bookings.some(
-      (other) =>
-        other.id !== row.id &&
-        other.slot === row.slot &&
-        other.status === "已通过" &&
-        !other.cancelled &&
-        overlap(row, other),
-    )
-  )
-    blockers.push("已通过预约冲突");
-  if (
-    state.closures.some(
-      (other) => other.slot === row.slot && overlap(row, other),
-    )
-  )
-    blockers.push("暂停开放");
   return {
-    blockers,
-    competing: state.bookings.filter(
-      (other) =>
-        other.id !== row.id &&
-        other.slot === row.slot &&
-        other.status === "待审核" &&
-        overlap(row, other),
-    ).length,
+    blockers: reviewExpired(row) ? ["申请日期已过期"] : [],
+    competing: 0,
   };
 }
 function visibleBookings() {
@@ -411,13 +380,15 @@ function booking(id) {
 function decorated(b) {
   return {
     ...b,
+    status: displayedStatus(b),
+    reviewExpired: reviewExpired(b),
+    reason: reviewExpired(b)
+      ? "申请日期已过期，未能在开始日期前完成审核。"
+      : b.reason,
     reviewCheck: check(b),
     due: b.due,
     overdue: false,
-    fee:
-      getUser()?.role === "enterprise" || can(getUser(), "payments.manage")
-        ? b.fee
-        : undefined,
+    fee: can(getUser(), "payments.manage") ? b.fee : undefined,
     events: state.audit.filter((a) => a.target === b.id),
   };
 }
@@ -441,6 +412,7 @@ function review(id, status, reason, options, version) {
   requireUser("bookings.review");
   const b = booking(id);
   matchVersion(b, options, version);
+  if (reviewExpired(b)) error("申请日期已过期，不能继续审核", 409);
   if (b.status !== "待审核") error("演示申请已处理", 409);
   if (
     !["已通过", "未通过"].includes(status) ||
@@ -461,16 +433,13 @@ function review(id, status, reason, options, version) {
 }
 function validateDates(b) {
   if (
-    !/^\d{4}-\d{2}-\d{2}$/.test(b.start || "") ||
-    !/^\d{4}-\d{2}-\d{2}$/.test(b.end || "") ||
+    !dateOnly(b.start) ||
+    !dateOnly(b.end) ||
     b.start < day() ||
     b.end < b.start ||
-    Date.parse(b.end) - Date.parse(b.start) > 2 * 86400000 ||
-    !Number.isInteger(Number(b.slot)) ||
-    Number(b.slot) < 1 ||
-    Number(b.slot) > 29
+    Date.parse(b.end) - Date.parse(b.start) > 2 * 86400000
   )
-    error("请选择有效位置和布展时长不超过3天的未来日期范围");
+    error("请选择布展时长不超过3天的未来日期范围");
 }
 
 export async function design(id) {
@@ -487,7 +456,8 @@ export async function request(path, options = {}) {
     b = options.body || {};
   let result;
   if (m === "GET") {
-    if (p === "/auth/session")
+    if (p === "/health") result = { ok: true };
+    else if (p === "/auth/session")
       result = { user: structuredClone(getUser()), csrf: null };
     else if (p === "/auth/providers")
       result = { sms: false, qq: false, wechat: false };
@@ -545,8 +515,9 @@ export async function request(path, options = {}) {
         counts: visibleBookings().reduce(
           (counts, row) => ({
             ...counts,
-            [row.cancelled ? "已取消" : row.status]:
-              (counts[row.cancelled ? "已取消" : row.status] || 0) + 1,
+            [row.cancelled ? "已取消" : displayedStatus(row)]:
+              (counts[row.cancelled ? "已取消" : displayedStatus(row)] || 0) +
+              1,
           }),
           {},
         ),
@@ -564,8 +535,11 @@ export async function request(path, options = {}) {
         if (url.searchParams.get(key))
           rows = rows.filter(
             (r) =>
-              (key === "status" && r.cancelled ? "已取消" : r[key]) ===
-              url.searchParams.get(key),
+              (key === "status"
+                ? r.cancelled
+                  ? "已取消"
+                  : displayedStatus(r)
+                : r[key]) === url.searchParams.get(key),
           );
       const from = url.searchParams.get("from"),
         to = url.searchParams.get("to");
@@ -583,19 +557,16 @@ export async function request(path, options = {}) {
     } else if (/^\/bookings\/[^/]+$/.test(p))
       result = { booking: decorated(booking(p.split("/")[2])) };
     else if (p === "/casework") {
-      let rows = searchable(visibleBookings(), url);
-      if (url.searchParams.get("scope") !== "all")
-        rows = rows.filter(
-          (r) =>
-            !r.cancelled && ["待审核", "已通过", "未通过"].includes(r.status),
-        );
-      result = pageOf(rows.map(decorated), url);
-    } else if (p === "/casework/calendar") {
       requireUser();
+      result = pageOf([], url);
+    } else if (p === "/casework/calendar") {
+      if (requireUser().role !== "admin")
+        error("企业端无需办理通知与缴费", 403);
       result = { items: state.calendar, version: state.calendarVersion };
-    } else if (/^\/casework\/[^/]+$/.test(p))
-      result = { item: decorated(booking(p.split("/")[2])) };
-    else if (p === "/closures") {
+    } else if (/^\/casework\/[^/]+$/.test(p)) {
+      booking(p.split("/")[2]);
+      error("内容审核申请无需办理通知与缴费。", 410);
+    } else if (p === "/closures") {
       requireUser("venue.manage");
       result = { items: state.closures };
     } else if (p === "/onsite") {
@@ -637,8 +608,9 @@ export async function request(path, options = {}) {
         .map((r) => ({
           id: r.id,
           target: r.id,
-          title: r.status === "待审核" ? "布展申请待审核" : "申请办理进度",
-          content: `${r.company} · ${r.status}（演示记录）`,
+          title:
+            displayedStatus(r) === "待审核" ? "布展申请待审核" : "申请办理进度",
+          content: `${r.company} · ${displayedStatus(r)}（演示记录）`,
           created: r.created,
           read_at: state.read.includes(r.id) ? now() : null,
         }));
@@ -694,10 +666,22 @@ export async function request(path, options = {}) {
     } else if (p === "/bookings" && m === "POST") {
       const user = requireUser("enterprise");
       validateDates(b);
+      if (
+        typeof b.builder_contact !== "string" ||
+        !b.builder_contact.trim() ||
+        b.builder_contact.trim().length > 30 ||
+        typeof b.builder_phone !== "string" ||
+        !validBuilderPhone(b.builder_phone.trim())
+      )
+        error("请填写搭建方联系人和有效的搭建方联系电话");
       const row = {
         ...b,
         id: `SHOWCASE-${crypto.randomUUID().slice(0, 8)}`,
-        slot: Number(b.slot),
+        slot: 1,
+        content_only: 1,
+        location: "大活A座平台",
+        builder_contact: b.builder_contact.trim(),
+        builder_phone: b.builder_phone.trim(),
         user_id: user.id,
         status: "待审核",
         created: now(),
@@ -720,6 +704,7 @@ export async function request(path, options = {}) {
         row = booking(id);
       matchVersion(row, options);
       requireUser("enterprise");
+      if (reviewExpired(row)) error("申请日期已过期，不能撤回", 409);
       if (row.status !== "待审核") error("只有待审核申请可以撤回");
       row.status = "已撤回";
       row.version++;
@@ -728,6 +713,7 @@ export async function request(path, options = {}) {
     } else if (/^\/casework\/[^/]+\/contact$/.test(p)) {
       requireUser("bookings.review");
       const row = booking(p.split("/")[2]);
+      if (row.content_only) error("内容审核申请无需办理通知与缴费。", 410);
       row.contactResult = {
         ...row.contactResult,
         state: b.action === "reopen" ? "pending" : b.state,
@@ -739,35 +725,29 @@ export async function request(path, options = {}) {
       result = { ok: true };
     } else if (/^\/casework\/[^/]+\/fee$/.test(p)) {
       const row = booking(p.split("/")[2]);
-      if (b.action === "submit") {
-        requireUser("enterprise");
-        if (row.fee?.state !== "due") error("演示费用状态已变化");
-        row.fee.reference = b.reference;
-        row.fee.state = "submitted";
-        row.fee.version++;
+      if (row.content_only) error("内容审核申请无需办理通知与缴费。", 410);
+      if (b.action === "submit") error("企业端无需办理通知与缴费", 403);
+      requireUser("payments.manage");
+      if (["issue", "waive"].includes(b.action)) {
+        row.fee = {
+          state: b.action === "waive" ? "waived" : "due",
+          amount_fen: b.action === "waive" ? 0 : b.amountFen,
+          instructions: b.instructions,
+          note: b.note,
+          version: (row.fee?.version || 0) + 1,
+        };
       } else {
-        requireUser("payments.manage");
-        if (["issue", "waive"].includes(b.action)) {
-          row.fee = {
-            state: b.action === "waive" ? "waived" : "due",
-            amount_fen: b.action === "waive" ? 0 : b.amountFen,
-            instructions: b.instructions,
-            note: b.note,
-            version: (row.fee?.version || 0) + 1,
-          };
-        } else {
-          if (!row.fee) error("尚无演示费用记录");
-          row.fee.state =
-            {
-              confirm: "paid",
-              return: "due",
-              void: "void",
-              refund: "refunded",
-              late_confirm: "paid",
-            }[b.action] || error("未知费用操作");
-          row.fee.note = b.note;
-          row.fee.version++;
-        }
+        if (!row.fee) error("尚无演示费用记录");
+        row.fee.state =
+          {
+            confirm: "paid",
+            return: "due",
+            void: "void",
+            refund: "refunded",
+            late_confirm: "paid",
+          }[b.action] || error("未知费用操作");
+        row.fee.note = b.note;
+        row.fee.version++;
       }
       log("case.fee_updated", row.id);
       result = { ok: true };
@@ -791,44 +771,9 @@ export async function request(path, options = {}) {
         });
       result = { ok: true };
       log("notice.saved", id || "showcase");
-    } else if (p === "/closures" && m === "POST") {
+    } else if (p === "/closures" || p.startsWith("/closures/")) {
       requireUser("venue.manage");
-      if (
-        !slot(Number(b.slot)) ||
-        !dateOnly(b.start) ||
-        !dateOnly(b.end) ||
-        b.start < day() ||
-        b.end < b.start ||
-        !String(b.reason || "").trim()
-      )
-        error("请选择有效位置、日期及暂停原因");
-      if (
-        state.bookings.some(
-          (row) =>
-            row.status === "已通过" &&
-            !row.cancelled &&
-            row.slot === Number(b.slot) &&
-            overlap(row, b),
-        )
-      )
-        error("该时段已有预约，不能暂停开放", 409);
-      if (
-        state.closures.some(
-          (row) => row.slot === Number(b.slot) && overlap(row, b),
-        )
-      )
-        error("该时段已有暂停安排，请核对后再操作", 409);
-      state.closures.push({
-        ...b,
-        slot: Number(b.slot),
-        id: crypto.randomUUID(),
-        created: now(),
-      });
-      result = { ok: true };
-    } else if (p.startsWith("/closures/") && m === "DELETE") {
-      requireUser("venue.manage");
-      state.closures = state.closures.filter((r) => r.id !== p.split("/")[2]);
-      result = { ok: true };
+      error("场地开放安排已停用，企业统一在大活A座平台申报桁架内容。", 410);
     } else if (p === "/onsite") {
       requireUser("venue.manage");
       for (const row of b.items) {

@@ -43,7 +43,8 @@ test("详情撤回等待中不能关闭或丢失目标，真实完成后更新�
       company: "详情互斥检查企业",
       contact: "李老师",
       phone: "13800138000",
-      slot: 29,
+      builder_contact: "搭建李师傅",
+      builder_phone: "13900139000",
       start: day,
       end: day,
       image:
@@ -92,7 +93,8 @@ test("改期等待期间不能返回或关闭，失败后保留输入并解锁",
       company: "改期等待复核企业",
       contact: "李老师",
       phone: "13800138000",
-      slot: 28,
+      builder_contact: "搭建李师傅",
+      builder_phone: "13900139000",
       start: day,
       end: day,
       image:
@@ -129,7 +131,7 @@ test("改期等待期间不能返回或关闭，失败后保留输入并解锁",
     .filter({ hasText: id })
     .getByRole("button", { name: "查看详情" })
     .click();
-  await page.getByRole("button", { name: "申请改期 / 换位" }).click();
+  await page.getByRole("button", { name: "申请改期", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await dialog.locator("[name=start]").fill(next);
   await dialog.locator("[name=end]").fill(next);
@@ -144,11 +146,13 @@ test("改期等待期间不能返回或关闭，失败后保留输入并解锁",
       dialog.getByRole("button", { name: "返回详情", exact: true }),
     ).toBeDisabled();
     await expect(dialog.locator("[name=start]")).toBeDisabled();
-    await expect(dialog.locator("[name=slot]")).toBeDisabled();
+    await expect(dialog.locator("[name=builder_contact]")).toBeDisabled();
+    await expect(dialog.locator("[name=builder_phone]")).toBeDisabled();
+    await expect(dialog.locator("[name=slot]")).toHaveCount(0);
     await page.keyboard.press("Escape");
     await dialog.getByLabel("关闭", { exact: true }).click();
     await expect(
-      dialog.getByRole("heading", { name: "申请改期或更换位置" }),
+      dialog.getByRole("heading", { name: "申请改期", exact: true }),
     ).toBeVisible();
   } finally {
     pending.release();

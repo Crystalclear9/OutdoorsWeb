@@ -147,35 +147,3 @@ test("公告真实保存与删除失败的迟到响应均锁定当前弹窗", as
   await dialog.getByRole("button", { name: "取消", exact: true }).click();
   await expect(article).toBeVisible();
 });
-
-test("场地暂停的真实保存和恢复开放期间禁止关闭弹窗", async ({ page }) => {
-  await login(page);
-  await navigate(page, "场地开放安排");
-  await page.getByRole("button", { name: "新增暂停安排" }).click();
-  let dialog = page.getByRole("dialog");
-  const reason = `保存互斥测试-${Date.now()}`;
-  const date = new Date(Date.now() + 333 * 86400000).toISOString().slice(0, 10);
-  await dialog.locator("[name=slot]").selectOption("26");
-  await dialog.locator("[name=start]").fill(date);
-  await dialog.locator("[name=end]").fill(date);
-  await dialog.getByLabel("暂停原因").fill(reason);
-  const saved = await defer(page, "**/api/closures");
-  await dialog.getByRole("button", { name: "保存安排" }).click();
-  await saved.hit;
-  await cannotDismiss(page, { cancel: false });
-  for (const name of ["slot", "start", "end", "reason"])
-    await expect(dialog.locator(`[name=${name}]`)).toBeDisabled();
-  saved.release();
-  await expect(dialog).toHaveCount(0);
-  const row = page.getByRole("row").filter({ hasText: reason });
-  await expect(row).toBeVisible();
-  const deleted = await defer(page, "**/api/closures/*");
-  await row.getByRole("button", { name: "恢复开放" }).click();
-  dialog = page.getByRole("dialog");
-  await dialog.getByRole("button", { name: "恢复开放" }).click();
-  await deleted.hit;
-  await cannotDismiss(page);
-  deleted.release();
-  await expect(dialog).toHaveCount(0);
-  await expect(row).toHaveCount(0);
-});

@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-test("登录、现场登记与审批台固定视觉基线", async ({ page }, info) => {
+test("登录、允许摆放区域与内容审批台固定视觉基线", async ({ page }, info) => {
   await page.clock.install({ time: new Date("2026-10-20T00:00:00Z") });
   await page.goto("/");
   await page.getByRole("button", { name: "登录 / 注册" }).click();
@@ -20,18 +20,27 @@ test("登录、现场登记与审批台固定视觉基线", async ({ page }, inf
       .getByRole("button", { name, exact: true })
       .click();
   }
-  await navigate("场地开放安排");
+  await navigate("摆放区域示意");
   await expect(
-    page.getByRole("button", { name: "保存现场登记" }),
+    page.getByRole("img", { name: "大活A座平台允许摆放区域示意图" }),
   ).toBeVisible();
   await page.locator(".toast").waitFor({ state: "hidden" });
-  await expect.soft(page).toHaveScreenshot("onsite.png");
+  await expect.soft(page).toHaveScreenshot("area.png");
   await navigate("企业申报审核");
   await expect(
     page.getByRole("img", { name: "校园创新科技有限公司的桁架设计图" }),
   ).toBeVisible();
   if (info.project.name === "desktop") {
     await expect(page.locator(".review-material")).toHaveCSS("display", "grid");
+    for (const label of ["搭建方联系人", "搭建方联系电话"]) {
+      const field = page.locator(".review-facts dt").filter({ hasText: label });
+      await expect(field).toHaveCSS("width", "104px");
+      expect(
+        await field.evaluate(
+          (element) => element.getBoundingClientRect().height,
+        ),
+      ).toBeLessThan(30);
+    }
     const actions = await page
       .locator(".review-decision-actions")
       .boundingBox();

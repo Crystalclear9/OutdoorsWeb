@@ -56,10 +56,8 @@ test("真实管理员在手机、平板和桌面均可进入全部功能且页�
     await page.setViewportSize({ width, height: 900 });
     for (const name of [
       "服务工作台",
-      "场地查询",
       "企业申报审核",
       "通知公告",
-      "场地开放安排",
       "账号管理",
       "授权管理",
       "操作日志",

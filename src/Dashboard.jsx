@@ -13,7 +13,6 @@ import {
 import { api } from "./api.js";
 import { Button, Empty, ErrorBox, Status } from "./components.jsx";
 import { BookingDetail } from "./Booking.jsx";
-import { slotName } from "./utils.js";
 import { can } from "./permissions.js";
 import Notifications from "./Notifications.jsx";
 
@@ -64,7 +63,11 @@ export default function Dashboard({
       ? [
           [admin ? "待处理申请" : "我的待审核", counts["待审核"] || 0, Clock],
           ["已通过", counts["已通过"] || 0, CheckCircle],
-          ["需调整申请", counts["未通过"] || 0, ClipboardText],
+          [
+            admin ? "过期未审核" : "未通过",
+            counts[admin ? "过期未审核" : "未通过"] || 0,
+            ClipboardText,
+          ],
           [admin ? "累计申报" : "我的申请总数", total, Buildings],
         ]
       : [];
@@ -81,7 +84,7 @@ export default function Dashboard({
               : admin
                 ? "审批待办"
                 : user
-                  ? "申请与办理"
+                  ? "桁架内容申报"
                   : "户外广场布展预约"}
           </h2>
           <p>
@@ -91,7 +94,7 @@ export default function Dashboard({
                 ? `当前有 ${counts["待审核"] || 0} 条申请等待审核。您也可以直接发布活动通知。`
                 : user
                   ? "在这里跟进申请进度、查看审核意见和最新通知。"
-                  : "先查看开放位置与预约须知，登录企业账号后即可提交申请。"}
+                  : "查看大活A座平台允许摆放区域，登录企业账号后提交桁架内容与设计图。"}
           </p>
         </div>
         <div className="workspace-actions">
@@ -105,15 +108,13 @@ export default function Dashboard({
                   ? onNavigate(
                       publishing
                         ? "notices"
-                        : can(user, "venue.manage")
-                          ? "closures"
-                          : can(user, "accounts.manage")
-                            ? "users"
-                            : can(user, "audit.read")
-                              ? "audit"
-                              : can(user, "payments.manage")
-                                ? "casework"
-                                : "account",
+                        : can(user, "accounts.manage")
+                          ? "users"
+                          : can(user, "audit.read")
+                            ? "audit"
+                            : can(user, "payments.manage")
+                              ? "casework"
+                              : "account",
                     )
                   : onApply()
             }
@@ -131,21 +132,18 @@ export default function Dashboard({
             className="text-button"
             onClick={() => onNavigate(publishing ? "notices" : "venue")}
           >
-            {publishing ? "发布活动通知" : "查看可预约场地"}
+            {publishing ? "发布活动通知" : "查看允许摆放区域"}
             <ArrowUpRight size={17} />
           </button>
-          {user &&
-            (user.role === "enterprise" ||
-              admin ||
-              can(user, "payments.manage")) && (
-              <Button
-                className="secondary"
-                onClick={() => onNavigate("casework")}
-              >
-                通知与缴费办理
-                <ArrowRight size={18} />
-              </Button>
-            )}
+          {user && staff && (admin || can(user, "payments.manage")) && (
+            <Button
+              className="secondary"
+              onClick={() => onNavigate("casework")}
+            >
+              通知与缴费办理
+              <ArrowRight size={18} />
+            </Button>
+          )}
         </div>
       </section>
       {!!metrics.length && (
@@ -207,7 +205,7 @@ export default function Dashboard({
                   ? "全部申请"
                   : can(user, "payments.manage")
                     ? "全部办理"
-                    : "查询场地"}
+                    : "摆放区域示意"}
                 <ArrowRight size={16} />
               </button>
             )}
@@ -216,8 +214,16 @@ export default function Dashboard({
           {!user ? (
             <div className="guest-workflow">
               {[
-                ["01", "查询场地", "按日期查看桁架开放情况，选择合适位置。"],
-                ["02", "准备申报", "填写企业资料，准备清晰的桁架设计图。"],
+                [
+                  "01",
+                  "摆放区域示意",
+                  "了解大活A座平台允许摆放范围，无需选位。",
+                ],
+                [
+                  "02",
+                  "准备申报",
+                  "填写企业与搭建方联系方式，准备清晰设计图。",
+                ],
                 ["03", "提交审核", "最长申请 3 天，在申请记录中跟进结果。"],
               ].map(([n, t, c]) => (
                 <div key={n}>
@@ -229,7 +235,7 @@ export default function Dashboard({
                 </div>
               ))}
               <Button className="secondary" onClick={() => onNavigate("venue")}>
-                进入场地查询
+                查看摆放区域示意
                 <MapTrifold size={18} />
               </Button>
             </div>
@@ -249,7 +255,7 @@ export default function Dashboard({
                   <div>
                     <strong>{b.company}</strong>
                     <small>
-                      {slotName(b.slot)} · {b.start} 至 {b.end}
+                      {b.location || "大活A座平台"} · {b.start} 至 {b.end}
                     </small>
                     {b.reason && <p>{b.reason}</p>}
                   </div>
@@ -265,7 +271,7 @@ export default function Dashboard({
             >
               {admin
                 ? "新的企业申请会出现在这里。"
-                : "先到场地查询选择位置，再提交布展申请。"}
+                : "准备桁架设计图和搭建方联系方式，即可提交申请。"}
             </Empty>
           )}
         </section>
@@ -310,8 +316,8 @@ export default function Dashboard({
         <button onClick={() => onNavigate("venue")}>
           <MapTrifold size={25} />
           <span>
-            <strong>场地查询</strong>
-            <small>按日期查看原图位置和开放状态</small>
+            <strong>摆放区域示意</strong>
+            <small>了解固定平台与允许摆放范围</small>
           </span>
           <ArrowRight size={18} />
         </button>
@@ -325,20 +331,11 @@ export default function Dashboard({
             <ArrowRight size={18} />
           </button>
         )}
-        {can(user, "venue.manage") && (
-          <button onClick={() => onNavigate("closures")}>
-            <Clock size={25} />
-            <span>
-              <strong>场地开放安排</strong>
-              <small>维护暂停时间与恢复开放</small>
-            </span>
-            <ArrowRight size={18} />
-          </button>
-        )}
       </div>
       {user &&
         !user.mustChangePassword &&
-        (!staff || admin || can(user, "payments.manage")) && (
+        staff &&
+        (admin || can(user, "payments.manage")) && (
           <Notifications
             key={user.id}
             user={user}

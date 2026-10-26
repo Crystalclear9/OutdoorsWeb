@@ -1,12 +1,21 @@
 import { test, expect } from "@playwright/test";
 
-async function role(page, value) {
-  await page.getByLabel("切换演示身份", { exact: true }).selectOption(value);
+async function role(page, key) {
+  const label = { enterprise: "企业", super: "管理员", visitor: "游客" }[key];
+  const button = page
+    .getByRole("group", { name: "切换演示身份", exact: true })
+    .getByRole("button", { name: label, exact: true });
+  await button.click();
+  await expect(button).toHaveAttribute("aria-pressed", "true");
 }
 
 test("演示审批历史的审批人选项显示真实可读姓名并可筛选", async ({ page }) => {
   await page.goto("?showcase=1");
-  await role(page, "reviewer");
+  await role(page, "super");
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "企业申报审核", exact: true })
+    .click();
   await page
     .getByRole("button", { name: "全部申请与历史", exact: true })
     .click();
@@ -18,34 +27,45 @@ test("演示审批历史的审批人选项显示真实可读姓名并可筛选",
   await expect(page.getByRole("table").locator("tbody tr")).toHaveCount(4);
 });
 
-test("演示不能暂停已批准预约，改为无冲突位置后游客可见开放安排", async ({
+test("同一过期未审核申请在管理员显示过期未审核、企业显示未通过", async ({
   page,
 }) => {
   await page.goto("?showcase=1");
-  await role(page, "venue");
-  await page.getByRole("button", { name: "新增暂停安排", exact: true }).click();
-  const dialog = page.getByRole("dialog");
-  await dialog.locator("[name=slot]").selectOption("3");
-  await dialog
-    .getByLabel("暂停原因", { exact: true })
-    .fill("演示冲突暂停不应保存");
-  await dialog.getByRole("button", { name: "保存安排", exact: true }).click();
-  await expect(dialog.getByRole("alert")).toContainText("已有预约");
-  await expect(dialog.locator("[name=slot]")).toHaveValue("3");
-  await dialog.locator("[name=slot]").selectOption("22");
-  await dialog.getByRole("button", { name: "保存安排", exact: true }).click();
-  await expect(dialog.getByRole("alert")).toContainText("已有暂停安排");
-  await dialog.locator("[name=slot]").selectOption("13");
-  await dialog.getByRole("button", { name: "保存安排", exact: true }).click();
-  await expect(dialog).toHaveCount(0);
-  await role(page, "visitor");
-  await page.getByRole("button", { name: "位置列表", exact: true }).click();
+  await role(page, "super");
   await expect(
-    page.locator(".slot-grid button").filter({ hasText: "13号" }),
-  ).toContainText("暂停开放");
+    page
+      .getByRole("navigation")
+      .getByRole("button", { name: "场地开放安排", exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "企业申报审核", exact: true })
+    .click();
   await expect(
-    page.locator(".slot-grid button").filter({ hasText: "03号" }),
-  ).toContainText("已占用");
+    page.locator(".review-queue-item").filter({ hasText: "SHOWCASE-07" }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "全部申请与历史", exact: true })
+    .click();
+  await page.getByRole("button", { name: "过期未审核", exact: true }).click();
+  await expect(
+    page.getByRole("row").filter({ hasText: "SHOWCASE-07" }),
+  ).toContainText("过期未审核");
+  await role(page, "enterprise");
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "我的申请", exact: true })
+    .click();
+  await page.getByRole("button", { name: "未通过", exact: true }).click();
+  const row = page.getByRole("row").filter({ hasText: "SHOWCASE-07" });
+  await expect(row).toContainText("未通过");
+  await row.getByRole("button", { name: "查看详情", exact: true }).click();
+  await expect(page.getByRole("dialog")).toContainText("申请日期已过期");
+  await expect(
+    page
+      .getByRole("dialog")
+      .getByRole("button", { name: "撤回申请", exact: true }),
+  ).toHaveCount(0);
 });
 
 test("演示存储为缺字段的合法JSON时恢复完整样本而不是陷入服务错误", async ({

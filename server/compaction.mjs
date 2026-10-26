@@ -19,7 +19,7 @@ export async function compactDatabase(filename) {
     db.exec("PRAGMA busy_timeout=1000;");
     if (db.prepare("PRAGMA quick_check").get().quick_check !== "ok")
       throw new Error("数据库完整性检查失败，未压缩");
-    if (db.prepare("PRAGMA user_version").get().user_version > 7)
+    if (db.prepare("PRAGMA user_version").get().user_version > 8)
       throw new Error("数据库版本高于当前程序，未压缩");
     const before =
       db.prepare("PRAGMA page_count").get().page_count *

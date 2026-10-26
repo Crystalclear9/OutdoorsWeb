@@ -79,15 +79,14 @@ test("GitHub Pages 静态入口显示真实后端未连接状态，仍可打开�
   await expect(
     page.getByRole("button", { name: "发起布展申请" }),
   ).toBeDisabled();
-  const imageResponse = page.waitForResponse((r) =>
-    r.url().includes("/assets/venue-plan-"),
-  );
   await page
     .getByRole("navigation")
-    .getByRole("button", { name: "场地查询", exact: true })
+    .getByRole("button", { name: "摆放区域示意", exact: true })
     .click();
-  expect((await imageResponse).status()).toBe(200);
-  await expect(page.locator(".venue-svg image")).toBeVisible();
+  await expect(
+    page.getByRole("img", { name: "大活A座平台允许摆放区域示意图" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("查询日期")).toHaveCount(0);
   await page.getByRole("button", { name: "登录 / 注册" }).click();
   await expect(
     page.getByRole("heading", { name: "登录您的账号" }),

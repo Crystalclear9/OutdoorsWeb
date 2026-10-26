@@ -23,6 +23,7 @@ async function setup(page) {
     await expect(page.locator(".account-link")).toBeVisible();
     return { app, origin };
   } catch (error) {
+    await page.context().close();
     await app.close();
     throw error;
   }
@@ -36,6 +37,55 @@ const navigate = (page) =>
     .getByRole("navigation")
     .getByRole("button", { name: "授权管理", exact: true })
     .click();
+
+test("旧场地授权账号可直接改为内容审核权限，不携带已退役隐藏权限", async ({
+  page,
+}) => {
+  const { app } = await setup(page);
+  try {
+    app.db
+      .prepare(
+        "INSERT INTO users(id,email,password_hash,role,company,contact,phone,created) SELECT 'retired-venue','retired-venue@test.local',password_hash,'admin','活动中心','原场地老师','13800138000',created FROM users LIMIT 1",
+      )
+      .run();
+    app.db
+      .prepare(
+        "INSERT INTO user_permissions(user_id,permission) VALUES('retired-venue','venue.manage')",
+      )
+      .run();
+    await navigate(page);
+    await accessCard(page)
+      .getByRole("row")
+      .filter({ hasText: "retired-venue@test.local" })
+      .getByRole("button", { name: "调整授权", exact: true })
+      .click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByText("场地开放管理", { exact: true })).toHaveCount(
+      0,
+    );
+    await dialog.getByRole("checkbox", { name: /企业申请审核/ }).check();
+    await dialog.locator('[name="currentPassword"]').fill("AccessRoot123!");
+    const response = page.waitForResponse(
+      (r) =>
+        r.request().method() === "PATCH" &&
+        r.url().includes("/api/access/retired-venue"),
+    );
+    await dialog.getByRole("button", { name: "保存授权", exact: true }).click();
+    expect((await response).status()).toBe(200);
+    await expect(dialog).toHaveCount(0);
+    expect(
+      app.db
+        .prepare(
+          "SELECT permission FROM user_permissions WHERE user_id='retired-venue'",
+        )
+        .all()
+        .map((row) => row.permission),
+    ).toEqual(["bookings.review"]);
+  } finally {
+    await page.context().close();
+    await app.close();
+  }
+});
 
 test("授权列表首次读取失败可原位恢复，未知状态不开放账号操作", async ({
   page,
@@ -69,6 +119,7 @@ test("授权列表首次读取失败可原位恢复，未知状态不开放账�
       card.getByRole("row").filter({ hasText: "access-root@test.local" }),
     ).toBeVisible();
   } finally {
+    await page.context().close();
     await app.close();
   }
 });
@@ -148,6 +199,7 @@ test("真实管理员重置密码后回读失败保留一次性密码，纯读�
         .get(created.user.id).version,
     ).toBe(2);
   } finally {
+    await page.context().close();
     await app.close();
   }
 });

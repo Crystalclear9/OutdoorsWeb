@@ -1,6 +1,6 @@
 import { test, expect } from "./browser-fixtures.js";
 
-test("场地查询故障时公告读取独立，管理员仍可真实发布公告", async ({ page }) => {
+test("旧场地接口故障不影响公告，管理员仍可真实发布公告", async ({ page }) => {
   await page.route("**/api/venue?**", (route) =>
     route.fulfill({ status: 503, json: { error: "场地维护中" } }),
   );
@@ -33,7 +33,7 @@ test("场地查询故障时公告读取独立，管理员仍可真实发布公�
   ).not.toBeVisible();
 });
 
-test("公告读取迟迟未完成时，正常场地查询与预约入口仍可用", async ({ page }) => {
+test("公告读取迟迟未完成时，区域示意与申报入口仍可用", async ({ page }) => {
   let release;
   const held = new Promise((resolve) => {
     release = resolve;
@@ -46,7 +46,7 @@ test("公告读取迟迟未完成时，正常场地查询与预约入口仍可�
     await page.goto("/");
     await page
       .getByRole("navigation")
-      .getByRole("button", { name: "场地查询", exact: true })
+      .getByRole("button", { name: "摆放区域示意", exact: true })
       .click();
     await expect(
       page.getByRole("button", {
@@ -55,8 +55,7 @@ test("公告读取迟迟未完成时，正常场地查询与预约入口仍可�
       }),
     ).toBeEnabled();
     await page
-      .locator(".position-card")
-      .getByRole("button", { name: "登录后预约" })
+      .getByRole("button", { name: "发起布展申请", exact: true })
       .click();
     await expect(
       page.getByRole("heading", { name: "登录您的账号" }),
@@ -113,7 +112,8 @@ test("公告接口失败有独立提示，企业仍可真实提交申请，恢�
   const day = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
   await dialog.locator("[name=start]").fill(day);
   await dialog.locator("[name=end]").fill(day);
-  await dialog.locator("[name=slot]").selectOption("28");
+  await dialog.locator("[name=builder_contact]").fill("搭建负责人");
+  await dialog.locator("[name=builder_phone]").fill("13900139000");
   await dialog.getByLabel("上传桁架设计图").setInputFiles({
     name: "design.png",
     mimeType: "image/png",

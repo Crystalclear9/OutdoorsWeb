@@ -88,7 +88,7 @@ test("版本七旧库增量补齐查询索引，账号、图片、联系及费�
   for (let i = 0; i < 2; i++) {
     db = openStore(filename);
     try {
-      assert.equal(db.prepare("PRAGMA user_version").get().user_version, 7);
+      assert.equal(db.prepare("PRAGMA user_version").get().user_version, 8);
       assert.deepEqual(
         {
           users: db.prepare("SELECT * FROM users ORDER BY id").all(),

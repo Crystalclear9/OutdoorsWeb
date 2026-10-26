@@ -15,7 +15,7 @@ async function headers(page) {
   return { Origin: origin, "X-CSRF-Token": session.csrf };
 }
 
-test("改期界面保留原预约并由审批台原子替换；现场登记单独保存", async ({
+test("改期界面保留原申请并由审批台原子替换，地点固定且搭建方信息保留", async ({
   page,
   browser,
 }) => {
@@ -32,7 +32,8 @@ test("改期界面保留原预约并由审批台原子替换；现场登记单�
       company: "改期界面测试企业",
       contact: "李老师",
       phone: "13900139000",
-      slot: 25,
+      builder_contact: "搭建刘师傅",
+      builder_phone: "13800138000",
       start,
       end: start,
       image,
@@ -63,10 +64,13 @@ test("改期界面保留原预约并由审批台原子替换；现场登记单�
     .filter({ hasText: id })
     .getByRole("button", { name: "查看详情" })
     .click();
-  await page.getByRole("button", { name: "申请改期 / 换位" }).click();
+  await page.getByRole("button", { name: "申请改期", exact: true }).click();
   await page.getByRole("dialog").locator("[name=start]").fill(end);
   await page.getByRole("dialog").locator("[name=end]").fill(end);
-  await page.getByRole("dialog").locator("[name=slot]").selectOption("26");
+  await expect(page.getByRole("dialog").locator("[name=slot]")).toHaveCount(0);
+  await expect(
+    page.getByRole("dialog").getByLabel("搭建方联系人", { exact: true }),
+  ).toHaveValue("搭建刘师傅");
   await page.getByRole("button", { name: "提交改期申请" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(page.getByRole("row").filter({ hasText: id })).toContainText(
@@ -89,58 +93,24 @@ test("改期界面保留原预约并由审批台原子替换；现场登记单�
   await expect(page.getByRole("row").filter({ hasText: id })).toContainText(
     "已取消",
   );
-  await admin
-    .getByRole("navigation")
-    .getByRole("button", { name: "场地开放安排", exact: true })
-    .click();
-  const position = admin
-    .locator(".onsite-position")
-    .filter({ hasText: "28号" });
-  await position.getByRole("checkbox").check();
-  await position.getByRole("textbox").fill("现场核对已摆放");
-  await admin.getByRole("button", { name: "保存现场登记" }).click();
-  await expect(admin.locator(".onsite-summary")).toContainText(
-    "实际已摆放 1 / 29",
-  );
-  await admin.reload();
-  await admin
-    .getByRole("navigation")
-    .getByRole("button", { name: "场地开放安排", exact: true })
-    .click();
-  await expect(admin.getByLabel("28号现场备注")).toHaveValue("现场核对已摆放");
-  const guestContext = await browser.newContext();
-  try {
-    const guest = await guestContext.newPage();
-    await guest.goto("/");
-    await guest
-      .getByRole("navigation")
-      .getByRole("button", { name: "场地查询", exact: true })
-      .click();
-    await expect(guest.locator(".venue-onsite-summary")).toContainText(
-      "已摆放 1 / 29",
-    );
-    await guest
-      .getByRole("button", { name: "28号 可预约", exact: true })
-      .click();
-    await expect(
-      guest.locator(".position-details > div").filter({ hasText: "现场登记" }),
-    ).toContainText("已摆放");
-    const publicData = await (await guest.request.get("/api/venue")).json();
-    expect(JSON.stringify(publicData)).not.toContain("现场核对已摆放");
-    expect(publicData.onsite.find((row) => row.slot === 28).present).toBe(true);
-    await guest.getByLabel("查询日期").fill(start);
-    await expect(guest.locator(".venue-onsite-summary")).toContainText(
-      "尚无现场登记",
-    );
-  } finally {
-    await guestContext.close();
-  }
-  await admin.setViewportSize({ width: 390, height: 844 });
-  expect(
-    await admin.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
-    ),
-  ).toBe(true);
+  const updated = await (
+    await page.request.get(
+      `/api/bookings?q=${encodeURIComponent("改期界面测试企业")}`,
+    )
+  ).json();
+  const replacement = updated.items.find((item) => item.reschedule_of === id);
+  expect(replacement).toMatchObject({
+    status: "已通过",
+    start: end,
+    end,
+    builder_contact: "搭建刘师傅",
+    builder_phone: "13800138000",
+    location: "大活A座平台",
+    content_only: 1,
+  });
+  await expect(
+    admin.getByRole("button", { name: "场地开放安排", exact: true }),
+  ).toHaveCount(0);
   await context.close();
 });
 

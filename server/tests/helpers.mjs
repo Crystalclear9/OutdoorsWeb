@@ -1,5 +1,6 @@
 import { createApp } from "../app.mjs";
 import { listenHttp } from "./http-listen.mjs";
+import { randomUUID } from "node:crypto";
 export const PASSWORD = "ConcurrentAccount123!";
 export const ADMIN = { email: "root@test.local", password: PASSWORD };
 export const TODAY = () =>
@@ -15,6 +16,8 @@ export const booking = (extra = {}) => ({
   company: "并发测试企业",
   contact: "张老师",
   phone: "13800138000",
+  builder_contact: "搭建负责人",
+  builder_phone: "13900139000",
   slot: 1,
   start: TODAY(),
   end: TODAY(),
@@ -85,6 +88,32 @@ export async function register(c, email = "enterprise@test.local") {
   });
   if (r.status !== 201) throw new Error(JSON.stringify(r));
   return r.data.user;
+}
+// Explicit persisted pre-content-review fixture. Production requests always use
+// content_only=1; legacy finance/phone workflows are exercised on historical rows.
+export async function seedLegacyBooking(f, owner, extra = {}) {
+  const user = (await owner.request("/auth/session")).data.user;
+  const row = booking(extra),
+    id = `LEGACY-${randomUUID()}`;
+  f.db
+    .prepare(
+      "INSERT INTO bookings(id,user_id,company,contact,phone,builder_contact,builder_phone,start,end,slot,status,image,image_type,created) VALUES(?,?,?,?,?,?,?,?,?,?,'待审核',?,'image/png',?)",
+    )
+    .run(
+      id,
+      user.id,
+      row.company,
+      row.contact,
+      row.phone,
+      row.builder_contact,
+      row.builder_phone,
+      row.start,
+      row.end,
+      row.slot,
+      Buffer.from(IMAGE.split(",")[1], "base64"),
+      new Date().toISOString(),
+    );
+  return { status: 201, data: { id } };
 }
 export async function manager(c) {
   const r = await c.request("/auth/login", "POST", ADMIN);

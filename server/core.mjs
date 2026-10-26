@@ -307,6 +307,8 @@ export function databaseError(error) {
     return new HttpError(409, "申请状态已变化，请刷新后重试");
   if (/INVALID_DATE_RANGE/.test(text))
     return new HttpError(400, "申报或暂停日期无效");
+  if (/INVALID_BUILDER/.test(text))
+    return new HttpError(400, "搭建方信息无效或申请地点不是默认平台");
   if (/database is locked|SQLITE_BUSY/.test(text))
     return new HttpError(503, "当前操作较多，请稍后重试");
   return error;

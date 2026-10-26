@@ -50,7 +50,11 @@ export default function Access({ notify }) {
   function open(type, user) {
     if (busy || !ready) return;
     setError("");
-    setGrants(user?.permissions || []);
+    setGrants(
+      (user?.permissions || []).filter((key) =>
+        PERMISSIONS.some((permission) => permission.key === key),
+      ),
+    );
     setModal({ type, user });
   }
   async function save(e) {

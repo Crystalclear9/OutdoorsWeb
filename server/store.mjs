@@ -9,7 +9,7 @@ export function openStore(filename) {
       mode: 0o700,
     });
   const db = new DatabaseSync(filename);
-  if (db.prepare("PRAGMA user_version").get().user_version > 7) {
+  if (db.prepare("PRAGMA user_version").get().user_version > 8) {
     db.close();
     throw new Error("数据库版本高于当前程序，请使用匹配版本，禁止直接降级");
   }
@@ -79,11 +79,17 @@ export function openStore(filename) {
       ["cancelled", "INTEGER NOT NULL DEFAULT 0"],
       ["cancel_reason", "TEXT NOT NULL DEFAULT ''"],
       ["cancelled_at", "TEXT"],
+      [
+        "content_only",
+        "INTEGER NOT NULL DEFAULT 0 CHECK(content_only IN (0,1))",
+      ],
+      ["builder_contact", "TEXT NOT NULL DEFAULT ''"],
+      ["builder_phone", "TEXT NOT NULL DEFAULT ''"],
     ])
       if (!columns("bookings").includes(name))
         db.exec(`ALTER TABLE bookings ADD COLUMN ${name} ${type}`);
     db.exec(
-      "DROP TRIGGER IF EXISTS booking_overlap_insert; DROP TRIGGER IF EXISTS booking_overlap_update; DROP TRIGGER IF EXISTS closure_overlap_insert; DROP TRIGGER IF EXISTS closure_overlap_update;",
+      "DROP TRIGGER IF EXISTS booking_overlap_insert; DROP TRIGGER IF EXISTS booking_overlap_update; DROP TRIGGER IF EXISTS closure_overlap_insert; DROP TRIGGER IF EXISTS closure_overlap_update; DROP TRIGGER IF EXISTS booking_duplicate_pending; DROP TRIGGER IF EXISTS booking_immutable_details; DROP TRIGGER IF EXISTS booking_content_fields;",
     );
     if (!columns("audit").includes("details"))
       db.exec(
@@ -124,7 +130,12 @@ export function openStore(filename) {
         request_hash TEXT NOT NULL, response TEXT NOT NULL, created INTEGER NOT NULL,
         PRIMARY KEY(user_id,key)
       );
-      CREATE UNIQUE INDEX IF NOT EXISTS pending_reschedule ON bookings(reschedule_of) WHERE reschedule_of IS NOT NULL AND status='待审核';
+      DROP INDEX IF EXISTS pending_reschedule;
+      CREATE TRIGGER IF NOT EXISTS pending_reschedule_insert BEFORE INSERT ON bookings
+      WHEN NEW.reschedule_of IS NOT NULL AND NEW.status='待审核' BEGIN
+        SELECT CASE WHEN EXISTS(SELECT 1 FROM bookings WHERE reschedule_of=NEW.reschedule_of AND status='待审核' AND start>=date('now','+8 hours'))
+          THEN RAISE(ABORT,'DUPLICATE_PENDING') END;
+      END;
       CREATE TABLE IF NOT EXISTS onsite(date TEXT NOT NULL,slot INTEGER NOT NULL CHECK(slot BETWEEN 1 AND 29),present INTEGER NOT NULL CHECK(present IN (0,1)),note TEXT NOT NULL,actor TEXT NOT NULL REFERENCES users(id),updated TEXT NOT NULL,version INTEGER NOT NULL,PRIMARY KEY(date,slot));
       CREATE TABLE IF NOT EXISTS mfa(user_id TEXT PRIMARY KEY REFERENCES users(id),secret TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 0,last_counter INTEGER NOT NULL DEFAULT -1,recovery TEXT NOT NULL DEFAULT '[]');
       CREATE TABLE IF NOT EXISTS auth_challenges(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),kind TEXT NOT NULL,payload TEXT NOT NULL,expires INTEGER NOT NULL,attempts INTEGER NOT NULL DEFAULT 0);
@@ -139,37 +150,60 @@ export function openStore(filename) {
       CREATE INDEX IF NOT EXISTS delivery_due ON delivery_jobs(state,next_at);
       CREATE TABLE IF NOT EXISTS archives(id TEXT PRIMARY KEY,kind TEXT NOT NULL,created TEXT NOT NULL,cutoff TEXT NOT NULL,records INTEGER NOT NULL,bytes INTEGER NOT NULL,sha256 TEXT NOT NULL,content BLOB NOT NULL);
       CREATE TRIGGER IF NOT EXISTS booking_overlap_insert BEFORE INSERT ON bookings
-      WHEN NEW.status='已通过' AND NEW.cancelled=0 BEGIN
-        SELECT CASE WHEN EXISTS(SELECT 1 FROM bookings WHERE slot=NEW.slot AND status='已通过' AND cancelled=0 AND start<=NEW.end AND end>=NEW.start)
+      WHEN NEW.status='已通过' AND NEW.cancelled=0 AND NEW.content_only=0 BEGIN
+        SELECT CASE WHEN EXISTS(SELECT 1 FROM bookings WHERE content_only=0 AND slot=NEW.slot AND status='已通过' AND cancelled=0 AND start<=NEW.end AND end>=NEW.start)
           OR EXISTS(SELECT 1 FROM closures WHERE slot=NEW.slot AND start<=NEW.end AND end>=NEW.start)
           THEN RAISE(ABORT,'SLOT_CONFLICT') END;
       END;
       CREATE TRIGGER IF NOT EXISTS booking_overlap_update BEFORE UPDATE OF status,slot,start,end ON bookings
-      WHEN NEW.status='已通过' AND NEW.cancelled=0 BEGIN
-        SELECT CASE WHEN EXISTS(SELECT 1 FROM bookings WHERE id<>NEW.id AND slot=NEW.slot AND status='已通过' AND cancelled=0 AND start<=NEW.end AND end>=NEW.start)
+      WHEN NEW.status='已通过' AND NEW.cancelled=0 AND NEW.content_only=0 BEGIN
+        SELECT CASE WHEN EXISTS(SELECT 1 FROM bookings WHERE content_only=0 AND id<>NEW.id AND slot=NEW.slot AND status='已通过' AND cancelled=0 AND start<=NEW.end AND end>=NEW.start)
           OR EXISTS(SELECT 1 FROM closures WHERE slot=NEW.slot AND start<=NEW.end AND end>=NEW.start)
           THEN RAISE(ABORT,'SLOT_CONFLICT') END;
       END;
       CREATE TRIGGER IF NOT EXISTS closure_overlap_insert BEFORE INSERT ON closures BEGIN
-        SELECT CASE WHEN EXISTS(SELECT 1 FROM bookings WHERE slot=NEW.slot AND status='已通过' AND cancelled=0 AND start<=NEW.end AND end>=NEW.start)
+        SELECT CASE WHEN EXISTS(SELECT 1 FROM bookings WHERE content_only=0 AND slot=NEW.slot AND status='已通过' AND cancelled=0 AND start<=NEW.end AND end>=NEW.start)
           OR EXISTS(SELECT 1 FROM closures WHERE slot=NEW.slot AND start<=NEW.end AND end>=NEW.start)
           THEN RAISE(ABORT,'SLOT_CONFLICT') END;
       END;
       CREATE TRIGGER IF NOT EXISTS closure_overlap_update BEFORE UPDATE ON closures BEGIN
-        SELECT CASE WHEN EXISTS(SELECT 1 FROM bookings WHERE slot=NEW.slot AND status='已通过' AND cancelled=0 AND start<=NEW.end AND end>=NEW.start)
+        SELECT CASE WHEN EXISTS(SELECT 1 FROM bookings WHERE content_only=0 AND slot=NEW.slot AND status='已通过' AND cancelled=0 AND start<=NEW.end AND end>=NEW.start)
           OR EXISTS(SELECT 1 FROM closures WHERE id<>NEW.id AND slot=NEW.slot AND start<=NEW.end AND end>=NEW.start)
           THEN RAISE(ABORT,'SLOT_CONFLICT') END;
       END;
       CREATE TRIGGER IF NOT EXISTS booking_duplicate_pending BEFORE INSERT ON bookings
-      WHEN NEW.status='待审核' BEGIN
-        SELECT CASE WHEN EXISTS(SELECT 1 FROM bookings WHERE user_id=NEW.user_id AND slot=NEW.slot AND status='待审核' AND start<=NEW.end AND end>=NEW.start)
+      WHEN NEW.status='待审核' AND NEW.content_only=0 BEGIN
+        SELECT CASE WHEN EXISTS(SELECT 1 FROM bookings WHERE user_id=NEW.user_id AND content_only=0 AND slot=NEW.slot AND status='待审核' AND start<=NEW.end AND end>=NEW.start)
           THEN RAISE(ABORT,'DUPLICATE_PENDING') END;
       END;
       CREATE TRIGGER IF NOT EXISTS booking_state_transition BEFORE UPDATE OF status ON bookings
       WHEN NEW.status<>OLD.status AND (OLD.status<>'待审核' OR NEW.status NOT IN ('已通过','未通过','已撤回'))
       BEGIN SELECT RAISE(ABORT,'INVALID_BOOKING_STATE'); END;
-      CREATE TRIGGER IF NOT EXISTS booking_immutable_details BEFORE UPDATE OF user_id,slot,start,end ON bookings
-      WHEN NEW.user_id<>OLD.user_id OR NEW.slot<>OLD.slot OR NEW.start<>OLD.start OR NEW.end<>OLD.end
+      CREATE TRIGGER IF NOT EXISTS booking_content_fields BEFORE INSERT ON bookings
+      WHEN NEW.content_only=1 BEGIN
+        SELECT CASE WHEN NEW.slot<>1 OR length(trim(NEW.builder_contact))=0 OR length(NEW.builder_contact)>30
+          THEN RAISE(ABORT,'INVALID_BUILDER') END;
+        SELECT CASE WHEN NOT EXISTS(
+          SELECT 1 FROM (
+            SELECT NEW.builder_phone p, instr(NEW.builder_phone,'-') d,
+              length(NEW.builder_phone)-length(replace(NEW.builder_phone,'-','')) hyphens
+          ) WHERE length(p)<=25 AND p NOT GLOB '*[^0-9-]*' AND (
+            (substr(p,1,1)='1' AND length(p)=11 AND hyphens=0)
+            OR (substr(p,1,1)='0' AND (
+              (hyphens=0 AND length(p) BETWEEN 10 AND 12)
+              OR (hyphens=1 AND (
+                (d IN (4,5) AND length(p)-d BETWEEN 7 AND 8)
+                OR (d BETWEEN 11 AND 13 AND length(p)-d BETWEEN 1 AND 6)
+              ))
+              OR (hyphens=2 AND d IN (4,5)
+                AND instr(substr(p,d+1),'-') BETWEEN 8 AND 9
+                AND length(p)-d-instr(substr(p,d+1),'-') BETWEEN 1 AND 6)
+            ))
+          )
+        ) THEN RAISE(ABORT,'INVALID_BUILDER') END;
+      END;
+      CREATE TRIGGER IF NOT EXISTS booking_immutable_details BEFORE UPDATE OF user_id,slot,start,end,content_only,builder_contact,builder_phone ON bookings
+      WHEN NEW.user_id<>OLD.user_id OR NEW.slot<>OLD.slot OR NEW.start<>OLD.start OR NEW.end<>OLD.end OR NEW.content_only<>OLD.content_only OR NEW.builder_contact<>OLD.builder_contact OR NEW.builder_phone<>OLD.builder_phone
       BEGIN SELECT RAISE(ABORT,'IMMUTABLE_BOOKING'); END;
       CREATE TRIGGER IF NOT EXISTS booking_valid_range BEFORE INSERT ON bookings
       WHEN length(NEW.start)<>10 OR length(NEW.end)<>10 OR date(NEW.start) IS NULL OR date(NEW.end) IS NULL
@@ -207,7 +241,7 @@ export function openStore(filename) {
         UPDATE booking_fees SET state=CASE WHEN state='submitted' THEN 'reconcile' ELSE 'void' END,note='原预约已取消，请停止付款；已提交流水的款项须由财务核实后处理',version=version+1,updated=NEW.cancelled_at
         WHERE booking_id=NEW.id AND state IN ('due','submitted');
       END;
-      PRAGMA user_version=7;
+      PRAGMA user_version=8;
     `);
     if (!columns("delivery_jobs").includes("version"))
       db.exec(

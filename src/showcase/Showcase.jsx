@@ -38,23 +38,21 @@ export default function Showcase({ App }) {
             虚构数据，仅保存在当前标签页；请勿输入真实资料或付款。后续移除此入口。
           </p>
         </div>
-        <label className="showcase-role">
-          查看身份
-          <select
-            aria-label="切换演示身份"
-            value={role}
-            onChange={(event) => {
-              chooseRole(event.target.value);
-              remount();
-            }}
-          >
-            {ROLES.map(([key, label]) => (
-              <option key={key} value={key}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="showcase-roles" role="group" aria-label="切换演示身份">
+          {ROLES.map(([key, label]) => (
+            <button
+              type="button"
+              key={key}
+              aria-pressed={role === key}
+              onClick={() => {
+                chooseRole(key);
+                remount();
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <button
           className="button secondary small"
           onClick={() => {

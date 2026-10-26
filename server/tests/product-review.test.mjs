@@ -1,6 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fixture, manager, register, staff, booking } from "./helpers.mjs";
+import {
+  fixture,
+  manager,
+  register,
+  staff,
+  booking,
+  seedLegacyBooking,
+} from "./helpers.mjs";
 const ver = (n) => ({ "If-Match": `"${n}"` });
 async function setup(t) {
   const f = await fixture(t),
@@ -12,7 +19,7 @@ async function setup(t) {
   await register(owner);
   await staff(root, finance, ["payments.manage"], "late-finance@test.local");
   await staff(root, reviewer, ["bookings.review"], "late-reviewer@test.local");
-  const id = (await owner.request("/bookings", "POST", booking())).data.id;
+  const id = (await seedLegacyBooking(f, owner, booking())).data.id;
   assert.equal(
     (
       await root.request(

@@ -10,12 +10,12 @@ import {
 } from "@phosphor-icons/react";
 import { api, getDesign } from "./api.js";
 import { Button, Empty, ErrorBox, Modal, Status } from "./components.jsx";
-import { slotName, zoneName, dateString } from "./utils.js";
+import { dateString } from "./utils.js";
 
 const reasons = [
   "设计图内容不清晰，请上传清晰完整的桁架设计图。",
   "设计方案需调整，请核对场地布展要求后重新申报。",
-  "所选时段与已有安排冲突，请更换日期或桁架位置。",
+  "搭建方联系人或联系方式需补充核实，请确认后重新申报。",
   "申请日期已过期，请调整日期后重新申报。",
 ];
 function CheckSummary({ item }) {
@@ -34,13 +34,11 @@ function CheckSummary({ item }) {
           {check
             ? check.blockers.length
               ? check.blockers.join("；")
-              : "日期与占用检查通过"
-            : "正在核对场地状态"}
+              : "日期检查通过"
+            : "正在核对申请信息"}
         </strong>
         <p>
-          {check?.competing
-            ? `同一位置另有 ${check.competing} 条重叠待审申请，请结合活动方案择一审批。`
-            : "系统只核对日期与占用，设计图内容仍需人工确认。"}
+          系统核对申请日期；请重点审阅桁架宣传内容、设计方案及搭建方联系方式。
         </p>
       </div>
     </div>
@@ -138,7 +136,7 @@ export default function ReviewDesk({ user, notify, onChange, history }) {
             全部申请与历史
           </button>
         </div>
-        <span>人工确认结果 · 系统检查冲突</span>
+        <span>重点审核宣传内容 · 系统核对日期</span>
       </div>
       {mode === "history" ? (
         history
@@ -273,9 +271,7 @@ export default function ReviewDesk({ user, notify, onChange, history }) {
                             onClick={() => setFocused(b.id)}
                           >
                             <strong>{b.company}</strong>
-                            <span>
-                              {slotName(b.slot)} · {zoneName(b.slot)}
-                            </span>
+                            <span>大活A座平台</span>
                             <small>
                               {b.start} 至 {b.end}
                             </small>
@@ -284,11 +280,9 @@ export default function ReviewDesk({ user, notify, onChange, history }) {
                             >
                               {b.reviewCheck?.blockers.length
                                 ? b.reviewCheck.blockers.join("；")
-                                : b.reviewCheck?.competing
-                                  ? `${b.reviewCheck.competing} 条同位竞争申请`
-                                  : b.start === dateString()
-                                    ? "今日开始 · 优先处理"
-                                    : "日期与占用正常"}
+                                : b.start === dateString()
+                                  ? "今日开始 · 优先处理"
+                                  : "日期检查通过"}
                             </span>
                             <small>
                               {b.contact} · {b.phone}
@@ -390,7 +384,7 @@ export default function ReviewDesk({ user, notify, onChange, history }) {
                 >
                   {error
                     ? "旧查询结果已暂停使用，请点击刷新重新核对后再审批。"
-                    : "选择申请后，这里将展示设计图、冲突检查和审批操作。"}
+                    : "选择申请后，这里将展示桁架宣传内容、搭建方信息和审批操作。"}
                 </Empty>
               </section>
             )}
@@ -454,8 +448,9 @@ function ReviewDetail({
       if (blob) URL.revokeObjectURL(blob);
     };
   }, [item.id]);
+  const reviewable = item.status === "待审核" && !item.reviewExpired;
   async function decide(status) {
-    if (disabled || saving) return;
+    if (disabled || saving || !reviewable) return;
     if (status === "未通过" && !reason.trim()) {
       setError("请填写退回原因，或选择下方快捷意见");
       return;
@@ -527,10 +522,8 @@ function ReviewDetail({
         </div>
         <dl className="review-facts">
           <div>
-            <dt>位置</dt>
-            <dd>
-              {slotName(item.slot)} · {zoneName(item.slot)}
-            </dd>
+            <dt>布展地点</dt>
+            <dd>大活A座平台</dd>
           </div>
           <div>
             <dt>布展日期</dt>
@@ -542,6 +535,20 @@ function ReviewDetail({
             <dt>联系人</dt>
             <dd>
               {item.contact} · <a href={`tel:${item.phone}`}>{item.phone}</a>
+            </dd>
+          </div>
+          <div>
+            <dt>搭建方联系人</dt>
+            <dd>{item.builder_contact || "历史申请未提供"}</dd>
+          </div>
+          <div>
+            <dt>搭建方联系电话</dt>
+            <dd>
+              {item.builder_phone ? (
+                <a href={`tel:${item.builder_phone}`}>{item.builder_phone}</a>
+              ) : (
+                "历史申请未提供"
+              )}
             </dd>
           </div>
         </dl>
@@ -579,7 +586,7 @@ function ReviewDetail({
             rows={2}
             maxLength={500}
             value={reason}
-            disabled={disabled || saving}
+            disabled={disabled || saving || !reviewable}
             onChange={(e) => setReason(e.target.value)}
             placeholder="填写意见，或点选快捷原因后修改"
           />
@@ -588,10 +595,10 @@ function ReviewDetail({
           {reasons.map((r, i) => (
             <button
               key={r}
-              disabled={disabled || saving}
+              disabled={disabled || saving || !reviewable}
               onClick={() => setReason(r)}
             >
-              {["设计图不清晰", "方案需调整", "时段冲突", "日期过期"][i]}
+              {["设计图不清晰", "方案需调整", "搭建方需核实", "日期过期"][i]}
             </button>
           ))}
         </div>
@@ -599,7 +606,7 @@ function ReviewDetail({
         <div className="review-decision-actions">
           <Button
             className="danger-outline"
-            disabled={disabled || saving}
+            disabled={disabled || saving || !reviewable}
             onClick={() => decide("未通过")}
           >
             退回并审阅下一条
@@ -609,6 +616,7 @@ function ReviewDetail({
             loading={saving}
             disabled={
               disabled ||
+              !reviewable ||
               !image ||
               !item.reviewCheck ||
               !!item.reviewCheck.blockers.length ||
@@ -631,8 +639,12 @@ function BatchReview({ batch, onClose, onBusy, onSaved }) {
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
   const approve = batch.status === "已通过";
+  const unreviewable = batch.rows.some(
+    (b) => b.status !== "待审核" || b.reviewExpired,
+  );
   const blocked =
-    approve && batch.rows.some((b) => b.reviewCheck?.blockers.length);
+    unreviewable ||
+    (approve && batch.rows.some((b) => b.reviewCheck?.blockers.length));
   async function submit(e) {
     e.preventDefault();
     setBusy(true);
@@ -660,7 +672,7 @@ function BatchReview({ batch, onClose, onBusy, onSaved }) {
   return (
     <Modal
       title={approve ? "确认批量通过" : "确认批量退回"}
-      description={`将处理以下 ${batch.rows.length} 条申请，每条结果独立保存，冲突或已处理的申请会跳过。`}
+      description={`将处理以下 ${batch.rows.length} 条申请，每条结果独立保存，已过期、版本变化或已处理的申请会跳过。`}
       onClose={onClose}
       wide
     >
@@ -670,20 +682,18 @@ function BatchReview({ batch, onClose, onBusy, onSaved }) {
             <div key={b.id}>
               <strong>{b.company}</strong>
               <span>
-                {slotName(b.slot)} · {b.start} 至 {b.end}
+                大活A座平台 · {b.start} 至 {b.end}
               </span>
               <small>
                 {b.reviewCheck?.blockers.join("；") ||
-                  (b.reviewCheck?.competing
-                    ? "有同位置竞争申请，通过后其他冲突申请会跳过"
-                    : "日期与占用正常")}
+                  "日期检查通过，请确认宣传内容及搭建方信息"}
               </small>
             </div>
           ))}
         </div>
         {blocked && (
           <ErrorBox>
-            所选申请包含已过期或场地冲突记录，请取消这些勾选后再批量通过。
+            所选申请包含无法通过的记录，请核对日期及申请信息后重新勾选。
           </ErrorBox>
         )}
         <label>
@@ -707,7 +717,7 @@ function BatchReview({ batch, onClose, onBusy, onSaved }) {
                 key={r}
                 onClick={() => setReason(r)}
               >
-                {["设计图不清晰", "方案需调整", "时段冲突", "日期过期"][i]}
+                {["设计图不清晰", "方案需调整", "搭建方需核实", "日期过期"][i]}
               </button>
             ))}
           </div>

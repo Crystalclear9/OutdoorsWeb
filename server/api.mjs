@@ -13,6 +13,11 @@ import { caseworkRoutes } from "./casework.mjs";
 import { createMfa } from "./mfa.mjs";
 import { integrationRoutes, enqueueResult } from "./integrations.mjs";
 import {
+  bookingView,
+  builderFields,
+  expiredReview,
+} from "./booking-policy.mjs";
+import {
   createSecurity,
   HttpError,
   fail,
@@ -81,7 +86,7 @@ export async function createApi(db, options = {}) {
     v.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
   const userById = (id) => db.prepare("SELECT * FROM users WHERE id=?").get(id);
   const bookingColumns =
-    "id,user_id,company,contact,phone,start,end,slot,status,reason,created,reviewed,version,cancelled,cancel_reason,cancelled_at,reschedule_of";
+    "id,user_id,company,contact,phone,builder_contact,builder_phone,content_only,start,end,slot,status,reason,created,reviewed,version,cancelled,cancel_reason,cancelled_at,reschedule_of";
   const bookingById = (id) =>
     db.prepare(`SELECT ${bookingColumns} FROM bookings WHERE id=?`).get(id);
   const reviewCheck = (row) => {
@@ -93,24 +98,28 @@ export async function createApi(db, options = {}) {
     }
     if (row.start < today()) blockers.push("申请日期已过期");
     if (
+      !row.content_only &&
       db
         .prepare(
-          "SELECT id FROM bookings WHERE id<>? AND id<>COALESCE(?, '') AND slot=? AND status='已通过' AND cancelled=0 AND start<=? AND end>=?",
+          "SELECT id FROM bookings WHERE content_only=0 AND id<>? AND id<>COALESCE(?, '') AND slot=? AND status='已通过' AND cancelled=0 AND start<=? AND end>=?",
         )
         .get(row.id, row.reschedule_of, row.slot, row.end, row.start)
     )
       blockers.push("与已通过预约冲突");
     if (
+      !row.content_only &&
       db
         .prepare("SELECT id FROM closures WHERE slot=? AND start<=? AND end>=?")
         .get(row.slot, row.end, row.start)
     )
       blockers.push("所选时段暂停开放");
-    const competing = db
-      .prepare(
-        "SELECT COUNT(*) AS n FROM bookings WHERE id<>? AND slot=? AND status='待审核' AND start<=? AND end>=?",
-      )
-      .get(row.id, row.slot, row.end, row.start).n;
+    const competing = row.content_only
+      ? 0
+      : db
+          .prepare(
+            "SELECT COUNT(*) AS n FROM bookings WHERE content_only=0 AND id<>? AND slot=? AND status='待审核' AND start<=? AND end>=?",
+          )
+          .get(row.id, row.slot, row.end, row.start).n;
     return { blockers, competing };
   };
   function review(req, id, result, reason, expectedVersion) {
@@ -126,6 +135,7 @@ export async function createApi(db, options = {}) {
         );
       else versionCheck(req, row, true);
       fail(row.status !== "待审核", 409, "该申请已处理，请刷新");
+      fail(expiredReview(row), 409, "申请已过期未审核，不能再变更审核结果");
       if (result === "已通过") {
         const checks = reviewCheck(row);
         fail(checks.blockers.length, 409, checks.blockers.join("；"));
@@ -156,7 +166,7 @@ export async function createApi(db, options = {}) {
         result === "已通过" ? "booking.approved" : "booking.rejected",
         id,
       );
-      if (result === "已通过")
+      if (result === "已通过" && !row.content_only)
         notifyFinance(
           "新预约待财务办理",
           `${row.company} 的预约已通过，请核对收费依据并发出缴费或免缴通知；审批通过不代表已经通知缴费或实际收款。`,
@@ -165,22 +175,22 @@ export async function createApi(db, options = {}) {
       notify(
         row.user_id,
         result === "已通过" ? "布展申请已通过" : "布展申请需调整",
-        `${row.company}：${reason || "请按批准日期和位置布展。"}`,
+        `${row.company}：${reason || "请按批准日期在大活A座平台允许区域布展。"}`,
         id,
       );
-      enqueueResult(
-        db,
-        row.user_id,
-        `华中科技大学场地服务：您的布展申请${result}。${reason || "请按批准日期和位置布展。"}请登录网站查看详情。`,
-        id,
-      );
+      if (!row.content_only)
+        enqueueResult(
+          db,
+          row.user_id,
+          `华中科技大学场地服务：您的布展申请${result}。${reason || "请按批准日期在大活A座平台允许区域布展。"}请登录网站查看详情。`,
+          id,
+        );
     });
   }
-  const visibleBooking = (b) => {
+  const visibleBooking = (b, u) => {
     const { user_id, ...result } = b;
     return {
-      ...result,
-      status: b.cancelled ? "已取消" : b.status,
+      ...bookingView(result, u?.role === "admin"),
       hasImage: true,
     };
   };
@@ -506,7 +516,7 @@ export async function createApi(db, options = {}) {
         onsite,
         occupied: db
           .prepare(
-            "SELECT slot,start,end FROM bookings WHERE status='已通过' AND cancelled=0 AND start<=? AND end>=?",
+            "SELECT slot,start,end FROM bookings WHERE content_only=0 AND status='已通过' AND cancelled=0 AND start<=? AND end>=?",
           )
           .all(date, date),
         closed: db
@@ -520,13 +530,16 @@ export async function createApi(db, options = {}) {
       const u = current(req),
         all = can(present(u), "bookings.review");
       fail(u.role !== "enterprise" && !all, 403, "当前账号没有申请查看权限");
+      const viewStatus = `CASE WHEN cancelled=1 THEN '已取消' WHEN status='待审核' AND start<? THEN '${u.role === "admin" ? "过期未审核" : "未通过"}' ELSE status END`;
       const rows = db
         .prepare(
-          `SELECT CASE WHEN cancelled=1 THEN '已取消' ELSE status END AS status,COUNT(*) AS count FROM bookings${all ? "" : " WHERE user_id=?"} GROUP BY CASE WHEN cancelled=1 THEN '已取消' ELSE status END`,
+          `SELECT ${viewStatus} AS display_status,COUNT(*) AS count FROM bookings${all ? "" : " WHERE user_id=?"} GROUP BY display_status`,
         )
-        .all(...(all ? [] : [u.id]));
+        .all(today(), ...(all ? [] : [u.id]));
       return send(res, {
-        counts: Object.fromEntries(rows.map((r) => [r.status, r.count])),
+        counts: Object.fromEntries(
+          rows.map((r) => [r.display_status, r.count]),
+        ),
       });
     }
     if (p === "/api/bookings/reviewers" && m === "GET") {
@@ -581,7 +594,19 @@ export async function createApi(db, options = {}) {
       }
       if (status) {
         if (status === "已取消") conditions.push("cancelled=1");
-        else {
+        else if (status === "过期未审核") {
+          fail(u.role !== "admin", 403, "仅管理员可以查看过期未审核分类");
+          conditions.push("cancelled=0 AND status='待审核' AND start<?");
+          args.push(today());
+        } else if (status === "待审核") {
+          conditions.push("cancelled=0 AND status='待审核' AND start>=?");
+          args.push(today());
+        } else if (status === "未通过" && u.role === "enterprise") {
+          conditions.push(
+            "cancelled=0 AND (status='未通过' OR (status='待审核' AND start<?))",
+          );
+          args.push(today());
+        } else {
           conditions.push("status=? AND cancelled=0");
           args.push(status);
         }
@@ -608,7 +633,7 @@ export async function createApi(db, options = {}) {
           )
           .all(...args, limit, (page - 1) * limit)
           .map((b) => ({
-            ...visibleBooking(b),
+            ...visibleBooking(b, u),
             ...(can(present(u), "bookings.review") && b.status === "待审核"
               ? { reviewCheck: reviewCheck(b) }
               : {}),
@@ -622,10 +647,9 @@ export async function createApi(db, options = {}) {
       const u = current(req, "enterprise");
       limit(`image-attempts:${u.id}`, 40, 3600000);
       const b = await body(req),
-        f = fields(b),
-        slot = Number(b.slot);
+        f = { ...fields(b), ...builderFields(b) },
+        slot = 1;
       dateRange(b.start, b.end, true);
-      fail(!Number.isInteger(slot) || slot < 1 || slot > 29, 400, "桁架位无效");
       const image = await decodeImage(b.image);
       const key = req.headers["idempotency-key"];
       fail(
@@ -661,20 +685,6 @@ export async function createApi(db, options = {}) {
         // acquisition; completed idempotent requests above keep their result.
         dates(b.start, b.end, true);
         limit(`booking:${fresh.id}`, 30, 3600000);
-        fail(
-          db
-            .prepare(
-              "SELECT id FROM bookings WHERE slot=? AND status='已通过' AND cancelled=0 AND start<=? AND end>=?",
-            )
-            .get(slot, b.end, b.start) ||
-            db
-              .prepare(
-                "SELECT id FROM closures WHERE slot=? AND start<=? AND end>=?",
-              )
-              .get(slot, b.end, b.start),
-          409,
-          "该位置在所选时间内已占用或暂停开放",
-        );
         const id = `HUST-${Date.now()}-${randomBytes(6).toString("hex")}`;
         const used = db
           .prepare(
@@ -692,13 +702,15 @@ export async function createApi(db, options = {}) {
           "存储服务异常或空间不足，请联系管理员",
         );
         db.prepare(
-          "INSERT INTO bookings(id,user_id,company,contact,phone,start,end,slot,status,image,image_type,created) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+          "INSERT INTO bookings(id,user_id,company,contact,phone,builder_contact,builder_phone,content_only,start,end,slot,status,image,image_type,created) VALUES(?,?,?,?,?,?,?,1,?,?,?,?,?,?,?)",
         ).run(
           id,
           fresh.id,
           f.company,
           f.contact,
           f.phone,
+          f.builder_contact,
+          f.builder_phone,
           b.start,
           b.end,
           slot,
@@ -710,7 +722,7 @@ export async function createApi(db, options = {}) {
         audit(fresh.id, "booking.submitted", id);
         notifyReviewers(
           "新的布展待办",
-          `${f.company} 申请 ${slot} 号位置，${b.start} 至 ${b.end}`,
+          `${f.company} 提交大活A座平台桁架内容审核，${b.start} 至 ${b.end}`,
           id,
         );
         if (key)
@@ -807,16 +819,12 @@ export async function createApi(db, options = {}) {
             "UPDATE bookings SET cancelled=1,cancel_reason=?,cancelled_at=?,version=version+1 WHERE id=?",
           ).run(reason, now(), id);
           db.prepare(
-            "UPDATE bookings SET status='已撤回',reason='原预约已取消，改期申请自动撤回',version=version+1 WHERE reschedule_of=? AND status='待审核'",
-          ).run(id);
+            "UPDATE bookings SET status='已撤回',reason='原预约已取消，改期申请自动撤回',version=version+1 WHERE reschedule_of=? AND status='待审核' AND start>=?",
+          ).run(id, today());
           audit(fresh.id, "booking.cancelled", id, { reason });
           notifyCancelledFee(row);
           notify(row.user_id, "布展预约已取消", reason, id);
-          notifyReviewers(
-            "预约取消，位置已释放",
-            `${row.company}：${reason}`,
-            id,
-          );
+          notifyReviewers("布展申请已取消", `${row.company}：${reason}`, id);
         });
         return send(res, { ok: true });
       }
@@ -824,7 +832,7 @@ export async function createApi(db, options = {}) {
         res.setHeader("ETag", `"${initial.version}"`);
         return send(res, {
           booking: {
-            ...visibleBooking(initial),
+            ...visibleBooking(initial, u),
             ...(can(present(u), "bookings.review") &&
             initial.status === "待审核"
               ? { reviewCheck: reviewCheck(initial) }
@@ -839,6 +847,7 @@ export async function createApi(db, options = {}) {
           fail(b.user_id !== fresh.id, 403, "只能撤回本企业的申请");
           versionCheck(req, b, true);
           fail(b.status !== "待审核", 409, "只有待审核申请可以撤回");
+          fail(expiredReview(b), 409, "申请已过期未审核，不能再撤回");
           db.prepare(
             "UPDATE bookings SET status='已撤回',reviewed=?,version=version+1 WHERE id=? AND status='待审核'",
           ).run(now(), id);
@@ -911,37 +920,16 @@ export async function createApi(db, options = {}) {
     }
     if (p === "/api/closures" && m === "POST") {
       current(req, "venue.manage");
-      const b = await body(req),
-        slot = Number(b.slot),
-        reason = clean(b.reason, 200);
-      dates(b.start, b.end);
       fail(
-        !Number.isInteger(slot) || slot < 1 || slot > 29 || !reason,
-        400,
-        "请选择桁架位并填写暂停原因",
+        true,
+        410,
+        "场地开放安排已停用；布展统一在大活A座平台允许区域，无需预约具体桁架位置",
       );
-      write(req, "venue.manage", (u) => {
-        dates(b.start, b.end);
-        const id = randomUUID();
-        db.prepare(
-          "INSERT INTO closures(id,slot,start,end,reason,created) VALUES(?,?,?,?,?,?)",
-        ).run(id, slot, b.start, b.end, reason, now());
-        audit(u.id, "venue.closed", id);
-      });
-      return send(res, { ok: true }, 201);
     }
     const closureMatch = p.match(/^\/api\/closures\/([^/]+)$/);
     if (closureMatch && m === "DELETE") {
-      write(req, "venue.manage", (u) => {
-        fail(
-          !db.prepare("DELETE FROM closures WHERE id=?").run(closureMatch[1])
-            .changes,
-          404,
-          "暂停安排不存在",
-        );
-        audit(u.id, "venue.reopened", closureMatch[1]);
-      });
-      return send(res, { ok: true });
+      current(req, "venue.manage");
+      fail(true, 410, "场地开放安排已停用，历史安排仅保留供追溯");
     }
     if (p === "/api/users" && m === "GET") {
       const u = current(req, "accounts.manage");

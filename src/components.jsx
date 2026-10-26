@@ -81,7 +81,7 @@ export function Empty({
 export function Status({ value }) {
   return (
     <span
-      className={`status status-${value === "已通过" ? "approved" : value === "待审核" ? "pending" : value === "未通过" ? "rejected" : "withdrawn"}`}
+      className={`status status-${value === "已通过" ? "approved" : value === "待审核" ? "pending" : ["未通过", "过期未审核"].includes(value) ? "rejected" : "withdrawn"}`}
     >
       <span />
       {value}

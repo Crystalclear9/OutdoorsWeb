@@ -25,7 +25,7 @@ const image = await sharp(
   .toBuffer();
 app.db
   .prepare(
-    "INSERT INTO bookings(id,user_id,company,contact,phone,start,end,slot,status,image,image_type,created) VALUES('HUST-VISUAL-001','visual-enterprise','校园创新科技有限公司','张老师','13800138000','2100-01-01','2100-01-02',15,'待审核',?,'image/png','2026-10-20T00:00:00Z')",
+    "INSERT INTO bookings(id,user_id,company,contact,phone,builder_contact,builder_phone,content_only,start,end,slot,status,image,image_type,created) VALUES('HUST-VISUAL-001','visual-enterprise','校园创新科技有限公司','张老师','13800138000','搭建负责人','13900139000',1,'2100-01-01','2100-01-02',1,'待审核',?,'image/png','2026-10-20T00:00:00Z')",
   )
   .run(image);
 app.server.listen(3102, "0.0.0.0");

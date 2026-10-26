@@ -23,10 +23,16 @@ export function bookingNextStep(item, today) {
       detail: "本次预约已结束办理。如有已付款项，可联系财务查询退款。",
     };
   }
+  if (item.reviewExpired || item.status === "过期未审核")
+    return {
+      title: "申请过期未审核",
+      detail:
+        "申请开始日期已过，不能继续审批；企业端显示未通过，如仍需布展请重新申报。",
+    };
   if (item.status === "待审核")
     return {
       title: "等待管理员审核",
-      detail: "管理员将审核日期、位置和设计材料，结果会发送到办理消息。",
+      detail: "管理员将审核日期、桁架宣传内容及搭建方信息。",
     };
   if (item.status === "未通过")
     return {
@@ -66,8 +72,8 @@ export function bookingNextStep(item, today) {
     };
   if (fee === "paid" || fee === "waived")
     return {
-      title: item.end < today ? "预约时段已结束" : "按批准日期和位置准备布展",
-      detail: `${fee === "paid" ? "财务已核实收款" : "财务已确认免缴"}。${item.end < today ? "请保留申请及费用记录；如需再次使用场地，请重新申请。" : "按批准的日期和位置布展，具体要求见审核意见。"}`,
+      title: item.end < today ? "预约时段已结束" : "按批准日期准备布展",
+      detail: `${fee === "paid" ? "财务已核实收款" : "财务已确认免缴"}。${item.end < today ? "请保留申请及费用记录；如需再次使用场地，请重新申请。" : "按批准日期在大活A座平台允许区域内布展，具体要求见审核意见。"}`,
     };
   return {
     title: "联系财务核对费用状态",

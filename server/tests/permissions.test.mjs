@@ -9,7 +9,7 @@ import {
   PASSWORD,
 } from "./helpers.mjs";
 
-test("审核、场地、账号、日志权限各自生效，不能互相替代", async (t) => {
+test("审核、公告、账号、日志权限各自生效，退役场地权限不可分配", async (t) => {
   const { client } = await fixture(t),
     root = client(),
     enterprise = client();
@@ -48,7 +48,7 @@ test("审核、场地、账号、日志权限各自生效，不能互相替代",
     200,
   );
   const venue = client();
-  await staff(root, venue, ["venue.manage"], "venue@test.local");
+  await staff(root, venue, ["notices.manage"], "venue@test.local");
   assert.equal(
     (
       await venue.request("/closures", "POST", {
@@ -58,7 +58,7 @@ test("审核、场地、账号、日志权限各自生效，不能互相替代",
         reason: "维护",
       })
     ).status,
-    201,
+    403,
   );
   assert.equal((await venue.request("/bookings")).status, 403);
   assert.equal((await venue.request("/users")).status, 403);

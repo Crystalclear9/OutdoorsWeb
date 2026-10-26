@@ -1,6 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fixture, manager, register, staff, booking } from "./helpers.mjs";
+import {
+  fixture,
+  manager,
+  register,
+  staff,
+  booking,
+  seedLegacyBooking,
+} from "./helpers.mjs";
 
 const ver = (n) => ({ "If-Match": `"${n}"` });
 async function setup(t) {
@@ -18,7 +25,7 @@ async function setup(t) {
     ["payments.manage"],
     "finance-audit@test.local",
   );
-  const id = (await owner.request("/bookings", "POST", booking())).data.id;
+  const id = (await seedLegacyBooking(f, owner, booking())).data.id;
   const approve = (target = id) =>
     root.request(
       `/bookings/${target}/review`,
@@ -108,7 +115,14 @@ for (const method of ["cancel", "reschedule"])
         const replacement = await f.owner.request(
           `/bookings/${f.id}/reschedule`,
           "POST",
-          { start: booking().start, end: booking().end, slot: 2 },
+          {
+            start: new Date(Date.parse(booking().start) + 86400000)
+              .toISOString()
+              .slice(0, 10),
+            end: new Date(Date.parse(booking().end) + 86400000)
+              .toISOString()
+              .slice(0, 10),
+          },
           ver(2),
         );
         assert.equal(replacement.status, 201);
@@ -156,9 +170,8 @@ test("无需核款的取消不制造退款提醒，已停用财务不接收通�
       .get().n,
     0,
   );
-  const second = (
-    await f.owner.request("/bookings", "POST", booking({ slot: 2 }))
-  ).data.id;
+  const second = (await seedLegacyBooking(f, f.owner, booking({ slot: 2 })))
+    .data.id;
   await f.approve(second);
   await f.finance.request(`/casework/${second}/fee`, "POST", {
     action: "issue",

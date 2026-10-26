@@ -201,7 +201,7 @@ test("改期审批保留原位、退回不影响原预约，并发批准原子�
     await owner.request(
       `/bookings/${id}/reschedule`,
       "POST",
-      { slot: 2, start: future(11), end: future(12) },
+      { start: future(12), end: future(13) },
       version(2),
     )
   ).data.id;

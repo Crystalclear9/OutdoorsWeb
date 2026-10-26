@@ -39,7 +39,7 @@ try {
     insertUser.run(id, `${i}@load.local`, user.id);
     app.db
       .prepare(
-        "INSERT INTO bookings(id,user_id,company,contact,phone,start,end,slot,status,image,image_type,created) SELECT ?,?,company,contact,phone,start,end,slot,status,image,image_type,created FROM bookings WHERE id=?",
+        "INSERT INTO bookings(id,user_id,company,contact,phone,builder_contact,builder_phone,content_only,start,end,slot,status,image,image_type,created) SELECT ?,?,company,contact,phone,builder_contact,builder_phone,content_only,start,end,slot,status,image,image_type,created FROM bookings WHERE id=?",
       )
       .run(bid, id, first);
     ids.push(bid);
@@ -91,7 +91,7 @@ try {
     p50Ms: Math.round(latencies[Math.floor(count * 0.5)]),
     p95Ms: Math.round(latencies[Math.floor(count * 0.95)]),
     p99Ms: Math.round(latencies[Math.floor(count * 0.99)]),
-    competingApprovals: ids.length,
+    concurrentContentApprovals: ids.length,
     approved: winners,
     conflictResponses: conflicts,
     approvalDurationMs: Math.round(performance.now() - reviewStart),
@@ -102,8 +102,8 @@ try {
   console.log(JSON.stringify(report, null, 2));
   if (
     errors ||
-    winners !== 1 ||
-    conflicts !== 31 ||
+    winners !== 32 ||
+    conflicts !== 0 ||
     report.p95Ms > Number(process.env.LOAD_MAX_P95_MS || 2000)
   )
     process.exitCode = 1;

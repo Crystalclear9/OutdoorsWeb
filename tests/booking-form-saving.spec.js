@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { test, expect } from "./browser-fixtures.js";
 
-test("初次申请保存期间锁定提交字段，失败保留输入且重试实际保存同一份信息", async ({
+test("初次申请支持搭建方座机与分机，保存锁定字段、失败重试保留同一份信息", async ({
   page,
 }) => {
   await page.goto("/");
@@ -15,16 +15,26 @@ test("初次申请保存期间锁定提交字段，失败保留输入且重试�
   const dialog = page.getByRole("dialog"),
     company = `申请字段保存互斥-${randomUUID()}`,
     date = new Date(Date.now() + 431 * 86400000).toISOString().slice(0, 10),
-    fields = ["企业名称", "联系人", "联系电话", "开始日期", "结束日期"].map(
-      (label) => dialog.getByLabel(label, { exact: true }),
-    );
-  fields.push(dialog.locator('[name="slot"]'));
+    fields = [
+      "企业名称",
+      "联系人",
+      "联系电话",
+      "开始日期",
+      "结束日期",
+      "搭建方联系人",
+      "搭建方联系电话",
+    ].map((label) => dialog.getByLabel(label, { exact: true }));
+  await expect(dialog.locator('[name="slot"]')).toHaveCount(0);
+  await expect(
+    dialog.getByRole("img", { name: "大活A座平台允许摆放区域示意图" }),
+  ).toBeVisible();
   await fields[0].fill(company);
   await fields[1].fill("张老师");
   await fields[2].fill("13800138000");
   await fields[3].fill(date);
   await fields[4].fill(date);
-  await fields[5].selectOption("29");
+  await fields[5].fill("搭建张师傅");
+  await fields[6].fill("027-87540000-1234");
   await dialog.getByLabel("上传桁架设计图").setInputFiles({
     name: "booking-saving.png",
     mimeType: "image/png",
@@ -63,7 +73,8 @@ test("初次申请保存期间锁定提交字段，失败保留输入且重试�
     await expect(confirmation).toBeEnabled();
     await expect(fields[0]).toHaveValue(company);
     await expect(fields[3]).toHaveValue(date);
-    await expect(fields[5]).toHaveValue("29");
+    await expect(fields[5]).toHaveValue("搭建张师傅");
+    await expect(fields[6]).toHaveValue("027-87540000-1234");
     await expect(confirmation).toBeChecked();
     await page.unroute("**/api/bookings");
     const saved = page.waitForResponse(
@@ -85,7 +96,10 @@ test("初次申请保存期间锁定提交字段，失败保留输入且重试�
       phone: "13800138000",
       start: date,
       end: date,
-      slot: 29,
+      builder_contact: "搭建张师傅",
+      builder_phone: "027-87540000-1234",
+      content_only: 1,
+      location: "大活A座平台",
       status: "待审核",
     });
   } finally {

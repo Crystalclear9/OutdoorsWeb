@@ -30,18 +30,35 @@
   line-height: 1.6;
   margin-top: 4px;
 }
-.showcase-role {
-  margin: 0;
+.showcase-roles {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  border: 1px solid #b8979f;
+  border-radius: 5px;
+  overflow: hidden;
   white-space: nowrap;
 }
-.showcase-role select {
-  margin: 0;
-  min-height: 38px;
-  width: 150px;
-  padding: 7px 10px;
+.showcase-roles button {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #54202b;
+  min-height: 40px;
+  padding: 8px 18px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+}
+.showcase-roles button + button {
+  border-left: 1px solid #b8979f;
+}
+.showcase-roles button[aria-pressed="true"] {
+  background: #762e39;
+  color: #fff;
+  font-weight: 600;
+}
+.showcase-roles button:focus-visible {
+  outline: 2px solid #54202b;
+  outline-offset: -3px;
 }
 .showcase-banner .button {
   white-space: nowrap;
@@ -64,12 +81,12 @@
   .showcase-copy {
     flex-basis: 100%;
   }
-  .showcase-role {
+  .showcase-roles {
     flex: 1;
   }
-  .showcase-role select {
+  .showcase-roles button {
     flex: 1;
-    max-width: 220px;
+    padding-inline: 10px;
   }
   .showcase-shell .sidebar.is-open {
     top: calc(var(--showcase-height, 140px) + 70px);

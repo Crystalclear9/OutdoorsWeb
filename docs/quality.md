@@ -4,6 +4,8 @@
 
 ## 验证范围
 
+`tests/dashboard-read-recovery.spec.js` 检查企业和管理员工作台首次及后续读取失败、清除旧统计、禁止将失败显示为成功空态，以及纯读恢复不产生业务写入。
+
 临时 Pages 身份展示另由 `tests/showcase/pages.showcase.js` 检查静态子路径、企业、管理员、游客三种身份、手机及桌面、审批结果共享、申报及公告、重置与零 API 请求。`showcase-gate.test.mjs` 和 `tests/production.spec.js` 检查普通构建不可启用展示身份。这些样本交互不替代真实服务验收，见[临时演示说明](temporary-showcase.md)。
 
 `tests/showcase/review-gaps.showcase.js` 检查演示审批人筛选、过期待审的身份差异、损坏状态恢复、北京时间的申请及日志日期筛选，以及只读日历。静态测试构建独立输出 `tmp/showcase-build`，不覆盖普通服务的 `dist`。

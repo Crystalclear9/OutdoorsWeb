@@ -70,7 +70,8 @@ export default function App({ initialPage = "overview" }) {
     [toast, setToast] = useState("");
   const [notices, setNotices] = useState([]),
     [noticeError, setNoticeError] = useState(""),
-    [counts, setCounts] = useState({}),
+    [counts, setCounts] = useState(null),
+    [summaryError, setSummaryError] = useState(""),
     [version, setVersion] = useState(0);
   const admin = user?.role === "admin";
   const sessionGeneration = useRef(0);
@@ -231,11 +232,25 @@ export default function App({ initialPage = "overview" }) {
       !user.mustChangePassword &&
       !user.mfaRequired &&
       (user.role === "enterprise" || can(user, "bookings.review"))
-    )
+    ) {
+      setCounts(null);
       api("/summary")
-        .then((r) => active && setCounts(r.counts))
-        .catch((e) => active && notify(e.message));
-    else setCounts({});
+        .then((r) => {
+          if (active) {
+            setCounts(r.counts);
+            setSummaryError("");
+          }
+        })
+        .catch((e) => {
+          if (active) {
+            setCounts(null);
+            setSummaryError(`申请统计待核对：${e.message}`);
+          }
+        });
+    } else {
+      setCounts(null);
+      setSummaryError("");
+    }
     return () => {
       active = false;
     };
@@ -432,7 +447,7 @@ export default function App({ initialPage = "overview" }) {
                 >
                   <Icon size={18} weight={page === id ? "fill" : "regular"} />
                   <span>{label}</span>
-                  {id === "records" && !!counts["待审核"] && (
+                  {id === "records" && !!counts?.["待审核"] && (
                     <b aria-hidden="true">{counts["待审核"]}</b>
                   )}
                 </button>
@@ -590,6 +605,7 @@ export default function App({ initialPage = "overview" }) {
             <Dashboard
               user={user}
               counts={counts}
+              summaryError={summaryError}
               notices={notices}
               noticeError={noticeError}
               connected={connected}

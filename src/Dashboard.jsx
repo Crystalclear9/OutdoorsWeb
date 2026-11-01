@@ -20,6 +20,7 @@ import Notifications from "./Notifications.jsx";
 export default function Dashboard({
   user,
   counts,
+  summaryError,
   notices,
   noticeError,
   connected,
@@ -37,7 +38,8 @@ export default function Dashboard({
   const admin = can(user, "bookings.review"),
     staff = user?.role === "admin",
     publishing = can(user, "notices.manage"),
-    total = Object.values(counts).reduce((a, b) => a + b, 0);
+    total = counts ? Object.values(counts).reduce((a, b) => a + b, 0) : "—";
+  const count = (status) => (counts ? counts[status] || 0 : "—");
   useEffect(() => {
     let active = true;
     if (!user || user.mustChangePassword || (staff && !admin)) {
@@ -65,14 +67,14 @@ export default function Dashboard({
       ? [
           [
             admin ? "待处理申请" : "我的待审核",
-            counts["待审核"] || 0,
+            count("待审核"),
             Clock,
             "待审核",
           ],
-          ["已通过", counts["已通过"] || 0, CheckCircle, "已通过"],
+          ["已通过", count("已通过"), CheckCircle, "已通过"],
           [
             admin ? "过期未审核" : "未通过",
-            counts[admin ? "过期未审核" : "未通过"] || 0,
+            count(admin ? "过期未审核" : "未通过"),
             ClipboardText,
             admin ? "过期未审核" : "未通过",
           ],
@@ -99,7 +101,9 @@ export default function Dashboard({
             {staff && !admin
               ? "您的账号仅可使用已授权功能，菜单将按职责显示。"
               : admin
-                ? `当前有 ${counts["待审核"] || 0} 条申请等待审核。您也可以直接发布活动通知。`
+                ? counts
+                  ? `当前有 ${counts["待审核"] || 0} 条申请等待审核。您也可以直接发布活动通知。`
+                  : "申请统计尚未确认，请读取成功后核对待办数量。"
                 : user
                   ? "在这里跟进申请进度、查看审核意见和最新通知。"
                   : "查看大活A座平台允许摆放区域，登录企业账号后提交桁架内容与设计图。"}
@@ -154,12 +158,21 @@ export default function Dashboard({
           )}
         </div>
       </section>
+      {!!metrics.length && summaryError && (
+        <ErrorBox>
+          {summaryError}
+          <Button className="secondary" onClick={onRefresh}>
+            重新读取申请统计
+          </Button>
+        </ErrorBox>
+      )}
       {!!metrics.length && (
         <div className="dashboard-metrics">
           {metrics.map(([title, value, Icon, status]) => (
             <button
               key={title}
               className="card"
+              disabled={!counts}
               onClick={() => onNavigate("records", status)}
             >
               <Icon size={24} />
@@ -253,7 +266,7 @@ export default function Dashboard({
             </Empty>
           ) : loading ? (
             <div className="loading-block">正在加载申请…</div>
-          ) : items.length ? (
+          ) : error ? null : items.length ? (
             <div className="dashboard-rows">
               {items.map((b) => (
                 <button key={b.id} onClick={() => setDetail(b)}>

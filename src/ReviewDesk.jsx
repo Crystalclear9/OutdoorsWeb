@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -11,6 +11,7 @@ import {
 import { api, getDesign } from "./api.js";
 import { Button, Empty, ErrorBox, Modal, Status } from "./components.jsx";
 import { dateString } from "./utils.js";
+import EnterpriseVerification from "./EnterpriseVerification.jsx";
 
 const reasons = [
   "设计图内容不清晰，请上传清晰完整的桁架设计图。",
@@ -52,11 +53,33 @@ export default function ReviewDesk({
   history,
   onBusyChange,
   initialMode = "pending",
+  initialScope = "all",
 }) {
+  const layoutRef = useRef(null);
+  const fitMaterial = () => {
+    const el = layoutRef.current;
+    if (el)
+      el.style.setProperty(
+        "--review-available-height",
+        `${Math.max(300, window.innerHeight - el.getBoundingClientRect().top - 20)}px`,
+      );
+  };
+  useLayoutEffect(fitMaterial);
+  useEffect(() => {
+    window.addEventListener("resize", fitMaterial);
+    document.addEventListener("toggle", fitMaterial, true);
+    return () => {
+      window.removeEventListener("resize", fitMaterial);
+      document.removeEventListener("toggle", fitMaterial, true);
+    };
+  }, []);
   const [mode, setMode] = useState(initialMode),
     [query, setQuery] = useState(""),
     [page, setPage] = useState(1),
-    [order, setOrder] = useState("oldest");
+    [order, setOrder] = useState("start"),
+    [scope, setScope] = useState(initialScope),
+    [upcomingDays, setUpcomingDays] = useState(2),
+    [overdueHours, setOverdueHours] = useState(24);
   const [data, setData] = useState({ items: [], total: 0, pages: 1 }),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
@@ -67,13 +90,29 @@ export default function ReviewDesk({
     [batch, setBatch] = useState(null),
     [report, setReport] = useState(null),
     [busy, setBusy] = useState(false);
+  const appliedScope = useRef(initialScope);
+  useEffect(() => {
+    if (busy || initialScope === appliedScope.current) return;
+    appliedScope.current = initialScope;
+    setScope(initialScope);
+    setMode("pending");
+    setPage(1);
+    setSelected([]);
+  }, [initialScope, busy]);
   function changeBusy(value) {
     // The shell must block navigation before a request yields, including before
     // React commits the local disabled controls.
     onBusyChange?.(value);
     setBusy(value);
   }
-  const criteriaKey = JSON.stringify([query, page, order]);
+  const criteriaKey = JSON.stringify([
+    query,
+    page,
+    order,
+    scope,
+    upcomingDays,
+    overdueHours,
+  ]);
   const snapshotVisible = resultKey === criteriaKey && !error;
   const ready = snapshotVisible && !loading;
   const refresh = () => setRevision((v) => v + 1);
@@ -84,7 +123,7 @@ export default function ReviewDesk({
     setError("");
     const timer = setTimeout(() => {
       api(
-        `/bookings?status=${encodeURIComponent("待审核")}&q=${encodeURIComponent(query)}&page=${page}&order=${order}`,
+        `/bookings?status=${encodeURIComponent("待审核")}&q=${encodeURIComponent(query)}&page=${page}&order=${order}&reviewScope=${scope}&upcomingDays=${upcomingDays}&overdueHours=${overdueHours}`,
       )
         .then((r) => {
           if (!active) return;
@@ -110,7 +149,7 @@ export default function ReviewDesk({
       active = false;
       clearTimeout(timer);
     };
-  }, [query, page, order, revision, mode]);
+  }, [query, page, order, scope, upcomingDays, overdueHours, revision, mode]);
   useEffect(() => {
     if (busy || batch || mode !== "pending") return;
     const timer = setInterval(refresh, 30000);
@@ -178,11 +217,23 @@ export default function ReviewDesk({
               />
             </label>
             <select
+              aria-label="审批提醒范围"
+              value={scope}
+              disabled={busy}
+              onChange={(e) => changeFilter(() => setScope(e.target.value))}
+            >
+              <option value="all">全部有效待审</option>
+              <option value="attention">需优先处理（临期或逾时）</option>
+              <option value="upcoming">临近开始</option>
+              <option value="overdue">等待逾时</option>
+            </select>
+            <select
               aria-label="待办排序"
               value={order}
               disabled={busy}
               onChange={(e) => changeFilter(() => setOrder(e.target.value))}
             >
+              <option value="start">开始日期临近优先</option>
               <option value="oldest">提交时间从早到晚</option>
               <option value="newest">最新提交优先</option>
             </select>
@@ -194,6 +245,67 @@ export default function ReviewDesk({
               <ArrowsClockwise size={17} />
               刷新
             </Button>
+          </div>
+          <details className="review-thresholds">
+            <summary>
+              调整提醒阈值（未来 {upcomingDays} 天 / 超过 {overdueHours} 小时）
+            </summary>
+            <div
+              className="review-controls"
+              aria-label="本页审批提醒设置"
+              style={{ flexWrap: "wrap" }}
+            >
+              <label>
+                临近开始范围
+                <select
+                  aria-label="临近开始提前天数"
+                  value={upcomingDays}
+                  disabled={busy}
+                  onChange={(e) =>
+                    changeFilter(() => setUpcomingDays(Number(e.target.value)))
+                  }
+                >
+                  {[0, 1, 2, 3, 7, 14, 30].map((n) => (
+                    <option key={n} value={n}>
+                      {n === 0 ? "仅今日" : `未来 ${n} 天内（含今日）`}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                等待逾时阈值
+                <select
+                  aria-label="审批等待超时小时"
+                  value={overdueHours}
+                  disabled={busy}
+                  onChange={(e) =>
+                    changeFilter(() => setOverdueHours(Number(e.target.value)))
+                  }
+                >
+                  {[4, 12, 24, 48, 72, 168].map((n) => (
+                    <option key={n} value={n}>
+                      超过 {n} 小时
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <span className="muted">
+                仅设置本次审批视图；逾时提醒不改变审核结果。
+              </span>
+            </div>
+          </details>
+          <div
+            className="review-priority-status"
+            role="status"
+            aria-label="审批队列提醒"
+          >
+            <div>
+              <strong>
+                {ready && data.reviewQueue
+                  ? `全站有效待审 ${data.reviewQueue.pending} 条，临近开始 ${data.reviewQueue.upcoming} 条，等待逾时 ${data.reviewQueue.overdue} 条（可重叠）。`
+                  : "审批提醒待队列同步后确认。"}
+              </strong>
+            </div>
           </div>
           <ErrorBox>{error}</ErrorBox>
           {report && (
@@ -214,7 +326,7 @@ export default function ReviewDesk({
               </button>
             </div>
           )}
-          <div className="review-layout" aria-busy={loading}>
+          <div ref={layoutRef} className="review-layout" aria-busy={loading}>
             <section className="card review-queue" aria-label="待办队列">
               <div className="review-queue-heading">
                 <label>
@@ -297,6 +409,18 @@ export default function ReviewDesk({
                                   ? "今日开始 · 优先处理"
                                   : "日期检查通过"}
                             </span>
+                            {(b.reviewPriority?.upcoming ||
+                              b.reviewPriority?.overdue) && (
+                              <small>
+                                {b.reviewPriority.upcoming &&
+                                  `临近开始（${upcomingDays}天内）`}
+                                {b.reviewPriority.upcoming &&
+                                  b.reviewPriority.overdue &&
+                                  " · "}
+                                {b.reviewPriority.overdue &&
+                                  `已等待超过${overdueHours}小时`}
+                              </small>
+                            )}
                             <small>
                               {b.contact} · {b.phone}
                             </small>
@@ -598,6 +722,12 @@ function ReviewDetail({
             </dd>
           </div>
         </dl>
+        <div className="review-verification">
+          <details>
+            <summary>企业核验记录</summary>
+            <EnterpriseVerification userId={item.user_id} application={item} />
+          </details>
+        </div>
         <CheckSummary item={item} />
         <div className="review-design">
           <div>

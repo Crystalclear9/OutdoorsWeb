@@ -5391,3 +5391,67 @@ details.case-fee > summary {
     margin: 0 16px 20px;
   }
 }
+
+/* Keep priority controls compact and preserve room for materials and decisions. */
+.review-thresholds {
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+.review-thresholds summary,
+.review-verification summary {
+  cursor: pointer;
+  color: var(--primary, #71303f);
+}
+.review-thresholds[open] .review-controls {
+  margin-top: 10px;
+}
+.review-priority-status {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: #626b75;
+}
+.review-priority-status strong {
+  font-weight: 500;
+}
+.review-verification {
+  grid-column: 1;
+  padding: 0 24px 8px;
+  font-size: 13px;
+}
+.review-verification .card {
+  margin-top: 8px;
+  box-shadow: none;
+}
+@media (max-width: 700px) {
+  .review-controls {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .review-controls .search-input {
+    flex-basis: 100%;
+    max-width: none;
+  }
+  .review-controls select {
+    flex: 1;
+    min-width: 130px;
+    width: auto;
+  }
+  .review-intro {
+    padding: 12px 16px;
+    margin-bottom: 12px;
+  }
+  .review-intro p {
+    display: none;
+  }
+}
+
+.verification-content {
+  padding: 20px 24px;
+}
+
+@media (min-width: 1101px) {
+  .review-page .review-layout > .review-detail {
+    height: var(--review-available-height, calc(100dvh - 510px));
+    min-height: 300px;
+  }
+}

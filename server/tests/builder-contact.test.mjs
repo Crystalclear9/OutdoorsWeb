@@ -85,7 +85,7 @@ test("已有版本8数据库重开会替换旧手机号触发器，数据库写�
     db.exec(
       "DROP TRIGGER booking_content_fields; CREATE TRIGGER booking_content_fields BEFORE INSERT ON bookings WHEN NEW.content_only=1 AND length(NEW.builder_phone)<>11 BEGIN SELECT RAISE(ABORT,'OLD_MOBILE_ONLY'); END;",
     );
-    assert.equal(db.prepare("PRAGMA user_version").get().user_version, 8);
+    assert.equal(db.prepare("PRAGMA user_version").get().user_version, 9);
     db.close();
     db = openStore(file);
     db.prepare(

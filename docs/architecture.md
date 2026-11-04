@@ -90,7 +90,7 @@ SQLite 适用于单主机或多个进程共享同一个本地数据库文件，�
 | `compact.mjs`、`compaction.mjs`                              | 离线空间回收及压缩前安全快照                              |
 | `admin.mjs`、`monitor.mjs`、`proxy.mjs`                      | 管理员恢复、独立监控和可信代理来源识别                    |
 
-后端源文件保持现有入口路径，供 npm 脚本、Docker 和维护命令使用。数据库结构版本为 8，迁移不自动重置业务记录或已有密码。
+后端源文件保持现有入口路径，供 npm 脚本、Docker 和维护命令使用。数据库结构版本为 9，迁移不自动重置业务记录或已有密码。
 
 ## 前端入口
 
@@ -103,3 +103,5 @@ SQLite 适用于单主机或多个进程共享同一个本地数据库文件，�
 `src/AllowedArea.jsx` 提供大活A座平台允许摆放区域示意，不按真实比例绘制，也不提供选位或占用查询。原场地底图和编号仅作历史参考，新申请的数据库 slot 兼容字段不能解释为实际分配的位置。
 
 [返回项目首页](../README.md) · [文档目录](README.md)
+
+企业私有草稿由 `draft-routes.mjs` 管理；核验结论及分页历史由 `verification-routes.mjs` 管理。维护生命周期监督见 `maintenance-process.mjs`，容量与保留策略见 `retention.mjs`。

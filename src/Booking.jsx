@@ -20,14 +20,116 @@ const CasePanel = lazy(() =>
   import("./Casework.jsx").then((module) => ({ default: module.CasePanel })),
 );
 
-export function BookingForm({ user, date, onClose, onSaved }) {
+export function BookingForm({
+  user,
+  date = dateString(),
+  draft,
+  source,
+  onClose,
+  onSaved,
+}) {
   const request = useRef(null);
+  const formRef = useRef(null);
+  const draftIdentity = useRef({
+    id: draft?.id || crypto.randomUUID(),
+    version: draft?.version,
+  });
+  const initial = draft?.payload || source || {};
+  const [dirty, setDirty] = useState(!!source),
+    [message, setMessage] = useState("");
   const currentReader = useRef(null);
-  const [image, setImage] = useState(null),
-    [name, setName] = useState(""),
+  const [image, setImage] = useState(draft?.image || null),
+    [name, setName] = useState(draft?.image ? "已保存的设计图" : ""),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [imageLoading, setImageLoading] = useState(false);
+  const sourceId = initial.source_booking_id || source?.id || "";
+  useEffect(() => {
+    const prevent = (event) => {
+      if (dirty || busy) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", prevent);
+    return () => window.removeEventListener("beforeunload", prevent);
+  }, [dirty, busy]);
+  useEffect(() => {
+    if (!source || draft) return;
+    let active = true,
+      objectUrl;
+    setImageLoading(true);
+    getDesign(source.id)
+      .then(async (url) => {
+        objectUrl = url;
+        const blob = await (await fetch(url)).blob();
+        const value = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+        if (active) {
+          setImage(value);
+          setName("原申请设计图（可更换）");
+          setDirty(true);
+        }
+      })
+      .catch(() => active && setError("原设计图读取失败，请重新上传设计图"))
+      .finally(() => {
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+        if (active) setImageLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+  function close() {
+    if (busy) return;
+    if (
+      dirty &&
+      !window.confirm(
+        "有尚未保存的修改。确定离开并放弃这些修改？可先点击保存草稿。",
+      )
+    )
+      return;
+    onClose();
+  }
+  function payload() {
+    return {
+      ...Object.fromEntries(new FormData(formRef.current)),
+      source_booking_id: sourceId,
+    };
+  }
+  async function saveDraft() {
+    if (busy || imageLoading) return;
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const identity = draftIdentity.current;
+      const result = await api(
+        identity.version ? `/drafts/${identity.id}` : "/drafts",
+        {
+          method: identity.version ? "PATCH" : "POST",
+          headers: identity.version
+            ? { "If-Match": `"${identity.version}"` }
+            : {},
+          body: { id: identity.id, payload: payload(), image },
+        },
+      );
+      draftIdentity.current = {
+        id: result.draft.id,
+        version: result.draft.version,
+      };
+      setDirty(false);
+      setMessage("草稿已保存到您的账号，关闭或刷新后可在申请草稿继续办理。");
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
   useEffect(
     () => () => {
       const reader = currentReader.current;
@@ -40,6 +142,8 @@ export function BookingForm({ user, date, onClose, onSaved }) {
     if (busy) return;
     const f = e.target.files[0];
     if (!f) return;
+    setDirty(true);
+    setMessage("");
     const previous = currentReader.current;
     currentReader.current = null;
     previous?.abort();
@@ -83,6 +187,13 @@ export function BookingForm({ user, date, onClose, onSaved }) {
     const payload = {
       ...Object.fromEntries(new FormData(e.currentTarget)),
       image,
+      source_booking_id: sourceId,
+      ...(draftIdentity.current.version
+        ? {
+            draftId: draftIdentity.current.id,
+            draftVersion: draftIdentity.current.version,
+          }
+        : {}),
     };
     setBusy(true);
     try {
@@ -99,6 +210,7 @@ export function BookingForm({ user, date, onClose, onSaved }) {
         headers: { "Idempotency-Key": request.current.key },
         body: payload,
       });
+      setDirty(false);
       onSaved();
     } catch (e) {
       setError(e.message);
@@ -110,10 +222,26 @@ export function BookingForm({ user, date, onClose, onSaved }) {
     <Modal
       title="提交布展申请"
       description="信息将提交至大学生活动中心审核，您可在申请记录中查看结果。"
-      onClose={() => !busy && onClose()}
+      onClose={close}
       wide
     >
-      <form onSubmit={submit}>
+      <form
+        ref={formRef}
+        onSubmit={submit}
+        onChange={() => {
+          setDirty(true);
+          setMessage("");
+        }}
+      >
+        {sourceId && (
+          <div className="info-box">
+            <p>
+              复制自原申请 {sourceId}
+              。本次将创建新的审核申请，原申请及审核意见保持不变。
+            </p>
+          </div>
+        )}
+        {message && <p role="status">{message}</p>}
         <div className="booking-form-grid">
           <div>
             <h3 className="form-section-title">
@@ -126,7 +254,7 @@ export function BookingForm({ user, date, onClose, onSaved }) {
                 disabled={busy}
                 required
                 maxLength={80}
-                defaultValue={user.company}
+                defaultValue={initial.company ?? user.company}
               />
             </label>
             <div className="form-columns">
@@ -137,7 +265,7 @@ export function BookingForm({ user, date, onClose, onSaved }) {
                   disabled={busy}
                   required
                   maxLength={30}
-                  defaultValue={user.contact}
+                  defaultValue={initial.contact ?? user.contact}
                 />
               </label>
               <label>
@@ -149,7 +277,7 @@ export function BookingForm({ user, date, onClose, onSaved }) {
                   pattern="1[0-9]{10}"
                   maxLength={11}
                   required
-                  defaultValue={user.phone}
+                  defaultValue={initial.phone ?? user.phone}
                 />
               </label>
             </div>
@@ -165,7 +293,9 @@ export function BookingForm({ user, date, onClose, onSaved }) {
                   required
                   type="date"
                   min={dateString()}
-                  defaultValue={date < dateString() ? dateString() : date}
+                  defaultValue={
+                    initial.start ?? (date < dateString() ? dateString() : date)
+                  }
                 />
               </label>
               <label>
@@ -176,7 +306,9 @@ export function BookingForm({ user, date, onClose, onSaved }) {
                   required
                   type="date"
                   min={dateString()}
-                  defaultValue={date < dateString() ? dateString() : date}
+                  defaultValue={
+                    initial.end ?? (date < dateString() ? dateString() : date)
+                  }
                 />
               </label>
             </div>
@@ -188,6 +320,7 @@ export function BookingForm({ user, date, onClose, onSaved }) {
                 搭建方联系人
                 <input
                   name="builder_contact"
+                  defaultValue={initial.builder_contact || ""}
                   disabled={busy}
                   required
                   maxLength={30}
@@ -197,6 +330,7 @@ export function BookingForm({ user, date, onClose, onSaved }) {
                 搭建方联系电话
                 <input
                   name="builder_phone"
+                  defaultValue={initial.builder_phone || ""}
                   disabled={busy}
                   type="tel"
                   pattern={BUILDER_PHONE_PATTERN}
@@ -264,9 +398,21 @@ export function BookingForm({ user, date, onClose, onSaved }) {
             className="secondary"
             type="button"
             disabled={busy}
-            onClick={onClose}
+            onClick={close}
           >
             取消
+          </Button>
+          <Button
+            className="secondary"
+            type="button"
+            disabled={
+              busy ||
+              imageLoading ||
+              (!!draftIdentity.current.version && !dirty)
+            }
+            onClick={saveDraft}
+          >
+            保存草稿
           </Button>
           <Button
             loading={busy}
@@ -292,6 +438,7 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
   const [caseOpen, setCaseOpen] = useState(false);
   const [caseBusy, setCaseBusy] = useState(false);
   const [rescheduling, setRescheduling] = useState(false);
+  const [copying, setCopying] = useState(false);
   const [item, setItem] = useState(initial);
   const [cancelling, setCancelling] = useState(false),
     [cancelReason, setCancelReason] = useState(""),
@@ -487,6 +634,15 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
       if (mounted.current) setBusy("");
     }
   }
+  if (copying)
+    return (
+      <BookingForm
+        user={user}
+        source={item}
+        onClose={() => setCopying(false)}
+        onSaved={() => onSaved("修改后的新申请已提交，原审核记录保持不变")}
+      />
+    );
   if (rescheduling)
     return (
       <Modal
@@ -597,6 +753,13 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
       <div className="detail-layout">
         <div>
           <Status value={item.status} />
+          {item.source_booking_id && (
+            <div className="info-box">
+              <p>
+                复制修改自申请 {item.source_booking_id}，原申请记录保持不变。
+              </p>
+            </div>
+          )}
           {item.reschedule_of && (
             <div className="info-box">
               <p>
@@ -777,6 +940,16 @@ export function BookingDetail({ item: initial, user, onClose, onSaved }) {
         </div>
       )}
       <div className="dialog-actions">
+        {user.role === "enterprise" &&
+          ["未通过", "已撤回", "过期未审核"].includes(item.status) && (
+            <Button
+              className="primary"
+              disabled={writeBlocked}
+              onClick={() => setCopying(true)}
+            >
+              复制并修改
+            </Button>
+          )}
         {user.role === "enterprise" &&
           item.status === "已通过" &&
           item.start >= dateString() &&

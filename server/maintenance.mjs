@@ -1,4 +1,3 @@
-import { fork } from "node:child_process";
 import { statfsSync, statSync } from "node:fs";
 import path from "node:path";
 import { tx, today } from "./core.mjs";
@@ -7,6 +6,8 @@ import { transportConfigured } from "./integrations.mjs";
 import { randomUUID } from "node:crypto";
 import { integrationReadiness } from "./readiness.mjs";
 import { overdueCases } from "./casework.mjs";
+import { superviseMaintenance } from "./maintenance-process.mjs";
+import { capacityPolicy, retentionPolicy } from "./retention.mjs";
 
 const integer = (v, f, min, max) => {
   const n = Number(v ?? f);
@@ -14,7 +15,39 @@ const integer = (v, f, min, max) => {
     throw new Error("维护参数无效");
   return n;
 };
+const workerAlive = (lease) => {
+  if (!Number.isInteger(lease?.workerPid) || lease.workerPid <= 0) return false;
+  try {
+    process.kill(lease.workerPid, 0);
+    return true;
+  } catch (error) {
+    return error.code !== "ESRCH";
+  }
+};
 export function createMaintenance(db, dbPath, options = {}) {
+  const timeoutMs = integer(
+      options.timeoutMs ??
+        integer(process.env.MAINTENANCE_TIMEOUT_SECONDS, 1800, 1, 86400) * 1000,
+      1800000,
+      100,
+      86400000,
+    ),
+    leaseMs = integer(
+      options.leaseMs ??
+        integer(process.env.MAINTENANCE_LEASE_SECONDS, 120, 30, 3600) * 1000,
+      120000,
+      100,
+      3600000,
+    ),
+    renewMs = Math.max(25, Math.floor(leaseMs / 4)),
+    graceMs = integer(
+      options.graceMs ??
+        integer(process.env.MAINTENANCE_KILL_GRACE_SECONDS, 5, 1, 30) * 1000,
+      5000,
+      20,
+      30000,
+    ),
+    confirmMs = integer(options.confirmMs, 5000, 20, 10000);
   const memory = dbPath === ":memory:",
     config = {
       dbPath: path.resolve(dbPath),
@@ -30,6 +63,12 @@ export function createMaintenance(db, dbPath, options = {}) {
         720,
       ),
       keep: integer(options.keep ?? process.env.BACKUP_KEEP, 14, 2, 365),
+      capacity: capacityPolicy({
+        ...process.env,
+        DATABASE_MAX_MB: options.databaseMaxMb ?? process.env.DATABASE_MAX_MB,
+        BACKUP_MAX_MB: options.backupMaxMb ?? process.env.BACKUP_MAX_MB,
+      }),
+      retention: retentionPolicy(),
     };
   const minBytes =
     integer(
@@ -42,7 +81,9 @@ export function createMaintenance(db, dbPath, options = {}) {
     1024;
   let running = null,
     timer,
-    initial;
+    initial,
+    active,
+    closing = false;
   const state = (key) => {
     try {
       return JSON.parse(
@@ -70,10 +111,33 @@ export function createMaintenance(db, dbPath, options = {}) {
             const s = statfsSync(path.dirname(config.dbPath));
             return Number(s.bavail) * Number(s.bsize);
           })();
+      const databaseBytes = memory
+          ? null
+          : [
+              config.dbPath,
+              config.dbPath + "-wal",
+              config.dbPath + "-shm",
+            ].reduce((bytes, file) => {
+              try {
+                return bytes + statSync(file).size;
+              } catch (error) {
+                if (error.code === "ENOENT") return bytes;
+                throw error;
+              }
+            }, 0),
+        databaseLimitReached =
+          !!config.capacity.databaseMaxBytes &&
+          databaseBytes !== null &&
+          databaseBytes >= config.capacity.databaseMaxBytes;
       return {
-        ok: freeBytes === null || freeBytes >= minBytes,
+        ok:
+          (freeBytes === null || freeBytes >= minBytes) &&
+          !databaseLimitReached,
         database: true,
         freeBytes,
+        databaseBytes,
+        databaseMaxBytes: config.capacity.databaseMaxBytes,
+        databaseLimitReached,
       };
     } catch {
       return { ok: false, database: false, freeBytes: null };
@@ -96,6 +160,12 @@ export function createMaintenance(db, dbPath, options = {}) {
     return result;
   }
   function run(force = false) {
+    if (closing)
+      return Promise.resolve({
+        ok: true,
+        skipped: true,
+        reason: "服务正在关闭",
+      });
     if (memory) return Promise.resolve({ ok: true, skipped: true });
     if (running) return running;
     // Defer acquisition so even synchronous SQLite/fork failures belong to the
@@ -104,15 +174,24 @@ export function createMaintenance(db, dbPath, options = {}) {
       .then(async () => {
         const leaseId = randomUUID();
         let acquired = false,
-          result;
+          result,
+          exitConfirmed = true;
         try {
+          if (closing) return { ok: true, skipped: true };
           acquired = tx(db, () => {
             const lease = state("maintenanceLease");
             if (lease?.expires > Date.now()) return false;
+            // An expired clock lease must never admit work over a still-live
+            // worker (including an orphan whose parent has died).
+            if (workerAlive(lease)) return false;
             db.prepare(
               "INSERT INTO maintenance_state VALUES('maintenanceLease',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
             ).run(
-              JSON.stringify({ id: leaseId, expires: Date.now() + 3600000 }),
+              JSON.stringify({
+                id: leaseId,
+                ownerPid: process.pid,
+                expires: Date.now() + leaseMs,
+              }),
             );
             return true;
           });
@@ -122,38 +201,47 @@ export function createMaintenance(db, dbPath, options = {}) {
               skipped: true,
               reason: "另一个服务实例正在维护",
             };
-          result = await new Promise((resolve) => {
-            const child = fork(
+          active = superviseMaintenance({
+            // A direct constructor option allows isolated process fixtures;
+            // deployment configuration cannot choose an executable/module.
+            worker:
+              options.workerUrl ||
               new URL("./maintenance-worker.mjs", import.meta.url),
-              [JSON.stringify({ ...config, force, reserveBytes: minBytes })],
-              { stdio: ["ignore", "ignore", "pipe", "ipc"] },
-            );
-            let reported,
-              diagnostic = "";
-            child.stderr.on("data", (b) => {
-              diagnostic = (diagnostic + b).slice(-2000);
-            });
-            child.on("message", (m) => {
-              reported = m;
-            });
-            child.on("error", (e) => resolve({ ok: false, error: e.message }));
-            child.on("exit", (code) =>
-              resolve(
-                code === 0 && reported
-                  ? reported
-                  : {
-                      ok: false,
-                      error:
-                        reported?.error || diagnostic || "维护进程异常退出",
-                    },
-              ),
-            );
+            config: {
+              ...config,
+              force,
+              reserveBytes: minBytes,
+              leaseId,
+              ownerPid: process.pid,
+            },
+            timeoutMs,
+            renewMs,
+            graceMs,
+            confirmMs,
+            renew: (workerPid) =>
+              tx(db, () => {
+                const lease = state("maintenanceLease");
+                if (lease?.id !== leaseId) return false;
+                db.prepare(
+                  "UPDATE maintenance_state SET value=? WHERE key='maintenanceLease'",
+                ).run(
+                  JSON.stringify({
+                    ...lease,
+                    workerPid,
+                    expires: Date.now() + leaseMs,
+                  }),
+                );
+                return true;
+              }),
           });
+          result = await active.promise;
+          exitConfirmed = result.exitConfirmed;
+          active = null;
           if (!result.ok) result = failure(result.error);
         } catch (error) {
           result = failure(error);
         } finally {
-          if (acquired) {
+          if (acquired && exitConfirmed) {
             try {
               tx(db, () => {
                 if (state("maintenanceLease")?.id === leaseId)
@@ -182,8 +270,13 @@ export function createMaintenance(db, dbPath, options = {}) {
       const h = health(),
         backup = state("backup"),
         maintenance = state("maintenance"),
-        warnings = [];
+        warnings = [],
+        lease = state("maintenanceLease");
       if (!h.ok) warnings.push("数据库或磁盘空间异常，请立即检查服务与数据卷");
+      if (h.databaseLimitReached)
+        warnings.push(
+          "数据库已达到配置的写入上限，新申报和草稿暂停保存；查询、审批和备份仍可使用",
+        );
       if (!backup) warnings.push("尚无自动备份成功记录");
       if (backup) {
         try {
@@ -211,10 +304,35 @@ export function createMaintenance(db, dbPath, options = {}) {
       if (maintenance && !maintenance.ok)
         warnings.push("最近一次维护失败，请查看失败信息");
       if (!config.backupHours) warnings.push("自动备份已关闭");
+      if (lease?.expires <= Date.now() && workerAlive(lease))
+        warnings.push(
+          "维护租约已过期但工作进程仍存活，为避免并行已阻止新任务，请检查维护进程",
+        );
+      const capacity = state("capacity");
+      if (capacity?.databaseExceeded)
+        warnings.push("数据库文件总量已达到容量预警阈值，请评估历史保留与扩容");
+      if (capacity?.backupExceeded)
+        warnings.push(
+          "备份目录总量已达到容量预警阈值，请转移或扩容；系统不会自动删除手动备份",
+        );
+      if (capacity?.scanError)
+        warnings.push("容量扫描未完成，请检查目录与权限");
       return {
         health: h,
-        running: !!running || state("maintenanceLease")?.expires > Date.now(),
+        running: !!running || lease?.expires > Date.now() || workerAlive(lease),
         maintenance,
+        lifecycle: {
+          timeoutSeconds: timeoutMs / 1000,
+          leaseSeconds: leaseMs / 1000,
+          renewSeconds: renewMs / 1000,
+          killGraceSeconds: graceMs / 1000,
+        },
+        capacity: capacity || { ...config.capacity, scannedAt: null },
+        retention: state("retention") || {
+          ...config.retention,
+          eligible: null,
+          removed: null,
+        },
         backup,
         backupHours: config.backupHours,
         keep: config.keep,
@@ -264,9 +382,15 @@ export function createMaintenance(db, dbPath, options = {}) {
       timer.unref();
     },
     async close() {
+      closing = true;
       clearTimeout(initial);
       clearInterval(timer);
-      if (running) await running;
+      active?.stop("服务关闭，维护任务已终止");
+      try {
+        if (running) await running;
+      } finally {
+        closing = false;
+      }
     },
   };
 }

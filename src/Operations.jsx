@@ -164,6 +164,70 @@ export default function Operations({ notify }) {
             <ErrorBox key={w}>{w}</ErrorBox>
           ))}
           <div className="operations-detail">
+            <h3>容量与历史保留</h3>
+            <p>
+              数据库及辅助文件：
+              {(
+                (data.capacity?.databaseBytes ||
+                  data.health?.databaseBytes ||
+                  0) / 1048576
+              ).toFixed(1)}{" "}
+              MB；备份目录全部文件：
+              {((data.capacity?.backupBytes || 0) / 1048576).toFixed(1)} MB（
+              {data.capacity?.backupFiles || 0} 个）。容量扫描：
+              {data.capacity?.scannedAt
+                ? format(data.capacity.scannedAt)
+                : "等待维护扫描"}
+              。
+            </p>
+            {data.capacity?.scanError && (
+              <ErrorBox>{data.capacity.scanError}</ErrorBox>
+            )}
+            <p>
+              历史清理：
+              {data.retention?.enabled
+                ? "已配置启用，仍需有效备份及保留期校验"
+                : "仅预览，不删除历史"}
+              ；每批最多 {data.retention?.batchSize || "—"}{" "}
+              条。审计证据、仍有关联的设计图及未解决的发送任务保留。
+            </p>
+            {data.retention && (
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>类别</th>
+                      <th>本批可清理</th>
+                      <th>本轮已清理</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {["archives", "delivery_jobs", "notifications"].map(
+                      (key) => (
+                        <tr key={key}>
+                          <td>
+                            {
+                              {
+                                archives: "无引用图片归档",
+                                delivery_jobs: "已结束投递记录",
+                                notifications: "超期未读消息",
+                              }[key]
+                            }
+                          </td>
+                          <td>{data.retention.eligible?.[key] || 0}</td>
+                          <td>{data.retention.removed?.[key] || 0}</td>
+                        </tr>
+                      ),
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <p>
+              维护任务总时限：{data.lifecycle?.timeoutSeconds || "—"}{" "}
+              秒；租约续期：{data.lifecycle?.renewSeconds || "—"}{" "}
+              秒。备份保留数量不等于目录容量上限，手动文件不会自动删除。
+            </p>
             <h3>外部服务接入检查</h3>
             <p>
               数据库已分配{" "}

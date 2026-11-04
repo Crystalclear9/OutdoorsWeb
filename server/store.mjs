@@ -9,7 +9,7 @@ export function openStore(filename) {
       mode: 0o700,
     });
   const db = new DatabaseSync(filename);
-  if (db.prepare("PRAGMA user_version").get().user_version > 8) {
+  if (db.prepare("PRAGMA user_version").get().user_version > 9) {
     db.close();
     throw new Error("数据库版本高于当前程序，请使用匹配版本，禁止直接降级");
   }
@@ -76,6 +76,7 @@ export function openStore(filename) {
         .map((c) => c.name);
     for (const [name, type] of [
       ["reschedule_of", "TEXT REFERENCES bookings(id)"],
+      ["source_booking_id", "TEXT REFERENCES bookings(id)"],
       ["cancelled", "INTEGER NOT NULL DEFAULT 0"],
       ["cancel_reason", "TEXT NOT NULL DEFAULT ''"],
       ["cancelled_at", "TEXT"],
@@ -241,7 +242,26 @@ export function openStore(filename) {
         UPDATE booking_fees SET state=CASE WHEN state='submitted' THEN 'reconcile' ELSE 'void' END,note='原预约已取消，请停止付款；已提交流水的款项须由财务核实后处理',version=version+1,updated=NEW.cancelled_at
         WHERE booking_id=NEW.id AND state IN ('due','submitted');
       END;
-      PRAGMA user_version=8;
+      CREATE TABLE IF NOT EXISTS enterprise_verifications(
+        user_id TEXT PRIMARY KEY REFERENCES users(id),
+        state TEXT NOT NULL CHECK(state IN ('pending','verified','rejected')),
+        snapshot_hash TEXT NOT NULL,evidence TEXT NOT NULL DEFAULT '',note TEXT NOT NULL DEFAULT '',
+        reviewer TEXT REFERENCES users(id),reviewed TEXT,version INTEGER NOT NULL DEFAULT 1
+      );
+      CREATE TABLE IF NOT EXISTS booking_drafts(
+        id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),payload TEXT NOT NULL,
+        image BLOB,image_type TEXT,version INTEGER NOT NULL DEFAULT 1,created TEXT NOT NULL,updated TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS booking_drafts_user ON booking_drafts(user_id,updated);
+      CREATE TRIGGER IF NOT EXISTS booking_immutable_source BEFORE UPDATE OF source_booking_id ON bookings
+      WHEN NEW.source_booking_id IS NOT OLD.source_booking_id
+      BEGIN SELECT RAISE(ABORT,'IMMUTABLE_BOOKING'); END;
+      CREATE TABLE IF NOT EXISTS enterprise_verification_history(
+        user_id TEXT NOT NULL REFERENCES users(id),version INTEGER NOT NULL,state TEXT NOT NULL,
+        profile TEXT NOT NULL,evidence TEXT NOT NULL,note TEXT NOT NULL,reviewer TEXT NOT NULL REFERENCES users(id),reviewed TEXT NOT NULL,
+        PRIMARY KEY(user_id,version)
+      );
+      PRAGMA user_version=9;
     `);
     if (!columns("delivery_jobs").includes("version"))
       db.exec(

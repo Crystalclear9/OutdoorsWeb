@@ -7,9 +7,12 @@ import {
   randomToken,
 } from "./security.mjs";
 import { PERMISSION_KEYS, can } from "../shared/permissions.js";
+import { createVerificationRoutes } from "./verification-routes.mjs";
+import { createDraftRoutes } from "./draft-routes.mjs";
 import { createCaptcha } from "./captcha.mjs";
 import { businessRoutes, archivedImage } from "./business.mjs";
 import { caseworkRoutes } from "./casework.mjs";
+import { checkDraftSource } from "./draft-routes.mjs";
 import { createMfa } from "./mfa.mjs";
 import { integrationRoutes, enqueueResult } from "./integrations.mjs";
 import {
@@ -86,9 +89,55 @@ export async function createApi(db, options = {}) {
     v.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
   const userById = (id) => db.prepare("SELECT * FROM users WHERE id=?").get(id);
   const bookingColumns =
-    "id,user_id,company,contact,phone,builder_contact,builder_phone,content_only,start,end,slot,status,reason,created,reviewed,version,cancelled,cancel_reason,cancelled_at,reschedule_of";
+    "id,user_id,company,contact,phone,builder_contact,builder_phone,content_only,start,end,slot,status,reason,created,reviewed,version,cancelled,cancel_reason,cancelled_at,reschedule_of,source_booking_id";
   const bookingById = (id) =>
     db.prepare(`SELECT ${bookingColumns} FROM bookings WHERE id=?`).get(id);
+  // Queue thresholds describe internal review attention, never an automatic
+  // approval deadline or a message sent to an enterprise.
+  const reviewPolicy = (url) => {
+    const integer = (key, fallback, min, max) => {
+      const value = url.searchParams.get(key);
+      fail(
+        value !== null &&
+          (!/^\d+$/.test(value) || Number(value) < min || Number(value) > max),
+        400,
+        "审批提醒阈值无效",
+      );
+      return value === null ? fallback : Number(value);
+    };
+    const upcomingDays = integer("upcomingDays", 2, 0, 30),
+      overdueHours = integer("overdueHours", 24, 1, 720),
+      date = today();
+    return {
+      upcomingDays,
+      overdueHours,
+      date,
+      upcomingThrough: new Date(Date.parse(date) + upcomingDays * 86400000)
+        .toISOString()
+        .slice(0, 10),
+      overdueBefore: new Date(
+        Date.now() - overdueHours * 3600000,
+      ).toISOString(),
+    };
+  };
+  const reviewQueue = (policy) => {
+    const row = db
+      .prepare(
+        "SELECT COUNT(*) pending,COALESCE(SUM(start<=?),0) upcoming,COALESCE(SUM(created<?),0) overdue,COALESCE(SUM(start<=? OR created<?),0) attention FROM bookings WHERE status='待审核' AND cancelled=0 AND start>=?",
+      )
+      .get(
+        policy.upcomingThrough,
+        policy.overdueBefore,
+        policy.upcomingThrough,
+        policy.overdueBefore,
+        policy.date,
+      );
+    return {
+      ...row,
+      upcomingDays: policy.upcomingDays,
+      overdueHours: policy.overdueHours,
+    };
+  };
   const reviewCheck = (row) => {
     const blockers = [];
     if (row.reschedule_of) {
@@ -191,6 +240,7 @@ export async function createApi(db, options = {}) {
     const { user_id, ...result } = b;
     return {
       ...bookingView(result, u?.role === "admin"),
+      ...(can(present(u), "bookings.review") ? { user_id } : {}),
       hasImage: true,
     };
   };
@@ -233,6 +283,8 @@ export async function createApi(db, options = {}) {
     options.maintenance,
   );
   const casework = caseworkRoutes(db, sec, send, notify);
+  const verifications = createVerificationRoutes(db, sec, send);
+  const drafts = createDraftRoutes(db, sec, send, options.maintenance);
   const mfa = createMfa(db, options.dbPath, sec, send, {
     secure: options.secureCookies,
   });
@@ -258,6 +310,8 @@ export async function createApi(db, options = {}) {
     if (await mfa.route(req, res, url)) return;
     if (await integrations(req, res, url)) return;
     if (await casework(req, res, url)) return;
+    if (await verifications(req, res, url)) return;
+    if (await drafts(req, res, url)) return;
     if (await business(req, res, url)) return;
     if (p === "/api/health" && m === "GET") {
       const h = options.maintenance.health();
@@ -540,6 +594,7 @@ export async function createApi(db, options = {}) {
         counts: Object.fromEntries(
           rows.map((r) => [r.display_status, r.count]),
         ),
+        ...(all ? { reviewQueue: reviewQueue(reviewPolicy(url)) } : {}),
       });
     }
     if (p === "/api/bookings/reviewers" && m === "GET") {
@@ -570,7 +625,24 @@ export async function createApi(db, options = {}) {
         q = clean(url.searchParams.get("q"), 80),
         from = url.searchParams.get("from") || "",
         to = url.searchParams.get("to") || "",
-        reviewer = url.searchParams.get("reviewer") || "";
+        reviewer = url.searchParams.get("reviewer") || "",
+        reviewScope = url.searchParams.get("reviewScope") || "all",
+        order = url.searchParams.get("order"),
+        policy = reviewerAccess ? reviewPolicy(url) : null;
+      fail(
+        !["all", "upcoming", "overdue", "attention"].includes(reviewScope),
+        400,
+        "审批队列筛选无效",
+      );
+      fail(
+        !reviewerAccess &&
+          (reviewScope !== "all" ||
+            order === "start" ||
+            url.searchParams.has("upcomingDays") ||
+            url.searchParams.has("overdueHours")),
+        403,
+        "仅审核人员可以使用审批提醒队列",
+      );
       fail(
         (from && !dateValid(from)) ||
           (to && !dateValid(to)) ||
@@ -615,6 +687,20 @@ export async function createApi(db, options = {}) {
         conditions.push("(company LIKE ? OR contact LIKE ? OR id LIKE ?)");
         args.push(...Array(3).fill(`%${q}%`));
       }
+      if (reviewScope !== "all") {
+        conditions.push("status='待审核' AND cancelled=0 AND start>=?");
+        args.push(policy.date);
+        if (reviewScope === "upcoming") {
+          conditions.push("start<=?");
+          args.push(policy.upcomingThrough);
+        } else if (reviewScope === "overdue") {
+          conditions.push("created<?");
+          args.push(policy.overdueBefore);
+        } else {
+          conditions.push("(start<=? OR created<?)");
+          args.push(policy.upcomingThrough, policy.overdueBefore);
+        }
+      }
       const where = conditions.length
           ? " WHERE " + conditions.join(" AND ")
           : "",
@@ -622,14 +708,18 @@ export async function createApi(db, options = {}) {
           1,
           Math.min(100000, parseInt(url.searchParams.get("page")) || 1),
         ),
-        limit = 15;
+        limit = 15,
+        ordering =
+          order === "start"
+            ? "start ASC,created ASC,id ASC"
+            : `created ${order === "oldest" ? "ASC" : "DESC"},id ${order === "oldest" ? "ASC" : "DESC"}`;
       const total = db
         .prepare("SELECT COUNT(*) AS total FROM bookings" + where)
         .get(...args).total;
       return send(res, {
         items: db
           .prepare(
-            `SELECT ${bookingColumns}${reviewerAccess ? ",reviewer,COALESCE((SELECT contact FROM users WHERE id=bookings.reviewer),'') AS reviewerName" : ""} FROM bookings${where} ORDER BY created ${url.searchParams.get("order") === "oldest" ? "ASC" : "DESC"},id ${url.searchParams.get("order") === "oldest" ? "ASC" : "DESC"} LIMIT ? OFFSET ?`,
+            `SELECT ${bookingColumns}${reviewerAccess ? ",reviewer,COALESCE((SELECT contact FROM users WHERE id=bookings.reviewer),'') AS reviewerName" : ""} FROM bookings${where} ORDER BY ${ordering} LIMIT ? OFFSET ?`,
           )
           .all(...args, limit, (page - 1) * limit)
           .map((b) => ({
@@ -637,10 +727,22 @@ export async function createApi(db, options = {}) {
             ...(can(present(u), "bookings.review") && b.status === "待审核"
               ? { reviewCheck: reviewCheck(b) }
               : {}),
+            ...(reviewerAccess &&
+            b.status === "待审核" &&
+            !expiredReview(b) &&
+            !b.cancelled
+              ? {
+                  reviewPriority: {
+                    upcoming: b.start <= policy.upcomingThrough,
+                    overdue: b.created < policy.overdueBefore,
+                  },
+                }
+              : {}),
           })),
         total,
         page,
         pages: Math.max(1, Math.ceil(total / limit)),
+        ...(reviewerAccess ? { reviewQueue: reviewQueue(policy) } : {}),
       });
     }
     if (p === "/api/bookings" && m === "POST") {
@@ -665,6 +767,9 @@ export async function createApi(db, options = {}) {
           start: b.start,
           end: b.end,
           image: hashToken(image.image),
+          source_booking_id: b.source_booking_id || null,
+          draftId: b.draftId || null,
+          draftVersion: b.draftVersion || null,
         }),
       );
       const result = write(req, "enterprise", (fresh) => {
@@ -684,13 +789,33 @@ export async function createApi(db, options = {}) {
         // Recheck the current Beijing date after image processing and lock
         // acquisition; completed idempotent requests above keep their result.
         dates(b.start, b.end, true);
+        const source = checkDraftSource(db, fresh.id, b.source_booking_id);
+        if (b.draftId != null) {
+          fail(
+            typeof b.draftId !== "string" || b.draftId.length > 100,
+            400,
+            "草稿编号无效",
+          );
+          const draft = db
+            .prepare(
+              "SELECT version FROM booking_drafts WHERE id=? AND user_id=?",
+            )
+            .get(b.draftId, fresh.id);
+          fail(!draft, 404, "草稿不存在，请核对申请记录后重新读取");
+          fail(
+            !Number.isSafeInteger(b.draftVersion) ||
+              draft.version !== b.draftVersion,
+            409,
+            "草稿已在其他页面修改，请重新读取后提交",
+          );
+        }
         limit(`booking:${fresh.id}`, 30, 3600000);
         const id = `HUST-${Date.now()}-${randomBytes(6).toString("hex")}`;
         const used = db
           .prepare(
-            "SELECT COALESCE(SUM(length(image)),0) AS bytes FROM bookings WHERE user_id=?",
+            "SELECT (SELECT COALESCE(SUM(length(image)),0) FROM bookings WHERE user_id=?) + (SELECT COALESCE(SUM(length(image)),0) FROM booking_drafts WHERE user_id=? AND id<>COALESCE(?,'')) AS bytes",
           )
-          .get(fresh.id).bytes;
+          .get(fresh.id, fresh.id, b.draftId || null).bytes;
         fail(
           used + image.image.length > 200 * 1024 * 1024,
           413,
@@ -702,7 +827,7 @@ export async function createApi(db, options = {}) {
           "存储服务异常或空间不足，请联系管理员",
         );
         db.prepare(
-          "INSERT INTO bookings(id,user_id,company,contact,phone,builder_contact,builder_phone,content_only,start,end,slot,status,image,image_type,created) VALUES(?,?,?,?,?,?,?,1,?,?,?,?,?,?,?)",
+          "INSERT INTO bookings(id,user_id,company,contact,phone,builder_contact,builder_phone,content_only,start,end,slot,status,image,image_type,created,source_booking_id) VALUES(?,?,?,?,?,?,?,1,?,?,?,?,?,?,?,?)",
         ).run(
           id,
           fresh.id,
@@ -718,7 +843,13 @@ export async function createApi(db, options = {}) {
           image.image,
           image.type,
           now(),
+          source,
         );
+        if (b.draftId)
+          db.prepare("DELETE FROM booking_drafts WHERE id=? AND user_id=?").run(
+            b.draftId,
+            fresh.id,
+          );
         audit(fresh.id, "booking.submitted", id);
         notifyReviewers(
           "新的布展待办",

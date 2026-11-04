@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import EnterpriseVerification from "./EnterpriseVerification.jsx";
 import {
   MagnifyingGlass,
   Users,
@@ -181,6 +182,11 @@ export function UsersPage({ notify }) {
                     <td>
                       {u.role === "enterprise" ? (
                         <div className="row-actions">
+                          <EnterpriseVerification
+                            userId={u.id}
+                            manage
+                            disabled={busy || !ready}
+                          />
                           <button
                             className="text-button"
                             disabled={busy || !ready}

@@ -32,6 +32,11 @@ const profile = (id, contact, permissions = [], superAdmin = false) => ({
 function seed() {
   const users = [
     profile("enterprise", "企业联系人"),
+    {
+      ...profile("other", "活动联系人"),
+      role: "enterprise",
+      company: "示例企业 · 星桥科技",
+    },
     profile("reviewer", "审核老师", ["bookings.review"]),
     profile("finance", "财务老师", ["payments.manage"]),
     profile("super", "系统管理员", [], true),
@@ -47,6 +52,9 @@ function seed() {
   ];
   return {
     schema: 2,
+    drafts: [],
+    verifications: {},
+    verificationHistory: {},
     role: "enterprise",
     users,
     bookings: rows.map(([id, _slot, offset, status, user_id]) => ({
@@ -188,6 +196,12 @@ function validStoredState(saved) {
         row.content_only === 1 &&
         row.location === "大活A座平台" &&
         slot(row.slot) &&
+        (row.designImage == null ||
+          (typeof row.designImage === "string" &&
+            row.designImage.length <= 4200000 &&
+            /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(
+              row.designImage,
+            ))) &&
         version(row.version) &&
         ["待审核", "已通过", "未通过", "已撤回"].includes(row.status) &&
         object(row.contactResult) &&
@@ -267,6 +281,25 @@ function restore() {
           row.contactResult.attempts =
             row.contactResult.state === "reached" ? 1 : 0;
       }
+      if (
+        !Array.isArray(saved.drafts) ||
+        saved.drafts.length > 20 ||
+        saved.drafts.some(
+          (r) =>
+            !strings(r, ["id", "user_id", "created", "updated"]) ||
+            !object(r.payload) ||
+            !version(r.version) ||
+            (r.image != null &&
+              (typeof r.image !== "string" ||
+                !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(
+                  r.image,
+                ) ||
+                r.image.length > 4200000)),
+        )
+      )
+        saved.drafts = [];
+      if (!object(saved.verifications)) saved.verifications = {};
+      if (!object(saved.verificationHistory)) saved.verificationHistory = {};
       return saved;
     }
   } catch {}
@@ -276,8 +309,10 @@ let state = restore();
 function persist() {
   try {
     sessionStorage.setItem(KEY, JSON.stringify(state));
+    return true;
   } catch {
     /* Preview remains usable in memory when storage is unavailable. */
+    return false;
   }
 }
 persist();
@@ -328,6 +363,48 @@ const pageOf = (items, url, size = 15) => {
     page,
   };
 };
+function verificationFor(id, internal = false, historyPage = 1) {
+  const target =
+    state.users.find((u) => u.id === id && u.role === "enterprise") ||
+    error("企业账号不存在", 404);
+  const row = state.verifications[id],
+    profile = {
+      company: target.company,
+      contact: target.contact,
+      phone: target.phone,
+    };
+  const valid =
+    row &&
+    ["pending", "verified", "rejected"].includes(row.state) &&
+    version(row.version) &&
+    object(row.profile);
+  return {
+    state: valid
+      ? JSON.stringify(row.profile) !== JSON.stringify(profile)
+        ? "needs_review"
+        : row.state
+      : "pending",
+    version: valid ? row.version : 0,
+    profile,
+    profileVersion: target.version,
+    reviewed: valid ? row.reviewed : null,
+    note: valid ? row.note : "",
+    ...(internal
+      ? {
+          evidence: valid ? row.evidence : "",
+          historyPage,
+          historyPages: Math.max(
+            1,
+            Math.ceil((state.verificationHistory[id]?.length || 0) / 20),
+          ),
+          history: (state.verificationHistory[id] || []).slice(
+            (historyPage - 1) * 20,
+            historyPage * 20,
+          ),
+        }
+      : {}),
+  };
+}
 function searchable(items, url) {
   const query = (url.searchParams.get("q") || "").trim().toLowerCase();
   return items.filter(
@@ -366,6 +443,47 @@ function createdRange(items, url, message) {
 }
 function reviewExpired(row) {
   return row.status === "待审核" && !row.cancelled && row.start < day();
+}
+function reviewPolicy(url) {
+  const integer = (key, fallback, min, max) => {
+    const value = url.searchParams.get(key);
+    if (
+      value !== null &&
+      (!/^\d+$/.test(value) || Number(value) < min || Number(value) > max)
+    )
+      error("审批提醒阈值无效");
+    return value === null ? fallback : Number(value);
+  };
+  const upcomingDays = integer("upcomingDays", 2, 0, 30),
+    overdueHours = integer("overdueHours", 24, 1, 720);
+  return {
+    upcomingDays,
+    overdueHours,
+    upcomingThrough: new Date(Date.parse(day()) + upcomingDays * 86400000)
+      .toISOString()
+      .slice(0, 10),
+    overdueBefore: new Date(Date.now() - overdueHours * 3600000).toISOString(),
+  };
+}
+function reviewPriority(row, policy) {
+  return {
+    upcoming: row.start <= policy.upcomingThrough,
+    overdue: row.created < policy.overdueBefore,
+  };
+}
+function reviewQueue(policy) {
+  const rows = state.bookings.filter(
+    (row) => row.status === "待审核" && !row.cancelled && row.start >= day(),
+  );
+  const flags = rows.map((row) => reviewPriority(row, policy));
+  return {
+    pending: rows.length,
+    upcoming: flags.filter((r) => r.upcoming).length,
+    overdue: flags.filter((r) => r.overdue).length,
+    attention: flags.filter((r) => r.upcoming || r.overdue).length,
+    upcomingDays: policy.upcomingDays,
+    overdueHours: policy.overdueHours,
+  };
 }
 function displayedStatus(row) {
   return reviewExpired(row)
@@ -470,11 +588,55 @@ function validateDates(b) {
 }
 
 export async function design(id) {
-  booking(id);
+  const row = booking(id);
   // Local packaged illustration; no /api or external image requests.
-  const response = await fetch(designUrl);
+  const response = await fetch(row.designImage || designUrl);
   if (!response.ok) error("演示设计图加载失败");
-  return URL.createObjectURL(await response.blob());
+  const blob = await response.blob();
+  if (row.designImage) return URL.createObjectURL(blob);
+  const url = URL.createObjectURL(blob);
+  try {
+    const image = new Image();
+    image.src = url;
+    await image.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    canvas.getContext("2d").drawImage(image, 0, 0);
+    const png = await new Promise((resolve) =>
+      canvas.toBlob(resolve, "image/png"),
+    );
+    if (!png) error("演示设计图转换失败");
+    return URL.createObjectURL(png);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+function sourceFor(user, id) {
+  if (!id) return null;
+  const row = state.bookings.find((r) => r.id === id && r.user_id === user.id);
+  if (!row) error("原申请不存在", 404);
+  if (!["未通过", "已撤回"].includes(row.status) && !reviewExpired(row))
+    error("仅退回、撤回或过期未审核的申请可复制修改", 409);
+  return id;
+}
+async function draftImage(image) {
+  if (image == null) return null;
+  if (
+    typeof image !== "string" ||
+    image.length > 4200000 ||
+    !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(image)
+  )
+    error("请选择3 MB以内的有效设计图");
+  try {
+    const blob = await (await fetch(image)).blob();
+    if (blob.size > 3 * 1024 * 1024) error("设计图过大");
+    const bitmap = await createImageBitmap(blob);
+    bitmap.close();
+  } catch {
+    error("设计图无法完整解码");
+  }
+  return image;
 }
 export async function request(path, options = {}) {
   const url = new URL(path, "https://showcase.invalid"),
@@ -483,7 +645,31 @@ export async function request(path, options = {}) {
     b = options.body || {};
   let result;
   if (m === "GET") {
-    if (p === "/health") result = { ok: true };
+    if (p.startsWith("/enterprise-verifications/")) {
+      const user = requireUser(),
+        id = decodeURIComponent(p.split("/")[2]),
+        internal = can(user, "accounts.manage");
+      if (user.id !== id && !internal && !can(user, "bookings.review"))
+        error("无权读取企业核验记录", 403);
+      const page = Number(url.searchParams.get("historyPage") || 1);
+      if (!Number.isSafeInteger(page) || page < 1 || page > 1000000)
+        error("核验历史页码无效");
+      result = verificationFor(id, internal, page);
+    } else if (p === "/drafts" || /^\/drafts\/[\w-]+$/.test(p)) {
+      const user = requireUser("enterprise"),
+        id = p.split("/")[2];
+      const rows = state.drafts.filter((r) => r.user_id === user.id);
+      if (id) {
+        const draft = rows.find((r) => r.id === id);
+        if (!draft) error("草稿不存在", 404);
+        result = { draft };
+      } else
+        result = {
+          items: rows
+            .map(({ image, ...row }) => row)
+            .sort((a, b) => b.updated.localeCompare(a.updated)),
+        };
+    } else if (p === "/health") result = { ok: true };
     else if (p === "/auth/session")
       result = { user: structuredClone(getUser()), csrf: null };
     else if (p === "/auth/providers")
@@ -549,6 +735,9 @@ export async function request(path, options = {}) {
           }),
           {},
         ),
+        ...(can(getUser(), "bookings.review")
+          ? { reviewQueue: reviewQueue(reviewPolicy(url)) }
+          : {}),
       };
     else if (p === "/bookings/reviewers") {
       requireUser("bookings.review");
@@ -558,6 +747,20 @@ export async function request(path, options = {}) {
           .map(({ id, contact }) => ({ id, name: contact })),
       };
     } else if (p === "/bookings") {
+      const user = requireUser(),
+        reviewerAccess = can(user, "bookings.review"),
+        scope = url.searchParams.get("reviewScope") || "all",
+        policy = reviewerAccess ? reviewPolicy(url) : null;
+      if (!["all", "upcoming", "overdue", "attention"].includes(scope))
+        error("审批队列筛选无效");
+      if (
+        !reviewerAccess &&
+        (scope !== "all" ||
+          url.searchParams.get("order") === "start" ||
+          url.searchParams.has("upcomingDays") ||
+          url.searchParams.has("overdueHours"))
+      )
+        error("仅审核人员可以使用审批提醒队列", 403);
       let rows = searchable(visibleBookings(), url);
       for (const key of ["status", "reviewer"])
         if (url.searchParams.get(key))
@@ -570,12 +773,40 @@ export async function request(path, options = {}) {
                 : r[key]) === url.searchParams.get(key),
           );
       rows = createdRange(rows, url, "提交日期范围无效");
-      rows.sort(
-        (a, b) =>
-          (url.searchParams.get("order") === "oldest" ? 1 : -1) *
-          a.created.localeCompare(b.created),
+      if (scope !== "all")
+        rows = rows.filter((row) => {
+          if (row.status !== "待审核" || row.cancelled || row.start < day())
+            return false;
+          const flag = reviewPriority(row, policy);
+          return scope === "attention"
+            ? flag.upcoming || flag.overdue
+            : scope === "upcoming"
+              ? flag.upcoming
+              : flag.overdue;
+        });
+      rows.sort((a, b) =>
+        url.searchParams.get("order") === "start"
+          ? a.start.localeCompare(b.start) ||
+            a.created.localeCompare(b.created) ||
+            a.id.localeCompare(b.id)
+          : (url.searchParams.get("order") === "oldest" ? 1 : -1) *
+            (a.created.localeCompare(b.created) || a.id.localeCompare(b.id)),
       );
-      result = pageOf(rows.map(decorated), url);
+      result = {
+        ...pageOf(
+          rows.map((row) => ({
+            ...decorated(row),
+            ...(reviewerAccess &&
+            row.status === "待审核" &&
+            !row.cancelled &&
+            !reviewExpired(row)
+              ? { reviewPriority: reviewPriority(row, policy) }
+              : {}),
+          })),
+          url,
+        ),
+        ...(reviewerAccess ? { reviewQueue: reviewQueue(policy) } : {}),
+      };
     } else if (/^\/bookings\/[^/]+$/.test(p))
       result = { booking: decorated(booking(p.split("/")[2])) };
     else if (p === "/casework") {
@@ -674,7 +905,138 @@ export async function request(path, options = {}) {
       return { ok: true };
     }
     requireUser();
-    if (p === "/bookings/review-batch") {
+    if (p.startsWith("/enterprise-verifications/")) {
+      requireUser("accounts.manage");
+      if (m !== "POST") error("不支持的请求方法", 405);
+      const id = decodeURIComponent(p.split("/")[2]),
+        old = verificationFor(id, true),
+        evidence = clean(b.evidence, 2000),
+        note = clean(b.note, 500);
+      if (
+        !["pending", "verified", "rejected"].includes(b.state) ||
+        !Number.isSafeInteger(b.version) ||
+        !Number.isSafeInteger(b.profileVersion)
+      )
+        error("核验状态或版本无效");
+      if (old.version !== b.version || old.profileVersion !== b.profileVersion)
+        error("企业资料或核验记录已变化，请重新读取后核对", 409);
+      if (b.state !== "pending" && !evidence)
+        error("请填写核验依据，避免录入无关证件信息");
+      if (b.state === "rejected" && !note)
+        error("退回核验需填写企业可见的说明");
+      state.verifications[id] = {
+        ...old,
+        state: b.state,
+        note,
+        evidence,
+        reviewed: now(),
+        version: old.version + 1,
+      };
+      state.verificationHistory[id] = [
+        {
+          state: b.state,
+          profile: old.profile,
+          evidence,
+          note,
+          version: old.version + 1,
+          reviewer: getUser().id,
+          reviewed: now(),
+        },
+        ...(state.verificationHistory[id] || []),
+      ];
+      log("enterprise.verification_updated", id);
+      result = verificationFor(id, true);
+    } else if (p === "/drafts" || /^\/drafts\/[\w-]+$/.test(p)) {
+      const user = requireUser("enterprise"),
+        id = p.split("/")[2];
+      let before;
+      const old = id
+        ? state.drafts.find((r) => r.id === id && r.user_id === user.id)
+        : null;
+      if (id && !old) error("草稿不存在", 404);
+      if (old) matchVersion(old, options);
+      if (m === "DELETE" && old) {
+        before = structuredClone(state);
+        state.drafts = state.drafts.filter((r) => r !== old);
+        result = { ok: true };
+      } else {
+        if ((old && m !== "PATCH") || (!old && m !== "POST"))
+          error("不支持的草稿操作", 405);
+        if (!object(b.payload)) error("草稿内容无效");
+        const payload = {};
+        for (const [key, max] of Object.entries({
+          company: 80,
+          contact: 30,
+          phone: 11,
+          start: 10,
+          end: 10,
+          builder_contact: 30,
+          builder_phone: 25,
+          source_booking_id: 100,
+        })) {
+          if (
+            b.payload[key] != null &&
+            (typeof b.payload[key] !== "string" || b.payload[key].length > max)
+          )
+            error("草稿字段无效");
+          payload[key] = clean(b.payload[key], max);
+        }
+        sourceFor(user, payload.source_booking_id);
+        const image =
+          b.image === undefined
+            ? old?.image || null
+            : await draftImage(b.image);
+        // Image decoding yields. Recheck ownership/version after it so two
+        // tabs/tasks cannot both replace the same saved version.
+        if (getUser()?.id !== user.id)
+          error("演示身份已变化，请重新读取草稿", 409);
+        if (old) {
+          const current = state.drafts.find(
+            (r) => r.id === id && r.user_id === user.id,
+          );
+          if (!current) error("草稿不存在", 404);
+          matchVersion(current, options);
+        }
+        sourceFor(user, payload.source_booking_id);
+        before = structuredClone(state);
+        const existing = !old && state.drafts.find((r) => r.id === b.id);
+        if (existing) {
+          if (
+            existing.user_id !== user.id ||
+            JSON.stringify(existing.payload) !== JSON.stringify(payload) ||
+            existing.image !== image
+          )
+            error("草稿编号已使用", 409);
+          result = { draft: existing };
+        } else {
+          if (
+            !old &&
+            state.drafts.filter((r) => r.user_id === user.id).length >= 20
+          )
+            error("最多保存20份草稿");
+          const draft = {
+            id: old?.id || b.id || crypto.randomUUID(),
+            user_id: user.id,
+            payload,
+            image,
+            version: (old?.version || 0) + 1,
+            created: old?.created || now(),
+            updated: now(),
+          };
+          state.drafts = state.drafts.filter((r) => r !== old);
+          state.drafts.push(draft);
+          result = { draft };
+        }
+      }
+      if (!persist()) {
+        state = before;
+        error(
+          "演示存储空间不足或存储不可用，草稿操作未保存。请减少图片或删除旧草稿后重试。",
+          503,
+        );
+      }
+      return structuredClone(result);
+    } else if (p === "/bookings/review-batch") {
       requireUser("bookings.review");
       result = {
         results: b.items.map((item) => {
@@ -691,6 +1053,15 @@ export async function request(path, options = {}) {
       result = { ok: true };
     } else if (p === "/bookings" && m === "POST") {
       const user = requireUser("enterprise");
+      const source = sourceFor(user, b.source_booking_id);
+      if (b.draftId) {
+        const draft = state.drafts.find(
+          (r) => r.id === b.draftId && r.user_id === user.id,
+        );
+        if (!draft) error("草稿不存在", 404);
+        if (draft.version !== b.draftVersion)
+          error("草稿已在其他页面修改", 409);
+      }
       const fields = enterpriseFields(b);
       validateDates(b);
       if (
@@ -704,6 +1075,8 @@ export async function request(path, options = {}) {
       const row = {
         ...b,
         ...fields,
+        source_booking_id: source,
+        designImage: await draftImage(b.image),
         id: `SHOWCASE-${crypto.randomUUID().slice(0, 8)}`,
         slot: 1,
         content_only: 1,
@@ -720,9 +1093,37 @@ export async function request(path, options = {}) {
         fee: null,
       };
       delete row.image;
+      if (getUser()?.id !== user.id)
+        error("演示身份已变化，请重新读取申请", 409);
+      sourceFor(user, b.source_booking_id);
+      if (b.draftId) {
+        const latest = state.drafts.find(
+          (r) => r.id === b.draftId && r.user_id === user.id,
+        );
+        if (!latest || latest.version !== b.draftVersion)
+          error("草稿已变化，请重新读取后提交", 409);
+      }
+      const beforeDraftSubmission =
+        b.draftId || b.source_booking_id ? structuredClone(state) : null;
       state.bookings.unshift(row);
+      if (b.draftId)
+        state.drafts = state.drafts.filter(
+          (r) => !(r.id === b.draftId && r.user_id === user.id),
+        );
       result = { id: row.id };
       log("booking.submitted", row.id);
+      if (beforeDraftSubmission) {
+        if (!persist()) {
+          state = beforeDraftSubmission;
+          error(
+            b.draftId
+              ? "演示存储空间不足或存储不可用，申请未提交，原草稿已保留。请减少图片后重试。"
+              : "演示存储空间不足或存储不可用，申请未提交，当前输入已保留。请减少图片后重试。",
+            503,
+          );
+        }
+        return structuredClone(result);
+      }
     } else if (/^\/bookings\/[^/]+\/(cancel|reschedule)$/.test(p)) {
       error(
         "临时演示可查看取消及改期表单；此处不提交取消、改期或退款，请在完整服务中办理。",

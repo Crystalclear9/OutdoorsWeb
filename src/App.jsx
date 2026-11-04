@@ -24,6 +24,8 @@ import { BookingForm } from "./Booking.jsx";
 import { UsersPage, AuditPage } from "./Admin.jsx";
 import AllowedArea from "./AllowedArea.jsx";
 import Records from "./Records.jsx";
+import Drafts from "./Drafts.jsx";
+import EnterpriseVerification from "./EnterpriseVerification.jsx";
 import Notices from "./Notices.jsx";
 import Dashboard from "./Dashboard.jsx";
 import Access from "./Access.jsx";
@@ -39,6 +41,7 @@ import { showcaseEnabled } from "./showcase/gate.js";
 
 const titles = {
   casework: ["通知与缴费办理", "查看反馈时限、结果电话和线下缴费办理进度。"],
+  drafts: ["申请草稿", "保存并继续填写尚未提交的申请。"],
   overview: ["服务工作台", "提交桁架内容申请，查看审核结果与活动公告。"],
   venue: ["摆放区域示意", "统一摆放地点为大活A座平台，无需申请具体桁架位置。"],
   records: ["我的申请", "统一管理布展申请，及时查看审核意见。"],
@@ -71,6 +74,7 @@ export default function App({ initialPage = "overview" }) {
   const [notices, setNotices] = useState([]),
     [noticeError, setNoticeError] = useState(""),
     [counts, setCounts] = useState(null),
+    [reviewQueue, setReviewQueue] = useState(null),
     [summaryError, setSummaryError] = useState(""),
     [version, setVersion] = useState(0);
   const admin = user?.role === "admin";
@@ -128,6 +132,9 @@ export default function App({ initialPage = "overview" }) {
       setRecordsStatus(
         [
           "all",
+          "attention",
+          "upcoming",
+          "overdue",
           "待审核",
           "过期未审核",
           "已通过",
@@ -238,17 +245,20 @@ export default function App({ initialPage = "overview" }) {
         .then((r) => {
           if (active) {
             setCounts(r.counts);
+            setReviewQueue(r.reviewQueue || null);
             setSummaryError("");
           }
         })
         .catch((e) => {
           if (active) {
             setCounts(null);
+            setReviewQueue(null);
             setSummaryError(`申请统计待核对：${e.message}`);
           }
         });
     } else {
       setCounts(null);
+      setReviewQueue(null);
       setSummaryError("");
     }
     return () => {
@@ -359,6 +369,9 @@ export default function App({ initialPage = "overview" }) {
       ? [["records", admin ? "企业申报审核" : "我的申请", ClipboardText]]
       : []),
     ["notices", "通知公告", Megaphone],
+    ...(user?.role === "enterprise"
+      ? [["drafts", "申请草稿", ClipboardText]]
+      : []),
     ...(can(user, "accounts.manage") ? [["users", "账号管理", Users]] : []),
     ...(can(user, "audit.read") ? [["audit", "操作日志", ShieldCheck]] : []),
     ...(user?.isSuperAdmin ? [["access", "授权管理", ShieldCheck]] : []),
@@ -605,6 +618,7 @@ export default function App({ initialPage = "overview" }) {
             <Dashboard
               user={user}
               counts={counts}
+              reviewQueue={reviewQueue}
               summaryError={summaryError}
               notices={notices}
               noticeError={noticeError}
@@ -635,6 +649,13 @@ export default function App({ initialPage = "overview" }) {
                 </p>
               </div>
             </section>
+          )}
+          {page === "drafts" && user?.role === "enterprise" && (
+            <Drafts
+              user={user}
+              notify={guardAccount(notify)}
+              onOpen={(draft) => setModal({ type: "booking", draft })}
+            />
           )}
           {page === "records" &&
             user &&
@@ -678,22 +699,27 @@ export default function App({ initialPage = "overview" }) {
           {page === "account" &&
             user &&
             (showcaseEnabled ? (
-              <section className="card">
-                <div className="card-header">
-                  <div>
-                    <h2>演示账号资料</h2>
-                    <p>此身份仅用于页面展示，不是真实登录账号。</p>
+              <>
+                <section className="card">
+                  <div className="card-header">
+                    <div>
+                      <h2>演示账号资料</h2>
+                      <p>此身份仅用于页面展示，不是真实登录账号。</p>
+                    </div>
                   </div>
-                </div>
-                <div className="card-form">
-                  <p>名称：{user.company}</p>
-                  <p>联系人：{user.contact}</p>
-                  <p>示例邮箱：{user.email}</p>
-                  <p className="field-note">
-                    真实登录、密码、验证码与两步验证请在完整服务中使用。此处不收集任何账号凭据。
-                  </p>
-                </div>
-              </section>
+                  <div className="card-form">
+                    <p>名称：{user.company}</p>
+                    <p>联系人：{user.contact}</p>
+                    <p>示例邮箱：{user.email}</p>
+                    <p className="field-note">
+                      真实登录、密码、验证码与两步验证请在完整服务中使用。此处不收集任何账号凭据。
+                    </p>
+                  </div>
+                </section>
+                {user.role === "enterprise" && (
+                  <EnterpriseVerification userId={user.id} />
+                )}
+              </>
             ) : (
               <AccountPage
                 key={user.id}
@@ -740,6 +766,7 @@ export default function App({ initialPage = "overview" }) {
         <BookingForm
           user={user}
           date={dateString()}
+          draft={modal.draft}
           onClose={() => setModal(null)}
           onSaved={() => {
             setModal(null);

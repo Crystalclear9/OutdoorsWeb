@@ -12,17 +12,27 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { today as businessDay } from "./core.mjs";
+import { today as businessDay, tx } from "./core.mjs";
 import { archiveHistory } from "./business.mjs";
 import { overdueCases } from "./casework.mjs";
 import { offsiteConfigured, uploadOffsite } from "./offsite.mjs";
 import { alertExternal } from "./delivery.mjs";
 import { backupMfaKey, backupKeyFile, verifyMfaKey } from "./backup-key.mjs";
 import { assertSqliteTargetAvailable } from "./sqlite-target.mjs";
+import {
+  capacityPolicy,
+  retentionPolicy,
+  measureCapacity,
+  retainHistory,
+} from "./retention.mjs";
 
 const config = JSON.parse(process.argv[2]),
   db = new DatabaseSync(config.dbPath);
 db.exec("PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;");
+// A parent that dies before registering the worker must not leave anonymous
+// work. Admission and PID publication happen atomically before any mutation.
+const parentDisconnected = () => process.exit(1);
+process.on("disconnect", parentDisconnected);
 const save = (key, value) =>
   db
     .prepare(
@@ -74,12 +84,41 @@ async function cleanupBackupParts(cutoff) {
 }
 
 try {
+  if (config.leaseId)
+    tx(db, () => {
+      const lease = JSON.parse(
+        db
+          .prepare(
+            "SELECT value FROM maintenance_state WHERE key='maintenanceLease'",
+          )
+          .get()?.value || "null",
+      );
+      if (lease?.id !== config.leaseId || lease.ownerPid !== config.ownerPid)
+        throw new Error("维护进程未持有有效租约");
+      try {
+        process.kill(config.ownerPid, 0);
+      } catch {
+        throw new Error("维护主进程已退出");
+      }
+      save("maintenanceLease", { ...lease, workerPid: process.pid });
+    });
   const at = Date.now(),
     day = 86400000,
     removed = {};
   // Reclaim interrupted snapshots even when backups are disabled/not due, and
   // before checking whether there is enough space to create the next snapshot.
   removed.staleBackupParts = await cleanupBackupParts(at - day);
+  save(
+    "capacity",
+    await measureCapacity(
+      config.dbPath,
+      config.backupDir,
+      config.capacity || capacityPolicy(),
+    ),
+  );
+  // Preview survives even a later snapshot/transport failure. Destructive
+  // retention runs only after a matching, verified recovery point is available.
+  save("retention", retainHistory(db, config.retention || retentionPolicy()));
   db.exec("BEGIN IMMEDIATE");
   try {
     removed.captchas = db
@@ -194,6 +233,21 @@ try {
       estimated =
         db.prepare("PRAGMA page_count").get().page_count *
         db.prepare("PRAGMA page_size").get().page_size;
+    const beforeBackup = await measureCapacity(
+      config.dbPath,
+      config.backupDir,
+      config.capacity || capacityPolicy(),
+    );
+    save("capacity", beforeBackup);
+    if (
+      beforeBackup.backupMaxBytes &&
+      (beforeBackup.scanError ||
+        beforeBackup.backupBytes + estimated * 1.1 + 1048576 >
+          beforeBackup.backupMaxBytes)
+    )
+      throw new Error(
+        "新备份将超过配置的备份目录上限，已保留已有恢复点，请转移或扩容后重试",
+      );
     if (available < estimated * 1.1 + 1048576 + (config.reserveBytes || 0))
       throw new Error("备份目录空间不足，已停止复制，请先扩容或转移备份");
     const file =
@@ -334,6 +388,36 @@ try {
       }
     }
   }
+  const retention = retainHistory(db, config.retention || retentionPolicy(), {
+    backupVerified: !!backup && (lastAvailable || backup !== last),
+  });
+  save("retention", retention);
+  const capacity = await measureCapacity(
+    config.dbPath,
+    config.backupDir,
+    config.capacity || capacityPolicy(),
+  );
+  save("capacity", capacity);
+  if (
+    capacity.databaseExceeded ||
+    capacity.backupExceeded ||
+    capacity.scanError
+  ) {
+    try {
+      await alertExternal(
+        db,
+        "capacity.warning",
+        "数据库或备份目录达到容量阈值，或容量扫描未完成，请检查运行维护页面",
+      );
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          event: "capacity.alert.failed",
+          error: error.message,
+        }),
+      );
+    }
+  }
   const disk = await statfs(path.dirname(config.dbPath)),
     freeBytes = Number(disk.bavail) * Number(disk.bsize);
   const result = {
@@ -344,6 +428,8 @@ try {
     reclaimedPages,
     backup,
     freeBytes,
+    retention,
+    capacity,
   };
   save("maintenance", result);
   process.send?.(result);
@@ -377,4 +463,6 @@ try {
   process.exitCode = 1;
 } finally {
   db.close();
+  process.off("disconnect", parentDisconnected);
+  if (process.connected) process.disconnect();
 }

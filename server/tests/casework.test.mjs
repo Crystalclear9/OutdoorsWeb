@@ -396,7 +396,7 @@ test("版本六升级到七保留账号与业务，回填电话跟进表且重�
   );
   db.close();
   db = openStore(filename);
-  assert.equal(db.prepare("PRAGMA user_version").get().user_version, 8);
+  assert.equal(db.prepare("PRAGMA user_version").get().user_version, 9);
   assert.equal(
     db.prepare("SELECT company FROM bookings").get().company,
     "旧企业",

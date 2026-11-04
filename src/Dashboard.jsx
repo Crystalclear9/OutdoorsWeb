@@ -20,6 +20,7 @@ import Notifications from "./Notifications.jsx";
 export default function Dashboard({
   user,
   counts,
+  reviewQueue,
   summaryError,
   notices,
   noticeError,
@@ -186,6 +187,24 @@ export default function Dashboard({
               <ArrowUpRight size={17} />
             </button>
           ))}
+        </div>
+      )}
+      {admin && reviewQueue && (
+        <div className="info-box">
+          <div>
+            <strong>需优先核对的审批</strong>
+            <p>
+              临近开始 {reviewQueue.upcoming} 条 · 等待超过{" "}
+              {reviewQueue.overdueHours} 小时 {reviewQueue.overdue}{" "}
+              条。由有审核权限的工作人员接手处理。
+            </p>
+            <Button
+              className="secondary"
+              onClick={() => onNavigate("records", "attention")}
+            >
+              打开优先审批队列
+            </Button>
+          </div>
         </div>
       )}
       <div className="dashboard-grid">

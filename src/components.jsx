@@ -16,6 +16,7 @@ import CaptchaField, { useCaptcha } from "./Captcha.jsx";
 import Sessions from "./Sessions.jsx";
 import Mfa from "./Mfa.jsx";
 import Identity, { LoginExtras } from "./Identity.jsx";
+import EnterpriseVerification from "./EnterpriseVerification.jsx";
 import ExternalSignup from "./ExternalSignup.jsx";
 import universitySignature from "./assets/hust-signature.png";
 
@@ -571,6 +572,12 @@ export function AccountPage({
         )}
         {!user.mustChangePassword && !user.mfaRequired && (
           <Identity notify={notify} />
+        )}
+        {user.role === "enterprise" && !user.mustChangePassword && (
+          <EnterpriseVerification
+            key={`${user.id}-${user.version}`}
+            userId={user.id}
+          />
         )}
         {user.mustChangePassword && (
           <ErrorBox>

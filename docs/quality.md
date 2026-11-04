@@ -4,6 +4,8 @@
 
 ## 验证范围
 
+新增 `server/tests/maintenance-lifecycle.test.mjs`、`retention-capacity.test.mjs` 覆盖真实挂起、父进程退出、续期失效和容量/保留门禁；`drafts.test.mjs` 覆盖私有访问、重开数据库恢复、幂等及原子提交；`enterprise-verification.test.mjs` 覆盖内部依据隐私、版本冲突和资料变更复核；`review-priority.test.mjs` 覆盖临期逾时筛选和稳定排序。浏览器对应 `tests/drafts.spec.js`、`enterprise-verification.spec.js`、`review-priority.spec.js`，Pages草稿另见 `tests/showcase/drafts.showcase.js`。
+
 `tests/dashboard-read-recovery.spec.js` 检查企业和管理员工作台首次及后续读取失败、清除旧统计、禁止将失败显示为成功空态，以及纯读恢复不产生业务写入。
 
 临时 Pages 身份展示另由 `tests/showcase/pages.showcase.js` 检查静态子路径、企业、管理员、游客三种身份、手机及桌面、审批结果共享、申报及公告、重置与零 API 请求。`showcase-gate.test.mjs` 和 `tests/production.spec.js` 检查普通构建不可启用展示身份。这些样本交互不替代真实服务验收，见[临时演示说明](temporary-showcase.md)。
@@ -52,7 +54,7 @@
 
 ## 已知限制
 
-- **维护协调**：维护租约固定一小时，尚无续期和整个工作进程的执行时限。超长或挂起任务需要运维处置；改进需要同时覆盖任务终止、退出确认和租约协调。
+- **维护协调**：已实现总时限、续期及退出确认；PID存活保护以单机共享同一进程命名空间为边界，不支持多个独立PID命名空间的容器共享同一个维护数据库。强杀后的恢复仍须核查最近维护结果。
 - **身份核验**：邮箱仅作为登录名，未验证所有权；企业名称及联系资料不等于企业真实性核验。密码恢复由管理员核验身份后处理。
 - **外部接入**：短信、电话、QQ/微信、S3 和告警需要服务凭据、回调与真实联调。服务商受理不等于实际送达，流水提交不等于到账。
 - **部署范围**：SQLite 用于单机或多个进程共享同一本地数据库文件。多主机独立数据卷不能保证全局互斥，不建议使用网络文件系统共享 SQLite。

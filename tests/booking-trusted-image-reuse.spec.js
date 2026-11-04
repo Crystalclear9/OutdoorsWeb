@@ -232,6 +232,12 @@ test("更换或拒绝新文件清除原图引用，保存失败不偷换图片�
   expect(failed.input).not.toHaveProperty("reuseImage");
   await expect(dialog).toContainText("模拟新图保存失败");
   await page.unroute(`**/api/drafts/${empty.data.draft.id}`, failure);
+  await dialog
+    .getByRole("button", { name: "重新读取草稿状态", exact: true })
+    .click();
+  await dialog
+    .getByRole("button", { name: "保留当前文字和新上传设计图", exact: true })
+    .click();
   const retry = await save(page, "PATCH");
   expect(retry.response.status()).toBe(200);
   expect(retry.input).toEqual(failed.input);

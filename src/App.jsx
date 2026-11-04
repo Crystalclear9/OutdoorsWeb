@@ -60,6 +60,7 @@ export default function App({ initialPage = "overview" }) {
     [logoutBusy, setLogoutBusy] = useState(false),
     [passwordBusy, setPasswordBusy] = useState(false),
     [reviewBusy, setReviewBusy] = useState(false),
+    [noticeBusy, setNoticeBusy] = useState(false),
     [connected, setConnected] = useState(false),
     [serviceError, setServiceError] = useState(""),
     [auth, setAuth] = useState(null),
@@ -82,6 +83,8 @@ export default function App({ initialPage = "overview" }) {
   const logoutPending = useRef(false);
   const passwordPending = useRef(null);
   const reviewPending = useRef(false);
+  const noticePending = useRef(false);
+  const workspaceBusy = reviewBusy || noticeBusy;
   const accountGeneration = sessionGeneration.current;
   // Account requests may settle after logout and a new login, including a login
   // to the same ID. Only the originating authentication generation may act.
@@ -122,9 +125,17 @@ export default function App({ initialPage = "overview" }) {
     reviewPending.current = value;
     setReviewBusy(value);
   }
+  function changeNoticeBusy(value) {
+    noticePending.current = value;
+    setNoticeBusy(value);
+  }
   const go = (p, caseId = "") => {
-    if (reviewPending.current) {
-      notify("审批正在保存，请等待处理结果后再离开");
+    if (reviewPending.current || noticePending.current) {
+      notify(
+        reviewPending.current
+          ? "审批正在保存，请等待处理结果后再离开"
+          : "公告正在保存，请等待处理结果后再离开",
+      );
       return;
     }
     if (p === "casework") setCaseTarget(caseId);
@@ -278,6 +289,7 @@ export default function App({ initialPage = "overview" }) {
       setSessionLoading(false);
       setSessionError("");
       changeReviewBusy(false);
+      changeNoticeBusy(false);
       setUser(null);
       setCsrf(null);
       setPage("overview");
@@ -296,7 +308,8 @@ export default function App({ initialPage = "overview" }) {
     if (
       logoutPending.current ||
       passwordPending.current ||
-      reviewPending.current
+      reviewPending.current ||
+      noticePending.current
     )
       return;
     logoutPending.current = true;
@@ -354,6 +367,7 @@ export default function App({ initialPage = "overview" }) {
     setSessionLoading(false);
     setSessionError("");
     changeReviewBusy(false);
+    changeNoticeBusy(false);
     setExternalSignup(null);
     setOauthMfa(null);
     setUser(u);
@@ -424,7 +438,7 @@ export default function App({ initialPage = "overview" }) {
             <a
               href="#"
               className="brand-link"
-              aria-disabled={reviewBusy || undefined}
+              aria-disabled={workspaceBusy || undefined}
               onClick={(e) => {
                 e.preventDefault();
                 go("overview");
@@ -455,7 +469,7 @@ export default function App({ initialPage = "overview" }) {
                   aria-label={label}
                   aria-current={page === id ? "page" : undefined}
                   className={page === id ? "selected" : ""}
-                  disabled={reviewBusy}
+                  disabled={workspaceBusy}
                   onClick={() => go(id)}
                 >
                   <Icon size={18} weight={page === id ? "fill" : "regular"} />
@@ -500,7 +514,7 @@ export default function App({ initialPage = "overview" }) {
               <div className="user-bar">
                 <button
                   className="account-link"
-                  disabled={reviewBusy}
+                  disabled={workspaceBusy}
                   onClick={() => go("account")}
                 >
                   <span className="avatar small">
@@ -511,8 +525,8 @@ export default function App({ initialPage = "overview" }) {
                 <button
                   className="logout-button"
                   aria-label="退出登录"
-                  disabled={logoutBusy || passwordBusy || reviewBusy}
-                  aria-busy={logoutBusy || passwordBusy || reviewBusy}
+                  disabled={logoutBusy || passwordBusy || workspaceBusy}
+                  aria-busy={logoutBusy || passwordBusy || workspaceBusy}
                   onClick={logout}
                 >
                   <SignOut size={18} />
@@ -672,13 +686,15 @@ export default function App({ initialPage = "overview" }) {
             )}
           {page === "notices" && (
             <Notices
+              key={user?.id || "visitor"}
               items={notices}
               readError={noticeError}
               user={user}
-              onSaved={(msg) => {
+              onBusyChange={guardAccount(changeNoticeBusy)}
+              onSaved={guardAccount((msg) => {
                 notify(msg);
                 refresh();
-              }}
+              })}
             />
           )}
           {page === "casework" &&

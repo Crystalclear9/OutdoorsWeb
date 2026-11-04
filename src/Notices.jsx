@@ -1,27 +1,68 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Plus, Megaphone, ArrowUpRight } from "@phosphor-icons/react";
 import { api } from "./api.js";
 import { can } from "./permissions.js";
 import { Button, ErrorBox, Empty, Modal } from "./components.jsx";
 import { dateString, formatDate } from "./utils.js";
 
-export default function Notices({ items, user, onSaved, readError }) {
+export default function Notices({
+  items,
+  user,
+  onSaved,
+  readError,
+  onBusyChange,
+}) {
   const [modal, setModal] = useState(null),
     [publishing, setPublishing] = useState(false),
     [publishError, setPublishError] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const pending = useRef(false),
+    mounted = useRef(true),
+    busyCallback = useRef(onBusyChange);
+  busyCallback.current = onBusyChange;
+  const writing = publishing || busy;
+  useEffect(() => {
+    mounted.current = true;
+    const prevent = (event) => {
+      if (!pending.current) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", prevent);
+    return () => {
+      mounted.current = false;
+      pending.current = false;
+      window.removeEventListener("beforeunload", prevent);
+      busyCallback.current?.(false);
+    };
+  }, []);
+  function beginWrite(quick = false) {
+    if (pending.current) return false;
+    pending.current = true;
+    busyCallback.current?.(true);
+    if (quick) setPublishing(true);
+    else setBusy(true);
+    return true;
+  }
+  function endWrite() {
+    pending.current = false;
+    if (!mounted.current) return;
+    setPublishing(false);
+    setBusy(false);
+    busyCallback.current?.(false);
+  }
   const open = (m) => {
-    if (busy) return;
+    if (pending.current) return;
     setError("");
     setModal(m);
   };
   async function publish(e) {
     e.preventDefault();
-    if (publishing) return;
+    if (pending.current) return;
     const form = e.currentTarget,
       values = Object.fromEntries(new FormData(form));
-    setPublishing(true);
+    if (!beginWrite(true)) return;
     setPublishError("");
     try {
       await api("/notices", {
@@ -32,19 +73,21 @@ export default function Notices({ items, user, onSaved, readError }) {
           pinned: values.pinned === "on",
         },
       });
-      form.reset();
-      onSaved("公告已发布，所有访客可立即查看");
+      if (mounted.current) {
+        form.reset();
+        onSaved("公告已发布，所有访客可立即查看");
+      }
     } catch (e) {
-      setPublishError(e.message);
+      if (mounted.current) setPublishError(e.message);
     } finally {
-      setPublishing(false);
+      endWrite();
     }
   }
   async function save(e) {
     e.preventDefault();
-    if (busy) return;
+    if (pending.current) return;
     const form = Object.fromEntries(new FormData(e.currentTarget));
-    setBusy(true);
+    if (!beginWrite()) return;
     setError("");
     try {
       await api(`/notices${modal.item ? "/" + modal.item.id : ""}`, {
@@ -52,28 +95,31 @@ export default function Notices({ items, user, onSaved, readError }) {
         headers: modal.item ? { "If-Match": `"${modal.item.version}"` } : {},
         body: { ...form, pinned: form.pinned === "on" },
       });
-      setModal(null);
-      onSaved("公告已保存");
+      if (mounted.current) {
+        setModal(null);
+        onSaved("公告已保存");
+      }
     } catch (e) {
-      setError(e.message);
+      if (mounted.current) setError(e.message);
     } finally {
-      setBusy(false);
+      endWrite();
     }
   }
   async function remove() {
-    if (busy) return;
-    setBusy(true);
+    if (!beginWrite()) return;
     try {
       await api(`/notices/${modal.item.id}`, {
         method: "DELETE",
         headers: { "If-Match": `"${modal.item.version}"` },
       });
-      setModal(null);
-      onSaved("公告已删除");
+      if (mounted.current) {
+        setModal(null);
+        onSaved("公告已删除");
+      }
     } catch (e) {
-      setError(e.message);
+      if (mounted.current) setError(e.message);
     } finally {
-      setBusy(false);
+      endWrite();
     }
   }
   return (
@@ -91,11 +137,7 @@ export default function Notices({ items, user, onSaved, readError }) {
             aria-label="快捷公告投递"
             onSubmit={publish}
             onKeyDown={(e) => {
-              if (
-                (e.ctrlKey || e.metaKey) &&
-                e.key === "Enter" &&
-                !publishing
-              ) {
+              if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !writing) {
                 e.preventDefault();
                 e.currentTarget.requestSubmit();
               }
@@ -105,7 +147,7 @@ export default function Notices({ items, user, onSaved, readError }) {
               公告标题
               <input
                 name="title"
-                disabled={publishing}
+                disabled={writing}
                 required
                 maxLength={80}
                 placeholder="例如：本周桁架内容申报说明"
@@ -115,7 +157,7 @@ export default function Notices({ items, user, onSaved, readError }) {
               公告正文
               <textarea
                 name="content"
-                disabled={publishing}
+                disabled={writing}
                 required
                 maxLength={5000}
                 rows={4}
@@ -124,11 +166,16 @@ export default function Notices({ items, user, onSaved, readError }) {
             </label>
             <div className="notice-compose-footer">
               <label className="check-label">
-                <input type="checkbox" name="pinned" disabled={publishing} />
+                <input type="checkbox" name="pinned" disabled={writing} />
                 置顶此公告
               </label>
               <span className="muted">发布后立即在公告栏显示</span>
-              <Button type="submit" className="primary" loading={publishing}>
+              <Button
+                type="submit"
+                className="primary"
+                loading={publishing}
+                disabled={busy}
+              >
                 <Plus size={18} />
                 发布公告
               </Button>
@@ -155,6 +202,7 @@ export default function Notices({ items, user, onSaved, readError }) {
             <div>
               <button
                 className="notice-title"
+                disabled={writing}
                 onClick={() => open({ type: "read", item: n })}
               >
                 <h3>
@@ -172,12 +220,14 @@ export default function Notices({ items, user, onSaved, readError }) {
               <div className="row-actions">
                 <button
                   className="text-button"
+                  disabled={writing}
                   onClick={() => open({ type: "edit", item: n })}
                 >
                   编辑
                 </button>
                 <button
                   className="text-button danger-text"
+                  disabled={writing}
                   onClick={() => open({ type: "delete", item: n })}
                 >
                   删除
@@ -186,6 +236,7 @@ export default function Notices({ items, user, onSaved, readError }) {
             ) : (
               <button
                 className="icon-button"
+                disabled={writing}
                 aria-label={`阅读${n.title}`}
                 onClick={() => open({ type: "read", item: n })}
               >

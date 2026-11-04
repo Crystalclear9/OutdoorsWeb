@@ -11,7 +11,7 @@ import {
   randomUUID,
   createHash,
 } from "node:crypto";
-import { createReadStream, createWriteStream } from "node:fs";
+import { createReadStream, createWriteStream, constants } from "node:fs";
 import {
   readFile,
   stat,
@@ -22,6 +22,9 @@ import {
   mkdtemp,
   rmdir,
   chmod,
+  copyFile,
+  open,
+  realpath,
 } from "node:fs/promises";
 import { Readable, Transform } from "node:stream";
 import { pipeline, finished } from "node:stream/promises";
@@ -85,7 +88,8 @@ export async function uploadOffsite(source, dbPath, clientOverride) {
     verify,
     snapshotDirectory,
     snapshot,
-    failed;
+    failed,
+    frozenPaths = [source];
   const reserve = Number(process.env.MIN_FREE_DISK_MB || 256) * 1048576;
   const requireSpace = async (bytes) => {
     const disk = await statfs(path.dirname(source));
@@ -93,14 +97,25 @@ export async function uploadOffsite(source, dbPath, clientOverride) {
       throw new Error("异机备份加密临时空间不足，请扩容后重试");
   };
   const frozenSnapshot = async () => {
-    for (const suffix of ["-wal", "-shm", "-journal"]) {
-      try {
-        await lstat(source + suffix);
-        throw new Error("异机备份输入存在 SQLite 辅助文件，请先创建一致性快照");
-      } catch (error) {
-        if (error.code !== "ENOENT") throw error;
+    for (const file of frozenPaths) {
+      for (const suffix of ["-wal", "-shm", "-journal"]) {
+        try {
+          await lstat(file + suffix);
+          throw new Error(
+            "异机备份输入存在 SQLite 辅助文件，请先创建一致性快照",
+          );
+        } catch (error) {
+          if (error.code !== "ENOENT") throw error;
+        }
       }
     }
+  };
+  const privateSnapshot = async () => {
+    snapshotDirectory = await mkdtemp(
+      path.join(path.dirname(path.resolve(source)), ".offsite-"),
+    );
+    snapshot = path.join(snapshotDirectory, "snapshot.sqlite");
+    target = path.join(snapshotDirectory, "payload.encrypted.part");
   };
   try {
     const sourceInfo = await stat(source);
@@ -132,11 +147,7 @@ export async function uploadOffsite(source, dbPath, clientOverride) {
         // a new consistent snapshot and its ciphertext must fit concurrently.
         await requireSpace(Math.max(viewBytes, sourceInfo.size) * 2 + 68);
         mfaKey = backupMfaKey(dbPath);
-        snapshotDirectory = await mkdtemp(
-          path.join(path.dirname(path.resolve(source)), ".offsite-"),
-        );
-        snapshot = path.join(snapshotDirectory, "snapshot.sqlite");
-        target = path.join(snapshotDirectory, "payload.encrypted.part");
+        await privateSnapshot();
         current.exec(`VACUUM INTO '${snapshot.replaceAll("'", "''")}'`);
         await chmod(snapshot, 0o600);
         input = snapshot;
@@ -146,9 +157,49 @@ export async function uploadOffsite(source, dbPath, clientOverride) {
     } else {
       // Published snapshots are immutable inputs, never raw WAL/main-file
       // exports. Reject auxiliary files instead of silently omitting them.
+      frozenPaths = [...new Set([source, await realpath(source)])];
       await frozenSnapshot();
       mfaKey = backupKeyFile(source + ".mfa-key");
-      target = source + `.${randomUUID()}.encrypted.part`;
+      const file = await open(source, "r"),
+        header = Buffer.alloc(20);
+      try {
+        await file.read(header, 0, header.length, 0);
+      } finally {
+        await file.close();
+      }
+      if (header[18] === 2 || header[19] === 2) {
+        // Opening a fully checkpointed WAL-format file read-only can itself
+        // create WAL/SHM files. Verify only a private, stable byte-for-byte copy
+        // so an otherwise frozen published snapshot stays untouched.
+        const before = await stat(source, { bigint: true });
+        if (before.nlink > 1n)
+          throw new Error(
+            "独立WAL快照存在硬链接，无法确认冻结状态，请创建独立的一致性副本",
+          );
+        await requireSpace(Number(before.size) * 2 + 68);
+        const sourceHash = await digest(createReadStream(source));
+        await frozenSnapshot();
+        await privateSnapshot();
+        await copyFile(source, snapshot, constants.COPYFILE_EXCL);
+        await chmod(snapshot, 0o600);
+        const copiedHash = await digest(createReadStream(snapshot)),
+          afterHash = await digest(createReadStream(source)),
+          after = await stat(source, { bigint: true });
+        if (
+          ["dev", "ino", "size", "mtimeNs", "ctimeNs"].some(
+            (key) => before[key] !== after[key],
+          ) ||
+          sourceHash !== copiedHash ||
+          sourceHash !== afterHash
+        )
+          throw new Error(
+            "冻结快照复制期间文件发生变化，已停止上传，请创建独立的一致性副本",
+          );
+        await frozenSnapshot();
+        input = snapshot;
+      } else {
+        target = source + `.${randomUUID()}.encrypted.part`;
+      }
     }
     verify = new DatabaseSync(input, { readOnly: true });
     verify.exec("PRAGMA busy_timeout=5000; BEGIN;");

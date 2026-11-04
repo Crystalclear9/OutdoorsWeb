@@ -39,6 +39,9 @@ export function BookingForm({
     [message, setMessage] = useState("");
   const currentReader = useRef(null);
   const imageSelection = useRef(0);
+  const mounted = useRef(true),
+    draftRead = useRef({ generation: 0, controller: null });
+  const [draftCheck, setDraftCheck] = useState(null);
   const [image, setImage] = useState(draft?.image || null),
     [reuseImage, setReuseImage] = useState(draft?.image ? "draft" : null),
     [name, setName] = useState(draft?.image ? "已保存的设计图" : ""),
@@ -46,6 +49,14 @@ export function BookingForm({
     [busy, setBusy] = useState(false),
     [imageLoading, setImageLoading] = useState(false);
   const sourceId = source?.id || draft?.payload.source_booking_id || "";
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      draftRead.current.generation++;
+      draftRead.current.controller?.abort();
+    };
+  }, []);
   useEffect(() => {
     const prevent = (event) => {
       if (dirty || busy) {
@@ -110,8 +121,80 @@ export function BookingForm({
   function imagePayload() {
     return image && reuseImage ? { reuseImage } : { image };
   }
+  async function readDraftState() {
+    if (!draftCheck || draftCheck.phase === "loading" || busy) return;
+    const generation = ++draftRead.current.generation;
+    draftRead.current.controller?.abort();
+    const controller = new AbortController();
+    draftRead.current.controller = controller;
+    setDraftCheck((current) => ({
+      ...current,
+      phase: "loading",
+      server: null,
+    }));
+    setError("");
+    try {
+      const result = await api(`/drafts/${draftIdentity.current.id}`, {
+        signal: controller.signal,
+      });
+      if (!mounted.current || generation !== draftRead.current.generation)
+        return;
+      setDraftCheck((current) => ({
+        ...current,
+        phase: "ready",
+        server: result.draft,
+      }));
+    } catch (e) {
+      if (!mounted.current || generation !== draftRead.current.generation)
+        return;
+      setDraftCheck((current) => ({
+        ...current,
+        phase: e.status === 404 ? "missing" : "error",
+        server: null,
+      }));
+      if (e.status !== 404) setError(`草稿状态读取失败：${e.message}`);
+    }
+  }
+  function continueDraft(keepUpload = false) {
+    if (draftCheck?.phase !== "ready" || busy || imageLoading) return;
+    if (keepUpload && (!image || reuseImage)) return;
+    const saved = draftCheck.server;
+    draftIdentity.current = { id: saved.id, version: saved.version };
+    if (!keepUpload) {
+      setImage(saved.image || null);
+      setReuseImage(saved.image ? "draft" : null);
+      setName(saved.image ? "已核对的已保存设计图" : "");
+    }
+    setDraftCheck(null);
+    setError("");
+    setDirty(true);
+    setMessage("已按您的选择保留当前文字；请核对设计图后保存或提交。");
+  }
+  const base64 = image?.slice(image.indexOf(",") + 1) || "";
+  const imageBytes =
+    Math.floor((base64.length * 3) / 4) -
+    (base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0);
+  const missingNeedsUpload =
+    reuseImage === "draft" && imageBytes > 3 * 1024 * 1024;
+  function continueAsNewDraft() {
+    if (
+      draftCheck?.phase !== "missing" ||
+      busy ||
+      imageLoading ||
+      missingNeedsUpload
+    )
+      return;
+    // A removed draft must never be resurrected under its old identity, and
+    // its image reference is no longer a valid server-side source.
+    draftIdentity.current = { id: crypto.randomUUID(), version: undefined };
+    if (reuseImage === "draft") setReuseImage(null);
+    setDraftCheck(null);
+    setError("");
+    setDirty(true);
+    setMessage("当前文字和设计图已保留，后续保存将创建一份新草稿。");
+  }
   async function saveDraft() {
-    if (busy || imageLoading) return;
+    if (busy || imageLoading || draftCheck) return;
     setBusy(true);
     setError("");
     setMessage("");
@@ -127,6 +210,7 @@ export function BookingForm({
           body: { id: identity.id, payload: payload(), ...imagePayload() },
         },
       );
+      if (!mounted.current) return;
       draftIdentity.current = {
         id: result.draft.id,
         version: result.draft.version,
@@ -137,9 +221,18 @@ export function BookingForm({
       setDirty(false);
       setMessage("草稿已保存到您的账号，关闭或刷新后可在申请草稿继续办理。");
     } catch (e) {
+      if (!mounted.current) return;
       setError(e.message);
+      setDirty(true);
+      if (!e.status || e.status >= 500 || [404, 408, 409].includes(e.status)) {
+        setDraftCheck({
+          phase: "pending",
+          existed: draftIdentity.current.version !== undefined,
+          server: null,
+        });
+      }
     } finally {
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   }
   useEffect(
@@ -196,7 +289,7 @@ export function BookingForm({
   }
   async function submit(e) {
     e.preventDefault();
-    if (busy) return;
+    if (busy || draftCheck) return;
     setError("");
     if (imageLoading) return setError("设计图仍在读取，请稍后提交");
     if (!image) return setError("请上传桁架设计图");
@@ -226,12 +319,13 @@ export function BookingForm({
         headers: { "Idempotency-Key": request.current.key },
         body: payload,
       });
+      if (!mounted.current) return;
       setDirty(false);
       onSaved();
     } catch (e) {
-      setError(e.message);
+      if (mounted.current) setError(e.message);
     } finally {
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   }
   return (
@@ -405,6 +499,104 @@ export function BookingForm({
           我确认申报信息真实，并遵守校园场地管理要求。
         </label>
         <ErrorBox>{error}</ErrorBox>
+        {draftCheck && (
+          <section className="info-box" aria-label="草稿保存结果核对">
+            <div style={{ minWidth: 0, overflowWrap: "anywhere" }}>
+              <h3>草稿保存结果待核对</h3>
+              <p>
+                当前文字、日期和设计图仍保留。保存结果可能已生效，请先只读核对，再显式选择如何继续；核对不会提交申请或覆盖草稿。
+              </p>
+              <Button
+                type="button"
+                className="secondary"
+                style={{ whiteSpace: "normal", maxWidth: "100%" }}
+                disabled={busy || draftCheck.phase === "loading"}
+                onClick={readDraftState}
+              >
+                {draftCheck.phase === "loading"
+                  ? "正在核对草稿…"
+                  : "重新读取草稿状态"}
+              </Button>
+              {draftCheck.phase === "ready" && (
+                <>
+                  <p>
+                    <strong>服务器版本：{draftCheck.server.version}</strong> ·
+                    最后保存：{formatDate(draftCheck.server.updated)}
+                  </p>
+                  <p>
+                    已保存文字：
+                    {draftCheck.server.payload.company || "企业待填"}；
+                    {draftCheck.server.payload.contact || "联系人待填"}；
+                    {draftCheck.server.payload.phone || "电话待填"}；
+                    {draftCheck.server.payload.start || "开始日期待填"} 至{" "}
+                    {draftCheck.server.payload.end || "结束日期待填"}；搭建方{" "}
+                    {draftCheck.server.payload.builder_contact || "待填"} /{" "}
+                    {draftCheck.server.payload.builder_phone || "待填"}
+                  </p>
+                  {draftCheck.server.image ? (
+                    <img
+                      src={draftCheck.server.image}
+                      alt="服务器已保存的设计图"
+                      style={{ maxWidth: "100%", maxHeight: 160 }}
+                    />
+                  ) : (
+                    <p>
+                      服务器草稿没有设计图；采用已保存设计图将清除当前预览，可随后重新选择图片。
+                    </p>
+                  )}
+                  <p>
+                    继续操作将保留上方当前文字和日期，并以此服务器版本为基础保存；其他页面此后再修改时仍会检查版本。
+                  </p>
+                  <Button
+                    type="button"
+                    className="secondary"
+                    style={{ whiteSpace: "normal", maxWidth: "100%" }}
+                    disabled={busy || imageLoading}
+                    onClick={() => continueDraft(false)}
+                  >
+                    保留当前文字，采用已保存设计图
+                  </Button>
+                  {!!image && !reuseImage && (
+                    <Button
+                      type="button"
+                      className="secondary"
+                      style={{ whiteSpace: "normal", maxWidth: "100%" }}
+                      disabled={busy || imageLoading}
+                      onClick={() => continueDraft(true)}
+                    >
+                      保留当前文字和新上传设计图
+                    </Button>
+                  )}
+                </>
+              )}
+              {draftCheck.phase === "missing" && (
+                <>
+                  <p>
+                    {draftCheck.existed
+                      ? "原来保存的草稿已删除或已提交，不能继续引用或重建该草稿。"
+                      : "服务器尚未找到首次创建的草稿；当前输入仍保留，可另存为新草稿。"}
+                  </p>
+                  {missingNeedsUpload && (
+                    <p>
+                      当前预览来自已删除的草稿，图片大于3
+                      MB，已无法引用；请重新选择3
+                      MB以内的原上传文件。文字和预览不会自动丢弃。
+                    </p>
+                  )}
+                  <Button
+                    type="button"
+                    className="secondary"
+                    style={{ whiteSpace: "normal", maxWidth: "100%" }}
+                    disabled={busy || imageLoading || missingNeedsUpload}
+                    onClick={continueAsNewDraft}
+                  >
+                    保留当前内容，另存新草稿
+                  </Button>
+                </>
+              )}
+            </div>
+          </section>
+        )}
         <div className="dialog-actions">
           <span>
             <CheckCircle size={16} />
@@ -423,6 +615,7 @@ export function BookingForm({
             type="button"
             disabled={
               busy ||
+              !!draftCheck ||
               imageLoading ||
               (!!draftIdentity.current.version && !dirty)
             }
@@ -432,7 +625,7 @@ export function BookingForm({
           </Button>
           <Button
             loading={busy}
-            disabled={imageLoading || !image}
+            disabled={imageLoading || !image || !!draftCheck}
             className="primary"
             type="submit"
           >

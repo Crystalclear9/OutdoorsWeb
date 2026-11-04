@@ -4,6 +4,10 @@
 
 ## 验证范围
 
+`server/tests/offsite-frozen-wal.test.mjs` 检查闭库WAL副本连续上传、真实恢复业务和MFA、源目录不变，以及复制期间内容或身份变化、文件别名和失败清理；文件符号链接场景在允许创建链接的Linux环境执行。
+
+`tests/draft-save-recovery.spec.js` 在真实草稿落库后切断响应，检查只读核对、版本冲突、不同图片、404另存和迟到读取关闭，以及明确配额拒绝可直接修正。Pages同类验证见 `tests/showcase/draft-save-recovery.showcase.js`。`tests/booking-notice-saving.spec.js` 检查公告保存期间的导航、退出门禁及真实会话撤销后的恢复。
+
 `server/tests/offsite-live-wal.test.mjs` 保持真实WAL连接和已提交数据，通过实际加密及恢复核对直接库导出的内容，并检查密钥失配、上传失败和临时文件清理。
 
 `server/tests/saved-design-reuse.test.mjs` 使用实际小于3 MB、转换后大于3 MB的图片，检查在线及归档原图、连续草稿保存、原子提交与幂等重试，并验证跨账号拒绝、版本冲突、新上传限制和共享配额。浏览器回归见 `tests/booking-trusted-image-reuse.spec.js`，Pages 回归见 `tests/showcase/trusted-image-reuse.showcase.js`。`retention-capacity.test.mjs` 同时核对真实保留查询的主键索引计划及引用保护结果。

@@ -107,6 +107,12 @@ test("演示存储配额失败时草稿保存、更新和提交均明确失败�
   ).toHaveCount(0);
   expect((await stored(page)).drafts).toHaveLength(0);
   await blockStorage(page, false);
+  await dialog
+    .getByRole("button", { name: "重新读取草稿状态", exact: true })
+    .click();
+  await dialog
+    .getByRole("button", { name: "保留当前内容，另存新草稿", exact: true })
+    .click();
   await dialog.getByRole("button", { name: "保存草稿", exact: true }).click();
   await expect(dialog.getByRole("status")).toContainText("草稿已保存");
   const saved = await stored(page);
@@ -115,6 +121,15 @@ test("演示存储配额失败时草稿保存、更新和提交均明确失败�
   await dialog.getByRole("button", { name: "保存草稿", exact: true }).click();
   await expect(dialog).toContainText("草稿操作未保存");
   expect((await stored(page)).drafts).toEqual(saved.drafts);
+  await dialog
+    .getByRole("button", { name: "重新读取草稿状态", exact: true })
+    .click();
+  await dialog
+    .getByRole("button", {
+      name: "保留当前文字，采用已保存设计图",
+      exact: true,
+    })
+    .click();
   await dialog.getByLabel("搭建方联系人", { exact: true }).fill("搭建工人");
   await dialog
     .getByLabel("搭建方联系电话", { exact: true })

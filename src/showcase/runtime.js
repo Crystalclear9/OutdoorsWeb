@@ -587,13 +587,13 @@ function validateDates(b) {
     error("请选择布展时长不超过3天的未来日期范围");
 }
 
-export async function design(id) {
+export async function designBlob(id) {
   const row = booking(id);
   // Local packaged illustration; no /api or external image requests.
   const response = await fetch(row.designImage || designUrl);
   if (!response.ok) error("演示设计图加载失败");
   const blob = await response.blob();
-  if (row.designImage) return URL.createObjectURL(blob);
+  if (row.designImage) return blob;
   const url = URL.createObjectURL(blob);
   try {
     const image = new Image();
@@ -607,10 +607,13 @@ export async function design(id) {
       canvas.toBlob(resolve, "image/png"),
     );
     if (!png) error("演示设计图转换失败");
-    return URL.createObjectURL(png);
+    return png;
   } finally {
     URL.revokeObjectURL(url);
   }
+}
+export async function design(id) {
+  return URL.createObjectURL(await designBlob(id));
 }
 function sourceFor(user, id) {
   if (!id) return null;

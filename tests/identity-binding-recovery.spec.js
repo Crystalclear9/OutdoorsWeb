@@ -45,6 +45,7 @@ async function account(page) {
       .run("13800138000", user.id);
     return { app, origin, user, messages };
   } catch (error) {
+    await page.request.dispose();
     await page.close();
     await app.close();
     throw error;
@@ -106,6 +107,7 @@ test("企业已验证手机且短信可用时仍不显示通知订阅，也不�
         .get(user.id),
     ).toMatchObject({ sms: 1, voice: 1 });
   } finally {
+    await page.request.dispose();
     await page.close();
     await app.close();
   }
@@ -137,6 +139,7 @@ test("绑定状态首次读取失败可原位纯读恢复，成功后展示真�
     await expect(box.getByRole("checkbox")).toHaveCount(0);
     await expect(box.getByRole("alert")).toHaveCount(0);
   } finally {
+    await page.request.dispose();
     await page.close();
     await app.close();
   }
@@ -213,6 +216,7 @@ test("手机号实际换绑期间锁定关联操作与验证字段，成功重�
   } finally {
     release?.();
     await page.unrouteAll({ behavior: "wait" });
+    await page.request.dispose();
     await page.close();
     await app.close();
   }

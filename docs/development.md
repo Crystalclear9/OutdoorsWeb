@@ -53,7 +53,7 @@ npm run test:docker
 固定 Linux 视觉环境：
 
 ```sh
-docker run --rm -v "$PWD:/workspace" -v /workspace/node_modules -w /workspace -e PLAYWRIGHT_CHANNEL=chromium mcr.microsoft.com/playwright:v1.64.1-noble sh -c 'npm ci && npm run test:visual'
+docker run --rm -v "$PWD:/workspace" -v /workspace/node_modules -w /workspace -e PLAYWRIGHT_CHANNEL=chromium mcr.microsoft.com/playwright:v1.64.1-noble sh -c 'npm ci && npm run build && npm run test:visual'
 ```
 
 ## 压测与视觉基线
@@ -88,7 +88,9 @@ docker run --rm -v "$PWD:/workspace" -v /workspace/node_modules -w /workspace -e
 | `tmp/` 中已确认的截图、日志、报告                 | 可重建诊断；逐项确认，可能同时包含参考材料         |
 | Docker 测试镜像、测试依赖卷及构建缓存             | 可重新构建或拉取，先确认无引用且不含业务数据       |
 
-保留 `data/`、`backups/`、`.env`、数据库、`.mfa-key`、正式 Docker 数据卷、源码字体及视觉基线。不要删除 Docker 数据盘或其他项目资源。Docker 存储盘不一定随镜像删除立即缩小，见[运行维护](operations.md#docker-存储清理)。
+Windows 强制结束浏览器测试进程时，系统临时目录可能留下 `outdoor-browser-tests-*`、`outdoors-visual-*` 等隔离测试目录。应先确认对应测试已经退出、目录来自测试代码且不含业务数据，再删除；不能仅凭文件名批量清理整个系统临时目录。
+
+保留 `data/`、`backups/`、`.env`、正式数据库及配套密钥、正式 Docker 数据卷、源码字体及视觉基线。不要删除 Docker 数据盘或其他项目资源。Docker 存储盘不一定随镜像删除立即缩小，见[运行维护](operations.md#docker-存储清理)。
 
 ## 常用命令
 

@@ -4,6 +4,10 @@
 
 ## 验证范围
 
+`tests/booking-copy-image-race.spec.js` 使用不同像素设计图验证复制时的迟到原图不会覆盖新上传内容，并检查连续退回复制的来源关联；`server/tests/reschedule-draft-quota.test.mjs` 验证普通及已归档源图改期时计入草稿配额，超额拒绝无副作用，释放空间后可重试。
+
+`tests/font-csp.spec.js` 在真实服务响应的安全策略下检查字体加载，捕获字体策略违规及加载失败；复制图片回归同时检查未产生 Blob URL 连接策略违规。测试收尾会显式释放测试 API 客户端和浏览器页面再关闭隔离服务。
+
 新增 `server/tests/maintenance-lifecycle.test.mjs`、`retention-capacity.test.mjs` 覆盖真实挂起、父进程退出、续期失效和容量/保留门禁；`drafts.test.mjs` 覆盖私有访问、重开数据库恢复、幂等及原子提交；`enterprise-verification.test.mjs` 覆盖内部依据隐私、版本冲突和资料变更复核；`review-priority.test.mjs` 覆盖临期逾时筛选和稳定排序。浏览器对应 `tests/drafts.spec.js`、`enterprise-verification.spec.js`、`review-priority.spec.js`，Pages草稿另见 `tests/showcase/drafts.showcase.js`。
 
 `tests/dashboard-read-recovery.spec.js` 检查企业和管理员工作台首次及后续读取失败、清除旧统计、禁止将失败显示为成功空态，以及纯读恢复不产生业务写入。

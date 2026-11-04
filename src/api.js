@@ -51,9 +51,9 @@ export async function api(path, options = {}) {
   }
   return data;
 }
-export async function getDesign(id) {
+export async function getDesignBlob(id) {
   if (import.meta.env.MODE === "pages" && showcaseEnabled)
-    return (await import("./showcase/runtime.js")).design(id);
+    return (await import("./showcase/runtime.js")).designBlob(id);
   const generation = authGeneration;
   let res, blob;
   try {
@@ -70,5 +70,8 @@ export async function getDesign(id) {
       window.dispatchEvent(new Event("session-expired"));
     throw new Error("无法加载设计图");
   }
-  return URL.createObjectURL(blob);
+  return blob;
+}
+export async function getDesign(id) {
+  return URL.createObjectURL(await getDesignBlob(id));
 }

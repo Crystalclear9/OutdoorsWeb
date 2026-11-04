@@ -10,6 +10,9 @@ export default defineConfig({
     fs: { allow: [".."] },
   },
   build: {
+    // The production CSP permits same-origin fonts, not data: font URLs.
+    assetsInlineLimit: (filePath) =>
+      /\.(?:woff2?|ttf|otf)$/i.test(filePath) ? false : undefined,
     outDir: "../dist",
     emptyOutDir: true,
   },

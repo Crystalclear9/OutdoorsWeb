@@ -302,9 +302,9 @@ export function businessRoutes(db, sec, send, notifyReviewers, maintenance) {
         fail(
           db
             .prepare(
-              "SELECT COALESCE(SUM(length(image)),0) n FROM bookings WHERE user_id=?",
+              "SELECT (SELECT COALESCE(SUM(length(image)),0) FROM bookings WHERE user_id=?) + (SELECT COALESCE(SUM(length(image)),0) FROM booking_drafts WHERE user_id=?) n",
             )
-            .get(u.id).n +
+            .get(u.id, u.id).n +
             image.length >
             200 * 1024 * 1024,
           413,

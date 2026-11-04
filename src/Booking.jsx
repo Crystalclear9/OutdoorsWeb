@@ -9,7 +9,7 @@ import {
   XCircle,
 } from "@phosphor-icons/react";
 import { Button, ErrorBox, Modal, Status } from "./components.jsx";
-import { api, getDesign } from "./api.js";
+import { api, getDesign, getDesignBlob } from "./api.js";
 import { can } from "./permissions.js";
 import { dateString, formatDate } from "./utils.js";
 import AllowedArea from "./AllowedArea.jsx";
@@ -38,12 +38,13 @@ export function BookingForm({
   const [dirty, setDirty] = useState(!!source),
     [message, setMessage] = useState("");
   const currentReader = useRef(null);
+  const imageSelection = useRef(0);
   const [image, setImage] = useState(draft?.image || null),
     [name, setName] = useState(draft?.image ? "已保存的设计图" : ""),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [imageLoading, setImageLoading] = useState(false);
-  const sourceId = initial.source_booking_id || source?.id || "";
+  const sourceId = source?.id || draft?.payload.source_booking_id || "";
   useEffect(() => {
     const prevent = (event) => {
       if (dirty || busy) {
@@ -56,29 +57,32 @@ export function BookingForm({
   }, [dirty, busy]);
   useEffect(() => {
     if (!source || draft) return;
-    let active = true,
-      objectUrl;
+    let active = true;
+    const selection = ++imageSelection.current;
     setImageLoading(true);
-    getDesign(source.id)
-      .then(async (url) => {
-        objectUrl = url;
-        const blob = await (await fetch(url)).blob();
+    getDesignBlob(source.id)
+      .then(async (blob) => {
         const value = await new Promise((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = () => resolve(reader.result);
           reader.onerror = reject;
           reader.readAsDataURL(blob);
         });
-        if (active) {
+        if (active && selection === imageSelection.current) {
           setImage(value);
           setName("原申请设计图（可更换）");
           setDirty(true);
         }
       })
-      .catch(() => active && setError("原设计图读取失败，请重新上传设计图"))
+      .catch(
+        () =>
+          active &&
+          selection === imageSelection.current &&
+          setError("原设计图读取失败，请重新上传设计图"),
+      )
       .finally(() => {
-        if (objectUrl) URL.revokeObjectURL(objectUrl);
-        if (active) setImageLoading(false);
+        if (active && selection === imageSelection.current)
+          setImageLoading(false);
       });
     return () => {
       active = false;
@@ -142,6 +146,9 @@ export function BookingForm({
     if (busy) return;
     const f = e.target.files[0];
     if (!f) return;
+    // Choosing a file supersedes the independently loaded source design,
+    // including its late success, error and loading cleanup.
+    imageSelection.current++;
     setDirty(true);
     setMessage("");
     const previous = currentReader.current;

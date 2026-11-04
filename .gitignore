@@ -16,3 +16,4 @@ backups/
 .mfa-key
 *.encrypted.part
 *.restore.part
+.restore.lock

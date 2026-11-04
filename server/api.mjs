@@ -1039,8 +1039,36 @@ export async function createApi(db, options = {}) {
         title = clean(b.title, 80),
         content = clean(b.content, 5000);
       fail(!title || !content, 400, "请填写公告标题和正文");
-      const target = id || randomUUID();
-      write(req, "notices.manage", (u) => {
+      const key = m === "POST" ? req.headers["idempotency-key"] : undefined;
+      fail(
+        key !== undefined &&
+          (typeof key !== "string" || !/^[\w-]{16,128}$/.test(key)),
+        400,
+        "重复请求标识无效",
+      );
+      const fingerprint = hashToken(
+        JSON.stringify({
+          operation: "notice.create",
+          title,
+          content,
+          pinned: !!b.pinned,
+        }),
+      );
+      const result = write(req, "notices.manage", (u) => {
+        if (key) {
+          const previous = db
+            .prepare("SELECT * FROM idempotency WHERE user_id=? AND key=?")
+            .get(u.id, key);
+          if (previous) {
+            fail(
+              previous.request_hash !== fingerprint,
+              409,
+              "同一请求标识不能用于不同操作或公告内容",
+            );
+            return JSON.parse(previous.response);
+          }
+        }
+        const target = id || randomUUID();
         if (id) {
           const old = db.prepare("SELECT * FROM notices WHERE id=?").get(id);
           fail(!old, 404, "公告不存在");
@@ -1053,8 +1081,14 @@ export async function createApi(db, options = {}) {
             "INSERT INTO notices(id,title,content,pinned,created,updated,author) VALUES(?,?,?,?,?,?,?)",
           ).run(target, title, content, b.pinned ? 1 : 0, now(), now(), u.id);
         audit(u.id, "notice.saved", target);
+        const response = { id: target };
+        if (key)
+          db.prepare(
+            "INSERT INTO idempotency(user_id,key,request_hash,response,created) VALUES(?,?,?,?,?)",
+          ).run(u.id, key, fingerprint, JSON.stringify(response), Date.now());
+        return response;
       });
-      return send(res, { id: target });
+      return send(res, result);
     }
     if (p === "/api/closures" && m === "GET") {
       current(req, "venue.manage");

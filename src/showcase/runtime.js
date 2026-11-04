@@ -53,6 +53,7 @@ function seed() {
   ];
   return {
     schema: 2,
+    idempotency: [],
     drafts: [],
     verifications: {},
     verificationHistory: {},
@@ -301,6 +302,17 @@ function restore() {
         saved.drafts = [];
       if (!object(saved.verifications)) saved.verifications = {};
       if (!object(saved.verificationHistory)) saved.verificationHistory = {};
+      if (
+        !Array.isArray(saved.idempotency) ||
+        saved.idempotency.some(
+          (r) =>
+            !strings(r, ["actor", "key", "request_hash"]) ||
+            !object(r.response) ||
+            typeof r.response.id !== "string" ||
+            !Number.isSafeInteger(r.created),
+        )
+      )
+        saved.idempotency = [];
       return saved;
     }
   } catch {}
@@ -1215,7 +1227,7 @@ export async function request(path, options = {}) {
       log("case.fee_updated", row.id);
       result = { ok: true };
     } else if (p === "/notices" || /^\/notices\/[^/]+$/.test(p)) {
-      requireUser("notices.manage");
+      const actor = requireUser("notices.manage");
       const id = p.split("/")[2];
       if (m === "DELETE")
         state.notices = state.notices.filter((r) => r.id !== id);
@@ -1224,6 +1236,33 @@ export async function request(path, options = {}) {
           content = clean(b.content, 5000),
           fields = { title, content, pinned: b.pinned ? 1 : 0 };
         if (!title || !content) error("请填写公告标题和正文");
+        const key =
+          !id && m === "POST"
+            ? (options.headers?.["Idempotency-Key"] ??
+              options.headers?.["idempotency-key"])
+            : undefined;
+        if (
+          key !== undefined &&
+          (typeof key !== "string" || !/^[\w-]{16,128}$/.test(key))
+        )
+          error("重复请求标识无效");
+        const fingerprint = JSON.stringify({
+          operation: "notice.create",
+          title,
+          content,
+          pinned: !!b.pinned,
+        });
+        state.idempotency = state.idempotency.filter(
+          (r) => r.created >= Date.now() - 86400000,
+        );
+        const previous =
+          key &&
+          state.idempotency.find((r) => r.actor === actor.id && r.key === key);
+        if (previous) {
+          if (previous.request_hash !== fingerprint)
+            error("同一请求标识不能用于不同操作或公告内容", 409);
+          return structuredClone(previous.response);
+        }
         if (id) {
           const row =
             state.notices.find((r) => r.id === id) || error("公告不存在");
@@ -1232,17 +1271,28 @@ export async function request(path, options = {}) {
             updated: now(),
             version: row.version + 1,
           });
-        } else
+        } else {
+          const target = crypto.randomUUID();
           state.notices.unshift({
             ...fields,
-            id: crypto.randomUUID(),
+            id: target,
             created: now(),
             updated: now(),
             version: 1,
           });
+          result = { id: target };
+          if (key)
+            state.idempotency.push({
+              actor: actor.id,
+              key,
+              request_hash: fingerprint,
+              response: result,
+              created: Date.now(),
+            });
+        }
       }
-      result = { ok: true };
-      log("notice.saved", id || "showcase");
+      result ||= { ok: true };
+      log("notice.saved", id || result.id || "showcase");
     } else if (p === "/closures" || p.startsWith("/closures/")) {
       requireUser("venue.manage");
       error("场地开放安排已停用，企业统一在大活A座平台申报桁架内容。", 410);

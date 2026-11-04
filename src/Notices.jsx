@@ -18,6 +18,7 @@ export default function Notices({
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const pending = useRef(false),
+    createIntent = useRef(null),
     mounted = useRef(true),
     busyCallback = useRef(onBusyChange);
   busyCallback.current = onBusyChange;
@@ -57,6 +58,17 @@ export default function Notices({
     setError("");
     setModal(m);
   };
+  function createHeaders(body) {
+    const fingerprint = JSON.stringify({
+      actor: user?.id,
+      title: body.title,
+      content: body.content,
+      pinned: !!body.pinned,
+    });
+    if (createIntent.current?.fingerprint !== fingerprint)
+      createIntent.current = { fingerprint, key: crypto.randomUUID() };
+    return { "Idempotency-Key": createIntent.current.key };
+  }
   async function publish(e) {
     e.preventDefault();
     if (pending.current) return;
@@ -65,15 +77,18 @@ export default function Notices({
     if (!beginWrite(true)) return;
     setPublishError("");
     try {
+      const body = {
+        title: values.title,
+        content: values.content,
+        pinned: values.pinned === "on",
+      };
       await api("/notices", {
         method: "POST",
-        body: {
-          title: values.title,
-          content: values.content,
-          pinned: values.pinned === "on",
-        },
+        headers: createHeaders(body),
+        body,
       });
       if (mounted.current) {
+        createIntent.current = null;
         form.reset();
         onSaved("公告已发布，所有访客可立即查看");
       }
@@ -90,12 +105,16 @@ export default function Notices({
     if (!beginWrite()) return;
     setError("");
     try {
+      const body = { ...form, pinned: form.pinned === "on" };
       await api(`/notices${modal.item ? "/" + modal.item.id : ""}`, {
         method: modal.item ? "PATCH" : "POST",
-        headers: modal.item ? { "If-Match": `"${modal.item.version}"` } : {},
-        body: { ...form, pinned: form.pinned === "on" },
+        headers: modal.item
+          ? { "If-Match": `"${modal.item.version}"` }
+          : createHeaders(body),
+        body,
       });
       if (mounted.current) {
+        if (!modal.item) createIntent.current = null;
         setModal(null);
         onSaved("公告已保存");
       }

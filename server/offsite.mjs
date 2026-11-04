@@ -324,7 +324,81 @@ export async function uploadOffsite(source, dbPath, clientOverride) {
   }
 }
 
+async function acquireRestoreLock(target) {
+  // All database filenames (and directory aliases) share one MFA key. Claim
+  // the directory before any operation can adopt or roll back that key.
+  const directory = await realpath(path.dirname(path.resolve(target))),
+    file = path.join(directory, ".restore.lock"),
+    token = JSON.stringify({
+      id: randomUUID(),
+      pid: process.pid,
+      started: new Date().toISOString(),
+      target: path.basename(target),
+    });
+  let handle;
+  try {
+    handle = await open(file, "wx", 0o600);
+  } catch (error) {
+    if (["EEXIST", "EISDIR"].includes(error.code))
+      throw new Error(
+        "恢复目录锁已存在；请人工核查该目录的恢复进程均已退出，再检查文件并清理 .restore.lock 后重试；系统不会自动抢锁",
+      );
+    throw error;
+  }
+  let identity;
+  try {
+    identity = await handle.stat({ bigint: true });
+    await handle.writeFile(token);
+    await handle.close();
+    return { file, identity, token };
+  } catch (error) {
+    await handle.close().catch(() => {});
+    // Initialization may fail (for example ENOSPC). Remove our exclusive file
+    // only if the path still names the inode returned by our own handle.
+    const current = await lstat(file, { bigint: true }).catch((e) => {
+      if (e.code === "ENOENT") return null;
+      throw e;
+    });
+    if (
+      identity &&
+      current?.dev === identity.dev &&
+      current.ino === identity.ino
+    )
+      await unlink(file);
+    throw error;
+  }
+}
+
+async function ownsRestoreLock(lock) {
+  if (!lock) return false;
+  const current = await lstat(lock.file, { bigint: true }).catch((error) => {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  });
+  if (
+    !current?.isFile() ||
+    current.dev !== lock.identity.dev ||
+    current.ino !== lock.identity.ino
+  )
+    return false;
+  return (await readFile(lock.file, "utf8")) === lock.token;
+}
+
+async function requireRestoreLock(lock) {
+  if (!(await ownsRestoreLock(lock)))
+    throw new Error(
+      "恢复目录锁已变化，已停止发布；请人工核查恢复进程及目录文件后再重试",
+    );
+}
+
 export async function restoreEncrypted(source, target) {
+  const requestedTarget = target;
+  // Anchor every temporary/key/publication path to the same resolved directory
+  // as the lock, even when the caller used a junction or symlink alias.
+  target = path.join(
+    await realpath(path.dirname(path.resolve(target))),
+    path.basename(target),
+  );
   // A missing main file is not an empty SQLite target: an old WAL can replay
   // successfully against the restored file and silently replace snapshot data.
   assertSqliteTargetAvailable(target, "恢复");
@@ -347,8 +421,12 @@ export async function restoreEncrypted(source, target) {
   const partial = target + `.${randomUUID()}.restore.part`;
   const partialKey = partial + ".mfa-key";
   let mfaKey = Buffer.alloc(0);
-  let publishedKey = null;
+  let publishedKey = null,
+    restoreLock = null;
   try {
+    // Fail immediately on an existing/abandoned claim. A killed owner leaves
+    // evidence for an operator; elapsed time or PID reuse never steals it.
+    restoreLock = await acquireRestoreLock(target);
     await pipeline(
       createReadStream(source, { start: 20, end: size - 17 }),
       cipher,
@@ -372,6 +450,7 @@ export async function restoreEncrypted(source, target) {
     // Hard-link avoids overwriting an existing database even if another process creates it.
     const { link } = await import("node:fs/promises");
     const keyPath = path.join(path.dirname(target), ".mfa-key");
+    await requireRestoreLock(restoreLock);
     try {
       const old = await readFile(keyPath);
       if (!old.equals(mfaKey))
@@ -385,10 +464,11 @@ export async function restoreEncrypted(source, target) {
     }
     // Decryption/key publication can take time. Reject sidecars that appeared
     // meanwhile, preserving them for the operator rather than deleting them.
+    await requireRestoreLock(restoreLock);
     assertSqliteTargetAvailable(target, "恢复");
     await link(partial, target);
     publishedKey = null;
-    return { target, mfaKeyRestored: true };
+    return { target: requestedTarget, mfaKeyRestored: true };
   } catch (error) {
     if (publishedKey) {
       const current = await lstat(publishedKey.file).catch((e) => {
@@ -410,5 +490,8 @@ export async function restoreEncrypted(source, target) {
       partial + "-shm",
     ])
       await unlink(file).catch(() => {});
+    // Release only our exact claim, after all key rollback and temporary file
+    // cleanup. An unknown/replaced lock belongs to its operator, not this call.
+    if (await ownsRestoreLock(restoreLock)) await unlink(restoreLock.file);
   }
 }

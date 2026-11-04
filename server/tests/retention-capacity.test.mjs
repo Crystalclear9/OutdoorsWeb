@@ -218,7 +218,10 @@ test("图片归档保护及候选筛选按预约主键查找，并保持前缀�
       );
     assert.ok(
       plan.some((row) =>
-        /SEARCH b USING (?:COVERING )?INDEX .*\(id=\?\)/.test(row.detail),
+        // Newer SQLite labels an indexed EXISTS probe as "SEARCH b EXISTS".
+        /SEARCH b(?: EXISTS)? USING (?:COVERING )?INDEX .*\(id=\?\)/.test(
+          row.detail,
+        ),
       ),
       JSON.stringify(plan),
     );

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import sharp from "sharp";
@@ -403,6 +403,11 @@ test("业务图片和历史审计完整归档，原图片权限与读取继续�
 test("加密异机备份包含MFA密钥，可恢复；错误密钥或篡改备份不会产生可用数据库", async (t) => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "outdoors-encrypted-")),
     source = path.join(dir, "source.sqlite");
+  t.after(async () => {
+    assert.equal(path.dirname(dir), path.resolve(os.tmpdir()));
+    assert.match(path.basename(dir), /^outdoors-encrypted-[A-Za-z0-9]{6}$/);
+    await rm(dir, { recursive: true, force: true });
+  });
   const db = new DatabaseSync(source);
   db.exec(
     "CREATE TABLE proof(value TEXT); INSERT INTO proof VALUES('restored');",
@@ -783,6 +788,11 @@ test("S3协议上传后回读验证密文，外部告警失败可见、成功签
   process.env.ALERT_WEBHOOK_SECRET = "test-signing-secret";
   const dir = await mkdtemp(path.join(os.tmpdir(), "outdoors-s3-contract-")),
     source = path.join(dir, "snapshot.sqlite");
+  t.after(async () => {
+    assert.equal(path.dirname(dir), path.resolve(os.tmpdir()));
+    assert.match(path.basename(dir), /^outdoors-s3-contract-[A-Za-z0-9]{6}$/);
+    await rm(dir, { recursive: true, force: true });
+  });
   const snapshot = new DatabaseSync(source);
   snapshot.exec(
     "CREATE TABLE proof(value TEXT); INSERT INTO proof VALUES('test snapshot payload')",

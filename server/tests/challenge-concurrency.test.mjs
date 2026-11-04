@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { fork } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createCipheriv, randomBytes } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { openStore } from "../store.mjs";
@@ -35,9 +36,19 @@ test("两个服务进程并发猜测短信和MFA凭据，最多记录五次尝�
   db.prepare(
     "INSERT INTO users(id,email,password_hash,role,company,contact,phone,created) VALUES('proof-user','proof@test.local',?,'enterprise','测试企业','测试人','13800138000',?)",
   ).run(password, new Date().toISOString());
+  const key = randomBytes(32),
+    iv = randomBytes(12),
+    cipher = createCipheriv("aes-256-gcm", key, iv),
+    encrypted = Buffer.concat([
+      iv,
+      cipher.update("JBSWY3DPEHPK3PXP"),
+      cipher.final(),
+      cipher.getAuthTag(),
+    ]).toString("base64");
+  await writeFile(path.join(dir, ".mfa-key"), key, { flag: "wx", mode: 0o600 });
   db.prepare(
-    "INSERT INTO mfa(user_id,secret,enabled,recovery) VALUES('proof-user','',1,?)",
-  ).run(JSON.stringify([hashToken("recovery-for-concurrency")]));
+    "INSERT INTO mfa(user_id,secret,enabled,recovery) VALUES('proof-user',?,1,?)",
+  ).run(encrypted, JSON.stringify([hashToken("recovery-for-concurrency")]));
   const sms = "a".repeat(64),
     mfa = "b".repeat(64);
   db.prepare(
@@ -67,6 +78,7 @@ test("两个服务进程并发猜测短信和MFA凭据，最多记录五次尝�
         DB_PATH: dbPath,
         ADMIN_EMAIL: "",
         ADMIN_PASSWORD: "",
+        APP_ENCRYPTION_KEY: "",
       },
       stdio: ["ignore", "ignore", "pipe", "ipc"],
     });

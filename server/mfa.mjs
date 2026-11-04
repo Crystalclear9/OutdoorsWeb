@@ -10,6 +10,7 @@ import path from "node:path";
 import QRCode from "qrcode";
 import { body, fail, tx } from "./core.mjs";
 import { hashToken, randomToken, verifyPassword } from "./security.mjs";
+import { verifyMfaKey } from "./backup-key.mjs";
 
 const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 export function base32(bytes) {
@@ -61,12 +62,31 @@ export function createMfa(db, dbPath, sec, send, options = {}) {
   else {
     const file = path.join(path.dirname(path.resolve(dbPath)), ".mfa-key");
     try {
-      writeFileSync(file, randomBytes(32), { flag: "wx", mode: 0o600 });
+      key = readFileSync(file);
     } catch (e) {
-      if (e.code !== "EEXIST") throw e;
+      if (e.code !== "ENOENT") throw e;
+      fail(
+        !!db.prepare("SELECT 1 FROM mfa LIMIT 1").get(),
+        500,
+        "数据库已有两步验证记录，但MFA密钥文件缺失；请恢复匹配密钥后再启动",
+      );
+      try {
+        writeFileSync(file, randomBytes(32), { flag: "wx", mode: 0o600 });
+      } catch (createError) {
+        if (createError.code !== "EEXIST") throw createError;
+      }
+      key = readFileSync(file);
     }
-    key = readFileSync(file);
     fail(key.length !== 32, 500, "MFA 密钥文件损坏");
+  }
+  // Readiness must never advertise a database whose stored second factors
+  // cannot be decrypted. This also covers disabled and pending MFA records.
+  try {
+    verifyMfaKey(db, key);
+  } catch {
+    throw new Error(
+      "MFA密钥与数据库不匹配或密文损坏；请恢复匹配密钥并核查数据库后再启动",
+    );
   }
   const encrypt = (secret) => {
     const iv = randomBytes(12),

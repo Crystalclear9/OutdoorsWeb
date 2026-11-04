@@ -90,6 +90,8 @@ docker run --rm -v "$PWD:/workspace" -v /workspace/node_modules -w /workspace -e
 
 Windows 强制结束浏览器测试进程时，系统临时目录可能留下 `outdoor-browser-tests-*`、`outdoors-visual-*` 等隔离测试目录。应先确认对应测试已经退出、目录来自测试代码且不含业务数据，再删除；不能仅凭文件名批量清理整个系统临时目录。
 
+压缩、加密恢复、异机备份契约及MFA启动校验测试会在退出钩子中关闭资源并清理各自创建的临时目录。正常通过后不应留下这些目录；强杀、系统中断或文件占用仍可能留下故障证据，按上述来源核对后处理。
+
 保留 `data/`、`backups/`、`.env`、正式数据库及配套密钥、正式 Docker 数据卷、源码字体及视觉基线。不要删除 Docker 数据盘或其他项目资源。Docker 存储盘不一定随镜像删除立即缩小，见[运行维护](operations.md#docker-存储清理)。
 
 ## 常用命令

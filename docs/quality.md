@@ -4,6 +4,8 @@
 
 ## 验证范围
 
+`server/tests/mfa-startup-key.test.mjs` 检查等长错误文件密钥、缺失侧车、环境密钥优先级、待启用记录及损坏密文的启动拒绝，核对失败保留原记录和文件、修复后可重启，验证真实密码加动态验证码登录及正式进程在监听前非零退出。
+
 `server/tests/restore-directory-lock.test.mjs` 使用真实多进程核对同目录不同目标的恢复互斥、共享密钥保护、目录别名及运行中链接改向，并检查锁初始化失败、锁被替换或改写后的归属保护与正常清理。
 
 `server/tests/notice-idempotency.test.mjs` 在真实公告落库后切断响应，检查相同请求并发及重试只产生一条公告和审计、不同内容冲突、跨账号隔离及提交时权限撤销。`tests/notice-create-retry.spec.js` 验证真实发布表单的未知响应重试和主动再次发布，Pages兼容回归见 `tests/showcase/notice-retry.showcase.js`。

@@ -5,6 +5,7 @@ import { dateString } from "../utils.js";
 import designUrl from "./design.svg?url";
 
 const KEY = "outdoors-temporary-showcase-v1";
+const MAX_STORED_DESIGN_LENGTH = 8 * 1024 * 1024 + 128;
 export const ROLES = [
   ["enterprise", "企业", "overview"],
   ["super", "管理员", "overview"],
@@ -198,7 +199,7 @@ function validStoredState(saved) {
         slot(row.slot) &&
         (row.designImage == null ||
           (typeof row.designImage === "string" &&
-            row.designImage.length <= 4200000 &&
+            row.designImage.length <= MAX_STORED_DESIGN_LENGTH &&
             /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(
               row.designImage,
             ))) &&
@@ -294,7 +295,7 @@ function restore() {
                 !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(
                   r.image,
                 ) ||
-                r.image.length > 4200000)),
+                r.image.length > MAX_STORED_DESIGN_LENGTH)),
         )
       )
         saved.drafts = [];
@@ -641,6 +642,31 @@ async function draftImage(image) {
   }
   return image;
 }
+async function imageForWrite(body, user, draft, sourceId) {
+  if (body.reuseImage !== undefined) {
+    if (
+      !["source", "draft"].includes(body.reuseImage) ||
+      Object.hasOwn(body, "image")
+    )
+      error("设计图引用方式无效");
+    if (body.reuseImage === "draft") {
+      if (!draft?.image) error("草稿设计图不存在", 409);
+      return draft.image;
+    }
+    if (!sourceId) error("请选择本人可复制的原申请");
+    sourceFor(user, sourceId);
+    const blob = await designBlob(sourceId);
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error("原设计图读取失败"));
+      reader.readAsDataURL(blob);
+    });
+  }
+  return body.image === undefined
+    ? draft?.image || null
+    : draftImage(body.image);
+}
 export async function request(path, options = {}) {
   const url = new URL(path, "https://showcase.invalid"),
     p = url.pathname,
@@ -985,10 +1011,12 @@ export async function request(path, options = {}) {
           payload[key] = clean(b.payload[key], max);
         }
         sourceFor(user, payload.source_booking_id);
-        const image =
-          b.image === undefined
-            ? old?.image || null
-            : await draftImage(b.image);
+        const image = await imageForWrite(
+          b,
+          user,
+          old,
+          payload.source_booking_id,
+        );
         // Image decoding yields. Recheck ownership/version after it so two
         // tabs/tasks cannot both replace the same saved version.
         if (getUser()?.id !== user.id)
@@ -1057,8 +1085,9 @@ export async function request(path, options = {}) {
     } else if (p === "/bookings" && m === "POST") {
       const user = requireUser("enterprise");
       const source = sourceFor(user, b.source_booking_id);
+      let draft;
       if (b.draftId) {
-        const draft = state.drafts.find(
+        draft = state.drafts.find(
           (r) => r.id === b.draftId && r.user_id === user.id,
         );
         if (!draft) error("草稿不存在", 404);
@@ -1079,7 +1108,7 @@ export async function request(path, options = {}) {
         ...b,
         ...fields,
         source_booking_id: source,
-        designImage: await draftImage(b.image),
+        designImage: await imageForWrite(b, user, draft, source),
         id: `SHOWCASE-${crypto.randomUUID().slice(0, 8)}`,
         slot: 1,
         content_only: 1,
@@ -1095,7 +1124,9 @@ export async function request(path, options = {}) {
         contactResult: { state: "pending", attempts: 0, version: 1 },
         fee: null,
       };
+      if (!row.designImage) error("请上传桁架设计图");
       delete row.image;
+      delete row.reuseImage;
       if (getUser()?.id !== user.id)
         error("演示身份已变化，请重新读取申请", 409);
       sourceFor(user, b.source_booking_id);

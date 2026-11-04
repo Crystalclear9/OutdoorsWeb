@@ -12,7 +12,12 @@ import { createDraftRoutes } from "./draft-routes.mjs";
 import { createCaptcha } from "./captcha.mjs";
 import { businessRoutes, archivedImage } from "./business.mjs";
 import { caseworkRoutes } from "./casework.mjs";
-import { checkDraftSource } from "./draft-routes.mjs";
+import {
+  checkDraftSource,
+  imageReuseMode,
+  copySourceDesign,
+  savedDraftDesign,
+} from "./draft-routes.mjs";
 import { createMfa } from "./mfa.mjs";
 import { integrationRoutes, enqueueResult } from "./integrations.mjs";
 import {
@@ -752,7 +757,9 @@ export async function createApi(db, options = {}) {
         f = { ...fields(b), ...builderFields(b) },
         slot = 1;
       dateRange(b.start, b.end, true);
-      const image = await decodeImage(b.image);
+      const reuse = imageReuseMode(b);
+      fail(reuse === "draft" && !b.draftId, 400, "请指定已有草稿再复用设计图");
+      const image = reuse ? null : await decodeImage(b.image);
       const key = req.headers["idempotency-key"];
       fail(
         key !== undefined &&
@@ -766,7 +773,7 @@ export async function createApi(db, options = {}) {
           slot,
           start: b.start,
           end: b.end,
-          image: hashToken(image.image),
+          image: reuse ? { reuse } : hashToken(image.image),
           source_booking_id: b.source_booking_id || null,
           draftId: b.draftId || null,
           draftVersion: b.draftVersion || null,
@@ -790,15 +797,18 @@ export async function createApi(db, options = {}) {
         // acquisition; completed idempotent requests above keep their result.
         dates(b.start, b.end, true);
         const source = checkDraftSource(db, fresh.id, b.source_booking_id);
+        let draft;
         if (b.draftId != null) {
           fail(
             typeof b.draftId !== "string" || b.draftId.length > 100,
             400,
             "草稿编号无效",
           );
-          const draft = db
+          draft = db
             .prepare(
-              "SELECT version FROM booking_drafts WHERE id=? AND user_id=?",
+              reuse === "draft"
+                ? "SELECT version,image,image_type FROM booking_drafts WHERE id=? AND user_id=?"
+                : "SELECT version FROM booking_drafts WHERE id=? AND user_id=?",
             )
             .get(b.draftId, fresh.id);
           fail(!draft, 404, "草稿不存在，请核对申请记录后重新读取");
@@ -809,6 +819,11 @@ export async function createApi(db, options = {}) {
             "草稿已在其他页面修改，请重新读取后提交",
           );
         }
+        const design =
+          image ||
+          (reuse === "draft"
+            ? savedDraftDesign(draft)
+            : copySourceDesign(db, fresh.id, source));
         limit(`booking:${fresh.id}`, 30, 3600000);
         const id = `HUST-${Date.now()}-${randomBytes(6).toString("hex")}`;
         const used = db
@@ -817,7 +832,7 @@ export async function createApi(db, options = {}) {
           )
           .get(fresh.id, fresh.id, b.draftId || null).bytes;
         fail(
-          used + image.image.length > 200 * 1024 * 1024,
+          used + design.image.length > 200 * 1024 * 1024,
           413,
           "该账号设计图存储已达到 200 MB，请联系管理员归档",
         );
@@ -840,8 +855,8 @@ export async function createApi(db, options = {}) {
           b.end,
           slot,
           "待审核",
-          image.image,
-          image.type,
+          design.image,
+          design.type,
           now(),
           source,
         );

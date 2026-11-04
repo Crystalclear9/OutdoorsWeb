@@ -40,6 +40,7 @@ export function BookingForm({
   const currentReader = useRef(null);
   const imageSelection = useRef(0);
   const [image, setImage] = useState(draft?.image || null),
+    [reuseImage, setReuseImage] = useState(draft?.image ? "draft" : null),
     [name, setName] = useState(draft?.image ? "已保存的设计图" : ""),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
@@ -70,6 +71,7 @@ export function BookingForm({
         });
         if (active && selection === imageSelection.current) {
           setImage(value);
+          setReuseImage("source");
           setName("原申请设计图（可更换）");
           setDirty(true);
         }
@@ -105,6 +107,9 @@ export function BookingForm({
       source_booking_id: sourceId,
     };
   }
+  function imagePayload() {
+    return image && reuseImage ? { reuseImage } : { image };
+  }
   async function saveDraft() {
     if (busy || imageLoading) return;
     setBusy(true);
@@ -119,13 +124,16 @@ export function BookingForm({
           headers: identity.version
             ? { "If-Match": `"${identity.version}"` }
             : {},
-          body: { id: identity.id, payload: payload(), image },
+          body: { id: identity.id, payload: payload(), ...imagePayload() },
         },
       );
       draftIdentity.current = {
         id: result.draft.id,
         version: result.draft.version,
       };
+      setImage(result.draft.image || null);
+      setReuseImage(result.draft.image ? "draft" : null);
+      if (!result.draft.image) setName("");
       setDirty(false);
       setMessage("草稿已保存到您的账号，关闭或刷新后可在申请草稿继续办理。");
     } catch (e) {
@@ -149,6 +157,7 @@ export function BookingForm({
     // Choosing a file supersedes the independently loaded source design,
     // including its late success, error and loading cleanup.
     imageSelection.current++;
+    setReuseImage(null);
     setDirty(true);
     setMessage("");
     const previous = currentReader.current;
@@ -193,7 +202,7 @@ export function BookingForm({
     if (!image) return setError("请上传桁架设计图");
     const payload = {
       ...Object.fromEntries(new FormData(e.currentTarget)),
-      image,
+      ...imagePayload(),
       source_booking_id: sourceId,
       ...(draftIdentity.current.version
         ? {

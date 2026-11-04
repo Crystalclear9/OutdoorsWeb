@@ -137,7 +137,7 @@ export function retainHistory(
   const queries = {
     archives: policy.archiveDays
       ? [
-          "SELECT a.id FROM archives a WHERE a.kind='image' AND a.created<? AND NOT EXISTS(SELECT 1 FROM bookings b WHERE a.id='image-'||b.id) ORDER BY a.created,a.id LIMIT ?",
+          "SELECT a.id FROM archives a WHERE a.kind='image' AND a.created<? AND NOT EXISTS(SELECT 1 FROM bookings b WHERE b.id=substr(a.id,7) AND a.id='image-'||b.id) ORDER BY a.created,a.id LIMIT ?",
           cutoff(policy.archiveDays),
           policy.batchSize,
         ]
@@ -167,7 +167,7 @@ export function retainHistory(
       .get().n;
     result.protectedImageArchives = db
       .prepare(
-        "SELECT COUNT(*) n FROM archives a WHERE kind='image' AND EXISTS(SELECT 1 FROM bookings b WHERE a.id='image-'||b.id)",
+        "SELECT COUNT(*) n FROM archives a WHERE kind='image' AND EXISTS(SELECT 1 FROM bookings b WHERE b.id=substr(a.id,7) AND a.id='image-'||b.id)",
       )
       .get().n;
     for (const [table, query] of Object.entries(queries)) {

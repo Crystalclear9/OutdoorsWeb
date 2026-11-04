@@ -182,6 +182,63 @@ test("清理每轮按批量推进，未配置的分类不清理", (t) => {
   assert.equal(db.prepare("SELECT COUNT(*) n FROM archives").get().n, 2);
 });
 
+test("图片归档保护及候选筛选按预约主键查找，并保持前缀和Unicode引用语义", (t) => {
+  const { db, policy } = fixture(t);
+  db.prepare("INSERT INTO bookings VALUES('企业-甲','2020-01-01')").run();
+  db.prepare(
+    "INSERT INTO archives VALUES('image-企业-甲','image','2020-01-01',X'0102')",
+  ).run();
+  // This suffix matches a real booking, but its prefix is not an image link.
+  db.prepare(
+    "INSERT INTO archives VALUES('wrong-historical','image','2020-01-01',X'0304')",
+  ).run();
+  const observed = [];
+  const wrapped = new Proxy(db, {
+    get(target, key) {
+      if (key === "prepare")
+        return (sql) => {
+          if (sql.includes("FROM archives a")) observed.push(sql);
+          return target.prepare(sql);
+        };
+      const value = target[key];
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  const preview = retainHistory(wrapped, { ...policy, enabled: false });
+  assert.equal(preview.protectedImageArchives, 2);
+  assert.equal(preview.eligible.archives, 2);
+  assert.equal(observed.length, 2);
+  for (const sql of observed) {
+    const plan = db
+      .prepare("EXPLAIN QUERY PLAN " + sql)
+      .all(
+        ...(sql.includes("LIMIT ?")
+          ? [new Date().toISOString(), policy.batchSize]
+          : []),
+      );
+    assert.ok(
+      plan.some((row) =>
+        /SEARCH b USING (?:COVERING )?INDEX .*\(id=\?\)/.test(row.detail),
+      ),
+      JSON.stringify(plan),
+    );
+    assert.equal(
+      plan.some((row) => /SCAN b\b/.test(row.detail)),
+      false,
+      "每个图片引用不应全表扫描预约",
+    );
+  }
+  const cleaned = retainHistory(db, policy, { backupVerified: true });
+  assert.equal(cleaned.removed.archives, 2);
+  assert.deepEqual(
+    db
+      .prepare("SELECT id FROM archives ORDER BY id")
+      .all()
+      .map((row) => row.id),
+    ["audit-old", "image-historical", "image-企业-甲"],
+  );
+});
+
 test("容量包含WAL和手动及嵌套备份，只统计不删除且不跟随目录链接", async (t) => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "outdoors-capacity-"));
   t.after(() => rm(dir, { recursive: true, force: true }));

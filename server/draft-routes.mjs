@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { archivedImage } from "./business.mjs";
 import {
   body,
   clean,
@@ -8,6 +9,50 @@ import {
   today,
   versionCheck,
 } from "./core.mjs";
+
+export function imageReuseMode(data) {
+  const mode = data.reuseImage;
+  fail(
+    mode !== undefined && !["source", "draft"].includes(mode),
+    400,
+    "设计图复用方式无效",
+  );
+  fail(
+    mode !== undefined && data.image !== undefined,
+    400,
+    "请勿同时上传和复用设计图",
+  );
+  return mode;
+}
+
+function storedDesign(bytes, type) {
+  fail(!bytes?.length, 400, "没有可复用的设计图，请重新上传");
+  fail(
+    bytes.length > 6 * 1024 * 1024 ||
+      !["image/png", "image/jpeg", "image/webp"].includes(type),
+    503,
+    "已保存的设计图异常，请联系管理员",
+  );
+  return { image: Buffer.from(bytes), type };
+}
+
+export function savedDraftDesign(draft) {
+  return storedDesign(draft?.image, draft?.image_type);
+}
+
+export function copySourceDesign(db, userId, source) {
+  fail(!source, 400, "请指定可复制的原申请");
+  checkDraftSource(db, userId, source);
+  const row = db
+    .prepare(
+      "SELECT id,image,image_type FROM bookings WHERE id=? AND user_id=?",
+    )
+    .get(source, userId);
+  return storedDesign(
+    row.image.length ? row.image : archivedImage(db, row.id),
+    row.image_type,
+  );
+}
 
 export function checkDraftSource(db, userId, source) {
   if (!source) return null;
@@ -117,16 +162,11 @@ export function createDraftRoutes(db, sec, send, maintenance) {
       );
       payload[key] = clean(b.payload[key], max);
     }
+    const reuse = imageReuseMode(b);
+    fail(reuse === "draft" && !match, 400, "请指定已有草稿再复用设计图");
     let image;
     if (b.image != null) {
       image = await decodeImage(b.image);
-      // A restored draft is a valid upload too. Do not persist a normalized
-      // image larger than the public submission upload limit.
-      fail(
-        image.image.length > 3 * 1024 * 1024,
-        413,
-        "草稿设计图解码后超过3 MB，请降低分辨率后保存",
-      );
     }
     const id = match?.[1] || b.id || randomUUID();
     fail(
@@ -138,7 +178,13 @@ export function createDraftRoutes(db, sec, send, maintenance) {
       checkDraftSource(db, fresh.id, payload.source_booking_id);
       const old = match ? owned(id, fresh.id) : null;
       if (old) versionCheck(req, old, true);
-      else {
+      const reusedImage =
+        reuse === "source"
+          ? copySourceDesign(db, fresh.id, payload.source_booking_id)
+          : reuse === "draft"
+            ? savedDraftDesign(old)
+            : image;
+      if (!old) {
         const existing = db
           .prepare("SELECT * FROM booking_drafts WHERE id=?")
           .get(id);
@@ -148,7 +194,7 @@ export function createDraftRoutes(db, sec, send, maintenance) {
               existing.payload !== JSON.stringify(payload) ||
               Buffer.compare(
                 Buffer.from(existing.image || []),
-                image?.image || Buffer.alloc(0),
+                reusedImage?.image || Buffer.alloc(0),
               ) !== 0,
             409,
             "草稿编号已使用，请重新读取草稿",
@@ -163,8 +209,16 @@ export function createDraftRoutes(db, sec, send, maintenance) {
           "最多保存20份草稿，请先删除不再使用的草稿",
         );
       }
-      const bytes = b.image === undefined ? old?.image : image?.image;
-      const type = b.image === undefined ? old?.image_type : image?.type;
+      const bytes = reuse
+        ? reusedImage.image
+        : b.image === undefined
+          ? old?.image
+          : image?.image;
+      const type = reuse
+        ? reusedImage.type
+        : b.image === undefined
+          ? old?.image_type
+          : image?.type;
       const used = db
         .prepare(
           "SELECT (SELECT COALESCE(SUM(length(image)),0) FROM bookings WHERE user_id=?) + (SELECT COALESCE(SUM(length(image)),0) FROM booking_drafts WHERE user_id=? AND id<>?) bytes",

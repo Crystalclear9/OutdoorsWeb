@@ -4,11 +4,15 @@
 
 ## 验证范围
 
+`server/tests/offsite-live-wal.test.mjs` 保持真实WAL连接和已提交数据，通过实际加密及恢复核对直接库导出的内容，并检查密钥失配、上传失败和临时文件清理。
+
 `server/tests/saved-design-reuse.test.mjs` 使用实际小于3 MB、转换后大于3 MB的图片，检查在线及归档原图、连续草稿保存、原子提交与幂等重试，并验证跨账号拒绝、版本冲突、新上传限制和共享配额。浏览器回归见 `tests/booking-trusted-image-reuse.spec.js`，Pages 回归见 `tests/showcase/trusted-image-reuse.showcase.js`。`retention-capacity.test.mjs` 同时核对真实保留查询的主键索引计划及引用保护结果。
 
 `tests/booking-copy-image-race.spec.js` 使用不同像素设计图验证复制时的迟到原图不会覆盖新上传内容，并检查连续退回复制的来源关联；`server/tests/reschedule-draft-quota.test.mjs` 验证普通及已归档源图改期时计入草稿配额，超额拒绝无副作用，释放空间后可重试。
 
-`tests/font-csp.spec.js` 在真实服务响应的安全策略下检查字体加载，捕获字体策略违规及加载失败；复制图片回归同时检查未产生 Blob URL 连接策略违规。测试收尾会显式释放测试 API 客户端和浏览器页面再关闭隔离服务。
+`tests/font-csp.spec.js` 在真实服务响应的安全策略下检查字体加载，捕获字体策略违规及加载失败；复制图片回归同时检查未产生 Blob URL 连接策略违规。
+
+账号绑定、归档、投递查询及公告日期的私有服务浏览器测试，在收尾时先关闭本例完整浏览器上下文，再关闭服务，释放连接池与预连接。
 
 新增 `server/tests/maintenance-lifecycle.test.mjs`、`retention-capacity.test.mjs` 覆盖真实挂起、父进程退出、续期失效和容量/保留门禁；`drafts.test.mjs` 覆盖私有访问、重开数据库恢复、幂等及原子提交；`enterprise-verification.test.mjs` 覆盖内部依据隐私、版本冲突和资料变更复核；`review-priority.test.mjs` 覆盖临期逾时筛选和稳定排序。浏览器对应 `tests/drafts.spec.js`、`enterprise-verification.spec.js`、`review-priority.spec.js`，Pages草稿另见 `tests/showcase/drafts.showcase.js`。
 

@@ -81,6 +81,7 @@ test("审计归档初次及翻页读取失败可原位恢复，不保留旧下�
       index: 1,
     });
   } finally {
+    await page.context().close();
     await app.close();
   }
 });

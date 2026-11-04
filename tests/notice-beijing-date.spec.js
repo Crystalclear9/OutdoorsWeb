@@ -67,6 +67,7 @@ test("公告列表及阅读详情在北京时间午夜前后保持相同日期�
         .click();
     }
   } finally {
+    await page.context().close();
     await app.close();
   }
 });

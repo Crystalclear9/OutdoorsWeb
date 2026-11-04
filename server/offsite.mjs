@@ -19,6 +19,9 @@ import {
   unlink,
   writeFile,
   lstat,
+  mkdtemp,
+  rmdir,
+  chmod,
 } from "node:fs/promises";
 import { Readable, Transform } from "node:stream";
 import { pipeline, finished } from "node:stream/promises";
@@ -76,31 +79,89 @@ export async function encryptBackup(source, target, mfaKey) {
 }
 
 export async function uploadOffsite(source, dbPath, clientOverride) {
-  const target = source + `.${randomUUID()}.encrypted.part`;
-  let uploadBody, remoteBody;
-  const disk = await statfs(path.dirname(source));
-  if (
-    Number(disk.bavail) * Number(disk.bsize) <
-    (await stat(source)).size +
-      Number(process.env.MIN_FREE_DISK_MB || 256) * 1048576
-  )
-    throw new Error("异机备份加密临时空间不足，请扩容后重试");
-  // A snapshot must travel with its own key, even after the live key changes.
-  // Direct exports of the current database retain the current-key API contract.
-  const mfaKey =
-    path.resolve(source) === path.resolve(dbPath)
-      ? backupMfaKey(dbPath)
-      : backupKeyFile(source + ".mfa-key");
-  const verify = new DatabaseSync(source, { readOnly: true });
+  let target,
+    uploadBody,
+    remoteBody,
+    verify,
+    snapshotDirectory,
+    snapshot,
+    failed;
+  const reserve = Number(process.env.MIN_FREE_DISK_MB || 256) * 1048576;
+  const requireSpace = async (bytes) => {
+    const disk = await statfs(path.dirname(source));
+    if (Number(disk.bavail) * Number(disk.bsize) < bytes + reserve)
+      throw new Error("异机备份加密临时空间不足，请扩容后重试");
+  };
+  const frozenSnapshot = async () => {
+    for (const suffix of ["-wal", "-shm", "-journal"]) {
+      try {
+        await lstat(source + suffix);
+        throw new Error("异机备份输入存在 SQLite 辅助文件，请先创建一致性快照");
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+    }
+  };
   try {
+    const sourceInfo = await stat(source);
+    let live = path.resolve(source) === path.resolve(dbPath);
+    if (!live) {
+      // Symlink/hard-link aliases of the current database need the same WAL
+      // snapshot semantics and current-key contract as its configured path.
+      const current = await stat(dbPath).catch((error) => {
+        if (error.code === "ENOENT") return null;
+        throw error;
+      });
+      live =
+        !!current &&
+        sourceInfo.dev === current.dev &&
+        sourceInfo.ino === current.ino;
+    }
+    let input = source,
+      mfaKey;
+    if (live) {
+      // Use the configured SQLite pathname, not a hard-link alias whose WAL
+      // would otherwise be searched under a different filename.
+      const current = new DatabaseSync(dbPath, { readOnly: true });
+      try {
+        current.exec("PRAGMA busy_timeout=5000;");
+        const viewBytes =
+          current.prepare("PRAGMA page_count").get().page_count *
+          current.prepare("PRAGMA page_size").get().page_size;
+        // The logical SQLite view includes pages committed only to WAL. Both
+        // a new consistent snapshot and its ciphertext must fit concurrently.
+        await requireSpace(Math.max(viewBytes, sourceInfo.size) * 2 + 68);
+        mfaKey = backupMfaKey(dbPath);
+        snapshotDirectory = await mkdtemp(
+          path.join(path.dirname(path.resolve(source)), ".offsite-"),
+        );
+        snapshot = path.join(snapshotDirectory, "snapshot.sqlite");
+        target = path.join(snapshotDirectory, "payload.encrypted.part");
+        current.exec(`VACUUM INTO '${snapshot.replaceAll("'", "''")}'`);
+        await chmod(snapshot, 0o600);
+        input = snapshot;
+      } finally {
+        current.close();
+      }
+    } else {
+      // Published snapshots are immutable inputs, never raw WAL/main-file
+      // exports. Reject auxiliary files instead of silently omitting them.
+      await frozenSnapshot();
+      mfaKey = backupKeyFile(source + ".mfa-key");
+      target = source + `.${randomUUID()}.encrypted.part`;
+    }
+    verify = new DatabaseSync(input, { readOnly: true });
+    verify.exec("PRAGMA busy_timeout=5000; BEGIN;");
     if (verify.prepare("PRAGMA quick_check").get().quick_check !== "ok")
       throw new Error("备份完整性检查失败");
     verifyMfaKey(verify, mfaKey);
-  } finally {
+    await requireSpace((await stat(input)).size + 68);
+    await encryptBackup(input, target, mfaKey);
+    // Hold the read transaction during encryption. A DELETE-mode writer is
+    // blocked; a WAL writer leaves sidecars and is rejected before any send.
+    if (!live) await frozenSnapshot();
     verify.close();
-  }
-  try {
-    await encryptBackup(source, target, mfaKey);
+    verify = null;
     const sha256 = await digest(createReadStream(target)),
       size = (await stat(target)).size;
     const endpoint = process.env.S3_BACKUP_ENDPOINT;
@@ -158,12 +219,57 @@ export async function uploadOffsite(source, dbPath, clientOverride) {
       sha256,
       verified: true,
     };
+  } catch (error) {
+    failed = error;
+    throw error;
   } finally {
     // An early HTTP rejection/reset can leave the upload's piped file paused.
     // Close handles before unlinking so failed sends release disk space too.
-    await closeReadable(uploadBody);
-    await closeReadable(remoteBody);
-    await unlink(target).catch(() => {});
+    const cleanupErrors = [];
+    try {
+      verify?.close();
+    } catch (error) {
+      cleanupErrors.push(error);
+    }
+    for (const stream of [uploadBody, remoteBody]) {
+      try {
+        await closeReadable(stream);
+      } catch (error) {
+        cleanupErrors.push(error);
+      }
+    }
+    // Remove only paths created by this call; never scan or recursively remove
+    // the source directory, published snapshots, keys, or unrelated files.
+    for (const file of [
+      target,
+      ...(snapshot
+        ? [
+            snapshot,
+            snapshot + "-wal",
+            snapshot + "-shm",
+            snapshot + "-journal",
+          ]
+        : []),
+    ]) {
+      if (!file) continue;
+      try {
+        await unlink(file);
+      } catch (error) {
+        if (error.code !== "ENOENT") cleanupErrors.push(error);
+      }
+    }
+    if (snapshotDirectory) {
+      try {
+        await rmdir(snapshotDirectory);
+      } catch (error) {
+        if (error.code !== "ENOENT") cleanupErrors.push(error);
+      }
+    }
+    if (cleanupErrors.length)
+      throw new AggregateError(
+        [...(failed ? [failed] : []), ...cleanupErrors],
+        "异机备份临时资源清理失败",
+      );
   }
 }
 

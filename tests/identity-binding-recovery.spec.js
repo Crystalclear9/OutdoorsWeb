@@ -3,6 +3,18 @@ import { createApp } from "../server/app.mjs";
 import { listenHttp } from "../server/tests/http-listen.mjs";
 import { test, expect } from "./browser-fixtures.js";
 
+async function closeAccount(page, app) {
+  try {
+    // The isolated context owns browser preconnections and route.fetch/API
+    // pools as well as its page. Closing just the page/request can leave a TCP
+    // connection with no request holding graceful app.close() open until the
+    // HTTP header timeout. Release the complete client owner before the server.
+    await page.context().close();
+  } finally {
+    await app.close();
+  }
+}
+
 async function account(page) {
   // A private in-memory service exercises real account binding and reads. The injected
   // phone adapter only advertises test availability and never contacts a provider.
@@ -45,9 +57,7 @@ async function account(page) {
       .run("13800138000", user.id);
     return { app, origin, user, messages };
   } catch (error) {
-    await page.request.dispose();
-    await page.close();
-    await app.close();
+    await closeAccount(page, app);
     throw error;
   }
 }
@@ -107,9 +117,7 @@ test("企业已验证手机且短信可用时仍不显示通知订阅，也不�
         .get(user.id),
     ).toMatchObject({ sms: 1, voice: 1 });
   } finally {
-    await page.request.dispose();
-    await page.close();
-    await app.close();
+    await closeAccount(page, app);
   }
 });
 
@@ -139,9 +147,7 @@ test("绑定状态首次读取失败可原位纯读恢复，成功后展示真�
     await expect(box.getByRole("checkbox")).toHaveCount(0);
     await expect(box.getByRole("alert")).toHaveCount(0);
   } finally {
-    await page.request.dispose();
-    await page.close();
-    await app.close();
+    await closeAccount(page, app);
   }
 });
 
@@ -216,8 +222,6 @@ test("手机号实际换绑期间锁定关联操作与验证字段，成功重�
   } finally {
     release?.();
     await page.unrouteAll({ behavior: "wait" });
-    await page.request.dispose();
-    await page.close();
-    await app.close();
+    await closeAccount(page, app);
   }
 });

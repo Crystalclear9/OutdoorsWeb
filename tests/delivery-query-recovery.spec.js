@@ -48,6 +48,7 @@ async function setup(page) {
     ).toBeVisible();
     return { app, origin, card };
   } catch (error) {
+    await page.context().close();
     await app.close();
     throw error;
   }
@@ -99,6 +100,7 @@ test("通知筛选读取失败不允许操作旧记录，刷新恢复后真实�
         .get(),
     ).toEqual({ state: "accepted", version: 2 });
   } finally {
+    await page.context().close();
     await app.close();
   }
 });
@@ -167,6 +169,7 @@ test("通知核实的真实版本冲突不被弹窗开启时的迟到列表响�
     ).toBe("uncertain");
   } finally {
     release?.();
+    await page.context().close();
     await app.close();
   }
 });
